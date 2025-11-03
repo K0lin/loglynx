@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"regexp"
 	"loglynx/internal/database/models"
 	"strings"
 
@@ -84,8 +85,11 @@ func isTraefikFormat(path string) bool {
 
     scanner := bufio.NewScanner(file)
     if scanner.Scan() {
-        var logEntry map[string]interface{}
-        if err := json.Unmarshal(scanner.Bytes(), &logEntry); err == nil {
+        line := scanner.Text()
+
+        // Try JSON format first
+        var logEntry map[string]any
+        if err := json.Unmarshal([]byte(line), &logEntry); err == nil {
             // Check for multiple Traefik-specific fields to improve detection accuracy
             // Traefik access logs typically contain these fields
             traefikFields := []string{"ClientHost", "RequestMethod", "RequestPath", "DownstreamStatus", "RouterName"}
@@ -98,7 +102,22 @@ func isTraefikFormat(path string) bool {
             }
 
             // If we find at least 2 Traefik-specific fields, consider it a Traefik log
-            return matchCount >= 2
+            if matchCount >= 2 {
+                return true
+            }
+        }
+
+        // Try CLF format (both Traefik and generic)
+        // Traefik CLF pattern: <client> - <userid> [<datetime>] "<method> <request> HTTP/<version>" <status> <size> "<referrer>" "<user_agent>" <requestsTotal> "<router>" "<server_URL>" <duration>ms
+        traefikCLFPattern := `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTTP/[0-9.]+" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)" (\d+) "([^"]*)" "([^"]*)" (\d+)ms`
+        if matched, _ := regexp.MatchString(traefikCLFPattern, line); matched {
+            return true
+        }
+
+        // Generic CLF pattern: <client> - <userid> [<datetime>] "<method> <request> HTTP/<version>" <status> <size> "<referrer>" "<user_agent>"
+        genericCLFPattern := `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTTP/[0-9.]+" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)"`
+        if matched, _ := regexp.MatchString(genericCLFPattern, line); matched {
+            return true
         }
     }
     return false

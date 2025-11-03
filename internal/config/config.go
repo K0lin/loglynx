@@ -47,9 +47,10 @@ type GeoIPConfig struct {
 
 // LogSourcesConfig contains log source paths
 type LogSourcesConfig struct {
-	TraefikLogPath string
-	AutoDiscover   bool
-	WatchInterval  time.Duration
+	TraefikLogPath   string
+	TraefikLogFormat string // auto, json, clf
+	AutoDiscover     bool
+	WatchInterval    time.Duration
 }
 
 // ServerConfig contains web server settings
@@ -86,9 +87,10 @@ func Load() (*Config, error) {
 			Enabled:       getEnvAsBool("GEOIP_ENABLED", true),
 		},
 		LogSources: LogSourcesConfig{
-			TraefikLogPath: getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
-			AutoDiscover:   getEnvAsBool("LOG_AUTO_DISCOVER", true),
-			WatchInterval:  getEnvAsDuration("LOG_WATCH_INTERVAL", 5*time.Second),
+			TraefikLogPath:   getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
+			TraefikLogFormat: getEnv("TRAEFIK_LOG_FORMAT", "auto"),
+			AutoDiscover:     getEnvAsBool("LOG_AUTO_DISCOVER", true),
+			WatchInterval:    getEnvAsDuration("LOG_WATCH_INTERVAL", 5*time.Second),
 		},
 		Server: ServerConfig{
 			Host:       getEnv("SERVER_HOST", "0.0.0.0"),
