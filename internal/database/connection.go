@@ -3,9 +3,9 @@ package database
 import (
 	"context"
 	"errors"
-	"os"
 	"loglynx/internal/database/repositories"
 	"loglynx/internal/discovery"
+	"os"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -65,9 +65,9 @@ func (l *SlowQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() 
 	elapsed := time.Since(begin)
 	sql, rows := fc()
 
-	// Log slow queries
+	// Log slow queries (debug level to avoid console noise in normal runs)
 	if elapsed >= l.slowThreshold {
-		l.logger.Warn("SLOW QUERY DETECTED",
+		l.logger.Debug("SLOW QUERY DETECTED",
 			l.logger.Args(
 				"duration_ms", elapsed.Milliseconds(),
 				"rows", rows,

@@ -17,19 +17,19 @@ import (
 
 // SourceProcessor processes logs from a single source
 type SourceProcessor struct {
-	source         *models.LogSource
-	parser         parsers.LogParser
-	reader         *IncrementalReader
-	httpRepo       repositories.HTTPRequestRepository
-	sourceRepo     repositories.LogSourceRepository
-	geoIP          *enrichment.GeoIPEnricher
-	logger         *pterm.Logger
-	batchSize      int
-	batchTimeout   time.Duration
-	pollInterval   time.Duration
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
+	source       *models.LogSource
+	parser       parsers.LogParser
+	reader       *IncrementalReader
+	httpRepo     repositories.HTTPRequestRepository
+	sourceRepo   repositories.LogSourceRepository
+	geoIP        *enrichment.GeoIPEnricher
+	logger       *pterm.Logger
+	batchSize    int
+	batchTimeout time.Duration
+	pollInterval time.Duration
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 	// Statistics
 	totalProcessed int64
 	totalErrors    int64
@@ -281,7 +281,7 @@ func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
 	elapsed := time.Since(sp.startTime)
 	rate := float64(totalProcessed) / elapsed.Seconds()
 
-	sp.logger.Info("Batch processed successfully",
+	sp.logger.Debug("Batch processed successfully",
 		sp.logger.Args(
 			"source", sp.source.Name,
 			"batch_count", len(batch),
