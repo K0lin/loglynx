@@ -1,0 +1,283 @@
+{{define "backends.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="fas fa-server"></i>
+                Backend Health
+            </h2>
+            <p class="page-description">Backend service performance, health status, and response metrics</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="exportBackendReport()">
+                <i class="fas fa-file-export"></i> Export Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Backend Summary KPIs -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Total Backends</div>
+        <div class="stat-value" id="totalBackends">0</div>
+        <div class="stat-subtitle">Active services</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Total Requests</div>
+        <div class="stat-value text-info" id="totalRequests">0</div>
+        <div class="stat-subtitle">Last 7 days</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-value text-success" id="avgResponseTime">0</div>
+        <div class="stat-subtitle">Milliseconds</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Error Rate</div>
+        <div class="stat-value text-warning" id="errorRate">0%</div>
+        <div class="stat-subtitle">Failed requests</div>
+    </div>
+</div>
+
+<!-- Backend Performance Charts -->
+<div class="chart-grid two-column mb-4">
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <div>
+                <h5 class="chart-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Backend Request Distribution
+                </h5>
+                <p class="chart-subtitle">Requests by backend service</p>
+            </div>
+        </div>
+        <canvas id="backendRequestsChart"></canvas>
+    </div>
+
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <div>
+                <h5 class="chart-title">
+                    <i class="fas fa-tachometer-alt"></i>
+                    Backend Response Times
+                </h5>
+                <p class="chart-subtitle">Average response time per backend</p>
+            </div>
+        </div>
+        <canvas id="backendResponseTimeChart"></canvas>
+    </div>
+</div>
+
+<!-- Top Backends Table -->
+<div class="table-container mb-4">
+    <div class="table-header">
+        <h5 class="table-title">
+            <i class="fas fa-server"></i>
+            Backend Services
+        </h5>
+        <p class="table-subtitle">Performance metrics and health status</p>
+    </div>
+    <table id="backendTable" class="table table-hover">
+        <thead>
+            <tr>
+                <th>Backend Name</th>
+                <th>Requests</th>
+                <th>Unique Visitors</th>
+                <th>Bandwidth</th>
+                <th>Avg Response</th>
+                <th>Error Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+
+<!-- Backend Details Section -->
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i>
+    <strong>Note:</strong> Backend health monitoring requires Traefik backend information in logs.
+    If no backends are shown, ensure your Traefik configuration includes backend logging.
+</div>
+
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('backends');
+
+            // Initialize Backends DataTable
+            const backendTable = $('#backendTable').DataTable({
+                ajax: {
+                    url: LogLynxAPI.buildURL('/stats/top/backends', { limit: 100 }),
+                    dataSrc: ''
+                },
+                columns: [
+                    {
+                        data: 'backend_name',
+                        render: (data) => {
+                            return `<span class="badge"><code><i class="fas fa-server"></i> ${data || 'Unknown'}</code></span>`;
+                        }
+                    },
+                    { data: 'hits', render: (data) => data.toLocaleString() },
+                    { data: null, render: () => '-', defaultContent: '-' },
+                    { data: 'bandwidth', render: (data) => LogLynxUtils.formatBytes(data) },
+                    {
+                        data: 'avg_response_time',
+                        render: (data) => {
+                            if (!data) return '-';
+                            const rounded = Math.round(data);
+                            const colorClass = rounded < 100 ? 'text-success' : (rounded < 500 ? 'text-warning' : 'text-danger');
+                            return `<span class="${colorClass}">${rounded} ms</span>`;
+                        }
+                    },
+                    {
+                        data: null,
+                        render: (data) => {
+                            const errorRate = data.hits > 0 ? ((data.error_count || 0) / data.hits * 100) : 0;
+                            const badge = errorRate > 5 ? 'danger' : (errorRate > 2 ? 'warning' : 'success');
+                            return `<span class="badge badge-${badge}">${errorRate.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
+                        data: null,
+                        render: (data) => {
+                            const errorRate = data.hits > 0 ? ((data.error_count || 0) / data.hits * 100) : 0;
+                            const avgResponse = data.avg_response_time || 0;
+
+                            // Determine health status
+                            let status = 'healthy';
+                            let icon = 'fa-check-circle';
+                            let badge = 'success';
+
+                            if (errorRate > 10 || avgResponse > 1000) {
+                                status = 'critical';
+                                icon = 'fa-times-circle';
+                                badge = 'danger';
+                            } else if (errorRate > 5 || avgResponse > 500) {
+                                status = 'degraded';
+                                icon = 'fa-exclamation-triangle';
+                                badge = 'warning';
+                            }
+
+                            return `<span class="badge badge-${badge}"><i class="fas ${icon}"></i> ${status}</span>`;
+                        }
+                    }
+                ],
+                order: [[1, 'desc']],
+                pageLength: 25
+            });
+
+            // Load backend request distribution chart
+            fetch(LogLynxAPI.buildURL('/stats/top/backends', { limit: 15 }))
+                .then(response => response.json())
+                .then(data => {
+                    // Update KPIs
+                    document.getElementById('totalBackends').textContent = data.length.toLocaleString();
+
+                    const totalRequests = data.reduce((sum, item) => sum + item.hits, 0);
+                    document.getElementById('totalRequests').textContent = totalRequests.toLocaleString();
+
+                    const avgResponse = data.reduce((sum, item) => sum + (item.avg_response_time || 0), 0) / (data.length || 1);
+                    document.getElementById('avgResponseTime').textContent = Math.round(avgResponse);
+
+                    const totalErrors = data.reduce((sum, item) => sum + (item.error_count || 0), 0);
+                    const errorRate = totalRequests > 0 ? (totalErrors / totalRequests * 100) : 0;
+                    document.getElementById('errorRate').textContent = errorRate.toFixed(1) + '%';
+
+                    // Backend requests chart
+                    const ctx1 = document.getElementById('backendRequestsChart');
+                    new Chart(ctx1, {
+                        type: 'bar',
+                        data: {
+                            labels: data.map(item => item.backend_name || 'Unknown'),
+                            datasets: [{
+                                label: 'Requests',
+                                data: data.map(item => item.hits),
+                                backgroundColor: '#F46319'
+                            }]
+                        },
+                        options: {
+                            ...LogLynxCharts.defaultOptions,
+                            indexAxis: 'y'
+                        }
+                    });
+
+                    // Backend response time chart
+                    const ctx2 = document.getElementById('backendResponseTimeChart');
+                    new Chart(ctx2, {
+                        type: 'bar',
+                        data: {
+                            labels: data.map(item => item.backend_name || 'Unknown'),
+                            datasets: [{
+                                label: 'Avg Response Time (ms)',
+                                data: data.map(item => Math.round(item.avg_response_time || 0)),
+                                backgroundColor: data.map(item => {
+                                    const time = item.avg_response_time || 0;
+                                    if (time < 100) return '#28a745';
+                                    if (time < 500) return '#ffc107';
+                                    return '#dc3545';
+                                })
+                            }]
+                        },
+                        options: {
+                            ...LogLynxCharts.defaultOptions,
+                            indexAxis: 'y'
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading backend data:', error);
+                    document.getElementById('totalBackends').textContent = 'N/A';
+                });
+        });
+
+        function exportBackendReport() {
+            alert('Export functionality coming soon!');
+        }
+    </script>
+</body>
+</html>
+{{end}}

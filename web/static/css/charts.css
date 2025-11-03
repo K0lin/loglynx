@@ -1,0 +1,569 @@
+/**
+ * LogLynx Charts - Chart.js Styling & Chart Containers
+ */
+
+/* Chart Containers */
+.chart-container {
+    position: relative;
+    background: var(--loglynx-card);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+    overflow: visible;
+    width: 100%;
+}
+
+.chart-container.small {
+    height: 350px;
+    max-height: 350px;
+    padding-bottom: 40px;
+}
+
+.chart-container.medium {
+    height: 450px;
+    max-height: 450px;
+    padding-bottom: 40px;
+}
+
+.chart-container.large {
+    height: 550px;
+    max-height: 550px;
+    padding-bottom: 40px;
+}
+
+.chart-container.extra-large {
+    height: 650px;
+    max-height: 650px;
+    padding-bottom: 40px;
+}
+
+.chart-container.auto-height {
+    height: auto;
+    min-height: 300px;
+    padding-bottom: 40px;
+}
+
+/* Chart Header */
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chart-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--loglynx-text-light);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.chart-title i {
+    color: var(--loglynx-primary);
+}
+
+.chart-subtitle {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-sm);
+    margin-top: var(--space-xs);
+}
+
+.chart-controls {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+/* Time Range Selector */
+.time-range-selector {
+    display: flex;
+    gap: 2px;
+    background: var(--loglynx-bg-dark);
+    padding: 3px;
+    border-radius: var(--radius-sm);
+}
+
+.time-range-btn {
+    background: transparent;
+    border: none;
+    color: var(--loglynx-text-muted);
+    padding: 0.375rem 0.75rem;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.time-range-btn:hover {
+    background: var(--loglynx-card);
+    color: var(--loglynx-text);
+}
+
+.time-range-btn.active {
+    background: var(--loglynx-primary);
+    color: white;
+}
+
+/* Chart Canvas Wrapper */
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 5px;
+    box-sizing: border-box;
+}
+
+canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Direct canvas children in chart containers */
+.chart-container > canvas {
+    width: 100% !important;
+    height: calc(100% - 60px) !important;
+    padding: 5px;
+    box-sizing: border-box;
+}
+
+/* Chart.js Theme Overrides for Dark Mode */
+.chart-container canvas {
+    color: var(--loglynx-text);
+}
+
+/* Force Chart.js legend colors for dark theme */
+.chart-container .chartjs-legend,
+.chart-container .chartjs-legend li,
+.chart-container .chartjs-legend li span {
+    color: var(--loglynx-text) !important;
+}
+
+/* Chart Loading State */
+.chart-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.chart-loading .loading-spinner-large {
+    width: 50px;
+    height: 50px;
+    border-width: 3px;
+}
+
+.chart-loading-text {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-sm);
+}
+
+/* Chart Empty State */
+.chart-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: var(--loglynx-text-muted);
+    padding: var(--space-xl);
+}
+
+.chart-empty i {
+    font-size: 3.5rem;
+    margin-bottom: var(--space-lg);
+    opacity: 0.4;
+    color: var(--loglynx-primary);
+}
+
+.chart-empty-text {
+    font-size: var(--font-size-lg);
+    font-weight: 500;
+    color: var(--loglynx-text);
+    margin-bottom: var(--space-sm);
+}
+
+.chart-empty-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--loglynx-text-muted);
+    text-align: center;
+    max-width: 400px;
+}
+
+/* No Data Message */
+.no-data-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    padding: var(--space-xl);
+    background: var(--loglynx-bg-dark);
+    border-radius: var(--radius-md);
+    border: 2px dashed var(--border-color);
+}
+
+.no-data-content {
+    text-align: center;
+    max-width: 400px;
+}
+
+.no-data-content i {
+    font-size: 3rem;
+    color: var(--loglynx-text-muted);
+    margin-bottom: var(--space-md);
+    opacity: 0.5;
+}
+
+.no-data-content h4 {
+    color: var(--loglynx-text);
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-sm);
+    font-weight: 600;
+}
+
+.no-data-content p {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-sm);
+    margin: 0;
+}
+
+/* Heatmap Chart Specific */
+.chart-container.heatmap {
+    height: 500px;
+    padding-bottom: 60px;
+}
+
+.chart-container.heatmap canvas {
+    margin-bottom: 20px;
+    padding: 0 10px;
+}
+
+.chart-container.heatmap .chart-wrapper {
+    padding: 15px;
+}
+
+/* Live Metrics Chart */
+.chart-container.live-metrics {
+    height: auto;
+    padding-bottom: var(--space-xl);
+}
+
+.chart-container.live-metrics .chart-wrapper {
+    height: 200px;
+    margin-top: var(--space-lg);
+}
+
+/* Per-Service Chart */
+.per-service-chart-wrapper {
+    height: 450px;
+    max-height: 450px;
+    position: relative;
+    overflow-y: auto;
+    margin-top: var(--space-lg);
+}
+
+.per-service-chart-wrapper canvas {
+    min-height: 450px;
+}
+
+/* Live Indicator */
+.live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 0.25rem 0.5rem;
+    background: var(--status-danger);
+    color: white;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    animation: blink 2s infinite;
+}
+
+@keyframes blink {
+    0%, 50%, 100% { opacity: 1; }
+    25%, 75% { opacity: 0.5; }
+}
+
+.live-indicator-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: white;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+/* Multi-Chart Grid */
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    width: 100%;
+}
+
+.chart-grid.two-column {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+}
+
+.chart-grid.three-column {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+}
+
+/* Legend Customization */
+.custom-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    justify-content: center;
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.legend-item:hover {
+    background: var(--loglynx-card-hover);
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+}
+
+.legend-label {
+    color: var(--loglynx-text);
+    font-size: var(--font-size-sm);
+}
+
+.legend-value {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-sm);
+    margin-left: var(--space-xs);
+}
+
+/* Tooltip Styles (for custom tooltips) */
+.custom-tooltip {
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    box-shadow: var(--shadow-md);
+    font-size: var(--font-size-sm);
+    pointer-events: none;
+    position: absolute;
+    z-index: 1000;
+}
+
+.tooltip-title {
+    color: var(--loglynx-text-light);
+    font-weight: 600;
+    margin-bottom: var(--space-xs);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--space-xs);
+}
+
+.tooltip-body {
+    color: var(--loglynx-text);
+}
+
+.tooltip-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: var(--space-xs) 0;
+}
+
+.tooltip-color {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+/* Chart Filter Pills */
+.chart-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0.375rem 0.75rem;
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: var(--font-size-sm);
+    color: var(--loglynx-text);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.filter-pill:hover {
+    background: var(--loglynx-card-hover);
+    border-color: var(--loglynx-primary);
+}
+
+.filter-pill.active {
+    background: var(--loglynx-primary);
+    border-color: var(--loglynx-primary);
+    color: white;
+}
+
+.filter-pill-remove {
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.filter-pill-remove:hover {
+    opacity: 1;
+}
+
+/* Sparkline Charts (Small Inline Charts) */
+.sparkline {
+    display: inline-block;
+    width: 80px;
+    height: 30px;
+    vertical-align: middle;
+}
+
+.sparkline canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Chart Zoom Controls */
+.zoom-controls {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    z-index: 10;
+}
+
+.zoom-btn {
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    color: var(--loglynx-text);
+    padding: 0.375rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.zoom-btn:hover {
+    background: var(--loglynx-card-hover);
+    border-color: var(--loglynx-primary);
+    color: var(--loglynx-primary);
+}
+
+/* Chart Export Button */
+.chart-export-btn {
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    color: var(--loglynx-text-muted);
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.chart-export-btn:hover {
+    background: var(--loglynx-card-hover);
+    border-color: var(--loglynx-primary);
+    color: var(--loglynx-primary);
+}
+
+/* Responsive Chart Adjustments */
+@media (max-width: 1024px) {
+    .chart-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-grid.two-column,
+    .chart-grid.three-column {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-container {
+        height: 300px;
+    }
+
+    .chart-container.large,
+    .chart-container.extra-large {
+        height: 350px;
+    }
+}
+
+@media (max-width: 768px) {
+    .chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-md);
+    }
+
+    .chart-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .time-range-selector {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .time-range-btn {
+        flex: 1;
+    }
+
+    .chart-container {
+        padding: var(--space-md);
+    }
+}

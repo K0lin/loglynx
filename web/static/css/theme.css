@@ -1,0 +1,740 @@
+/**
+ * LogLynx Theme - Advanced Log Analytics Dashboard
+ * Burnt orange & dark theme inspired by the swift and precise lynx
+ */
+
+:root {
+    /* Primary Colors - Burnt Orange (Lynx) */
+    --loglynx-primary: #FF6B35;
+    --loglynx-primary-light: #FF8C61;
+    --loglynx-primary-dark: #C44900;
+    --loglynx-secondary: #FFB800;
+
+    /* Background Colors - Deep Night */
+    --loglynx-bg: #161619;
+    --loglynx-bg-dark: #0D0D0F;
+    --loglynx-card: #1A1A1D;
+    --loglynx-card-hover: #252528;
+
+    /* Text Colors */
+    --loglynx-text: #E8E8E8;
+    --loglynx-text-light: #FFFFFF;
+    --loglynx-text-muted: #999999;
+    --loglynx-text-dark: #666666;
+
+    /* Status Colors */
+    --status-success: #2D5F2E;
+    --status-success-light: rgba(45, 95, 46, 0.15);
+    --status-warning: #FFB800;
+    --status-warning-light: rgba(255, 184, 0, 0.15);
+    --status-danger: #DC3545;
+    --status-danger-light: rgba(220, 53, 69, 0.15);
+    --status-info: #FF6B35;
+    --status-info-light: rgba(255, 107, 53, 0.15);
+
+    /* HTTP Status Colors */
+    --http-2xx: #2D5F2E;
+    --http-3xx: #FFB800;
+    --http-4xx: #FF8C61;
+    --http-5xx: #DC3545;
+
+    /* Border Colors - Subtle Orange Accents */
+    --border-color: #2A2A2D;
+    --border-color-light: #3A3A3D;
+
+    /* Shadow */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
+
+    /* Spacing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+
+    /* Border Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Typography */
+    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 2rem;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 250ms ease;
+    --transition-slow: 350ms ease;
+}
+
+/* Base Styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background: var(--loglynx-bg);
+    color: var(--loglynx-text);
+    font-family: var(--font-family);
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--loglynx-text-light);
+    font-weight: 600;
+    margin-top: 0;
+}
+
+h1 { font-size: var(--font-size-3xl); }
+h2 { font-size: var(--font-size-2xl); }
+h3 { font-size: var(--font-size-xl); }
+h4 { font-size: var(--font-size-lg); }
+h5 { font-size: var(--font-size-base); }
+h6 { font-size: var(--font-size-sm); }
+
+a {
+    color: var(--loglynx-primary);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+a:hover {
+    color: var(--loglynx-primary-light);
+}
+
+/* Cards */
+.card {
+    background: var(--loglynx-card);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.card-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--loglynx-text-light);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.card-body {
+    padding: 0;
+}
+
+/* Stat Cards */
+.stat-card {
+    background: var(--loglynx-card);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+    text-align: center;
+    transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+    background: var(--loglynx-card-hover);
+}
+
+.stat-label {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-sm);
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: var(--font-size-3xl);
+    font-weight: bold;
+    color: var(--loglynx-secondary);
+    line-height: 1.2;
+    margin-bottom: var(--space-xs);
+}
+
+.stat-value.large {
+    font-size: 3rem;
+}
+
+.stat-subtitle {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-xs);
+    margin-top: var(--space-xs);
+}
+
+.stat-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--font-size-sm);
+    margin-top: var(--space-sm);
+}
+
+.stat-trend.up {
+    color: var(--status-success);
+}
+
+.stat-trend.down {
+    color: var(--status-danger);
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 0.25em 0.6em;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: var(--radius-sm);
+}
+
+.badge-primary { background: var(--loglynx-primary); color: white; }
+.badge-success { background: var(--status-success); color: white; }
+.badge-warning { background: var(--status-warning); color: var(--loglynx-bg-dark); }
+.badge-danger { background: var(--status-danger); color: white; }
+.badge-info { background: var(--status-info); color: white; }
+.badge-live {
+    background: var(--status-danger);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0.5rem 1rem;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--loglynx-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--loglynx-primary-light);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary {
+    background: var(--loglynx-card);
+    color: var(--loglynx-text);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--loglynx-card-hover);
+    border-color: var(--border-color-light);
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--loglynx-text);
+    border: 1px solid var(--border-color);
+}
+
+.btn-outline:hover {
+    background: var(--loglynx-card);
+    border-color: var(--loglynx-primary);
+    color: var(--loglynx-primary);
+}
+
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: var(--font-size-xs);
+}
+
+.btn-lg {
+    padding: 0.75rem 1.5rem;
+    font-size: var(--font-size-base);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Form Controls */
+select, input[type="text"], input[type="number"], input[type="date"] {
+    background: var(--loglynx-card);
+    color: var(--loglynx-text);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    font-size: var(--font-size-sm);
+    transition: border-color var(--transition-fast);
+}
+
+select:focus, input:focus {
+    outline: none;
+    border-color: var(--loglynx-primary);
+}
+
+/* Tables */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+thead {
+    background: var(--loglynx-bg-dark);
+}
+
+thead th {
+    padding: 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--loglynx-text-light);
+    border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+}
+
+tbody td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--loglynx-text);
+}
+
+tbody tr {
+    transition: background-color var(--transition-fast);
+}
+
+tbody tr:hover {
+    background: var(--loglynx-card-hover);
+}
+
+tbody tr:nth-child(odd) {
+    background: rgba(255, 107, 53, 0.02);
+}
+
+/* DataTables Dark Theme Overrides */
+.dataTables_wrapper {
+    color: var(--loglynx-text) !important;
+}
+
+/* General DataTables styling */
+.table-container .dataTables_wrapper .dataTables_length,
+.table-container .dataTables_wrapper .dataTables_filter,
+.table-container .dataTables_wrapper .dataTables_info,
+.table-container .dataTables_wrapper .dataTables_paginate,
+.card .dataTables_wrapper .dataTables_length,
+.card .dataTables_wrapper .dataTables_filter,
+.card .dataTables_wrapper .dataTables_info,
+.card .dataTables_wrapper .dataTables_paginate {
+    color: var(--loglynx-text) !important;
+}
+
+.table-container .dataTables_wrapper .dataTables_length select,
+.table-container .dataTables_wrapper .dataTables_filter input,
+.card .dataTables_wrapper .dataTables_length select,
+.card .dataTables_wrapper .dataTables_filter input {
+    background-color: var(--loglynx-card) !important;
+    color: var(--loglynx-text) !important;
+    border-color: #444 !important;
+}
+
+.table-container .dataTables_wrapper .dataTables_paginate .paginate_button,
+.card .dataTables_wrapper .dataTables_paginate .paginate_button {
+    background-color: var(--loglynx-card) !important;
+    color: var(--loglynx-text) !important;
+    border-color: #444 !important;
+}
+
+.table-container .dataTables_wrapper .dataTables_paginate .paginate_button:hover,
+.card .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background-color: var(--loglynx-dark) !important;
+    color: var(--loglynx-light) !important;
+}
+
+.table-container .dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.card .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background-color: var(--loglynx-primary) !important;
+    color: var(--loglynx-bg) !important;
+}
+
+/* Bootstrap pagination styling (Previous/Next buttons) */
+.table-container .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link,
+.card .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link {
+    background-color: var(--loglynx-card) !important;
+    color: var(--loglynx-text) !important;
+    border-color: #444 !important;
+}
+
+.table-container .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link:hover,
+.card .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link:hover {
+    background-color: var(--loglynx-dark) !important;
+    color: var(--loglynx-light) !important;
+}
+
+.table-container .dataTables_wrapper .dataTables_paginate .pagination .page-item.active .page-link,
+.card .dataTables_wrapper .dataTables_paginate .pagination .page-item.active .page-link {
+    background-color: var(--loglynx-primary) !important;
+    color: var(--loglynx-bg) !important;
+    border-color: var(--loglynx-primary) !important;
+}
+
+/* Focus and active states for pagination buttons - use orange instead of blue */
+.table-container .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link:focus,
+.card .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link:focus,
+.table-container .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link:active,
+.card .dataTables_wrapper .dataTables_paginate .pagination .page-item .page-link:active {
+    background-color: var(--loglynx-card-hover) !important;
+    color: var(--loglynx-text) !important;
+    border-color: var(--loglynx-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(255, 107, 53, 0.25) !important;
+    outline: none !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* DataTables and regular Bootstrap tables dark theme */
+/* Override Bootstrap 5 CSS variables for tables */
+.table {
+    --bs-table-bg: var(--loglynx-card);
+    --bs-table-striped-bg: rgba(255, 107, 53, 0.05);
+    --bs-table-active-bg: var(--loglynx-card-hover);
+    --bs-table-hover-bg: var(--loglynx-card-hover);
+    --bs-table-color: var(--loglynx-text);
+    --bs-table-striped-color: var(--loglynx-text);
+    --bs-table-active-color: var(--loglynx-text);
+    --bs-table-hover-color: var(--loglynx-text);
+    --bs-table-border-color: var(--border-color);
+}
+
+table.dataTable,
+.card .table,
+.table-container .table,
+.table {
+    background-color: transparent !important;
+    color: var(--loglynx-text) !important;
+}
+
+table.dataTable thead th,
+table.dataTable thead td,
+.card .table thead th,
+.card .table thead td,
+.table-container .table thead th,
+.table-container .table thead td {
+    background: var(--loglynx-bg-dark) !important;
+    color: var(--loglynx-text-light) !important;
+    border-bottom: 2px solid var(--border-color) !important;
+}
+
+table.dataTable tbody tr,
+.card .table tbody tr,
+.table-container .table tbody tr {
+    background: var(--loglynx-card) !important;
+}
+
+table.dataTable tbody tr:nth-child(odd),
+.card .table tbody tr:nth-child(odd),
+.table-container .table tbody tr:nth-child(odd) {
+    background: rgba(255, 107, 53, 0.05) !important;
+}
+
+table.dataTable tbody tr:nth-child(even),
+.card .table tbody tr:nth-child(even),
+.table-container .table tbody tr:nth-child(even) {
+    background: var(--loglynx-card) !important;
+}
+
+table.dataTable tbody tr:hover,
+.card .table tbody tr:hover,
+.table-container .table tbody tr:hover {
+    background: var(--loglynx-card-hover) !important;
+}
+
+table.dataTable tbody td,
+.card .table tbody td,
+.table-container .table tbody td {
+    color: var(--loglynx-text) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+table.dataTable.stripe tbody tr.odd,
+table.dataTable.display tbody tr.odd {
+    background: rgba(255, 107, 53, 0.05) !important;
+}
+
+table.dataTable.stripe tbody tr.even,
+table.dataTable.display tbody tr.even {
+    background: transparent !important;
+}
+
+table.dataTable.hover tbody tr:hover,
+table.dataTable.display tbody tr:hover {
+    background: var(--loglynx-card-hover) !important;
+}
+
+/* Utility Classes */
+.text-primary { color: var(--loglynx-primary) !important; }
+.text-success { color: var(--status-success) !important; }
+.text-warning { color: var(--status-warning) !important; }
+.text-danger { color: var(--status-danger) !important; }
+.text-info { color: var(--status-info) !important; }
+.text-muted { color: var(--loglynx-text-muted) !important; }
+.text-light { color: var(--loglynx-text-light) !important; }
+
+/* Card text elements - ensure proper contrast */
+.card-body strong,
+.card-body span:not(.badge),
+.card-body li,
+.card-body p {
+    color: var(--loglynx-text) !important;
+}
+
+/* Alert dark theme overrides */
+.alert {
+    background-color: var(--loglynx-card) !important;
+    border-color: var(--border-color) !important;
+    color: var(--loglynx-text) !important;
+}
+
+.alert-info {
+    background-color: rgba(23, 162, 184, 0.1) !important;
+    border-color: var(--status-info) !important;
+    color: var(--loglynx-text) !important;
+}
+
+.alert-info strong,
+.alert-info li {
+    color: var(--loglynx-text-light) !important;
+}
+
+.alert-success {
+    background-color: rgba(40, 167, 69, 0.1) !important;
+    border-color: var(--status-success) !important;
+}
+
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    border-color: var(--status-warning) !important;
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.1) !important;
+    border-color: var(--status-danger) !important;
+}
+
+/* Form controls dark theme */
+.form-label,
+label {
+    color: var(--loglynx-text-light) !important;
+}
+
+.form-control,
+.form-select,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+    background-color: var(--loglynx-card) !important;
+    border-color: var(--border-color) !important;
+    color: var(--loglynx-text) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+input:focus,
+textarea:focus,
+select:focus {
+    background-color: var(--loglynx-card) !important;
+    border-color: var(--loglynx-primary) !important;
+    color: var(--loglynx-text) !important;
+    box-shadow: 0 0 0 0.2rem rgba(255, 107, 53, 0.25) !important;
+}
+
+.form-control::placeholder,
+input::placeholder,
+textarea::placeholder {
+    color: var(--loglynx-text-muted) !important;
+    opacity: 0.6;
+}
+
+.input-group-text {
+    background-color: var(--loglynx-bg-dark) !important;
+    border-color: var(--border-color) !important;
+    color: var(--loglynx-text) !important;
+}
+
+.bg-primary { background-color: var(--loglynx-primary) !important; }
+.bg-success { background-color: var(--status-success) !important; }
+.bg-warning { background-color: var(--status-warning) !important; }
+.bg-danger { background-color: var(--status-danger) !important; }
+.bg-info { background-color: var(--status-info) !important; }
+
+.text-center { text-align: center !important; }
+.text-right { text-align: right !important; }
+.text-left { text-align: left !important; }
+
+.mt-0 { margin-top: 0 !important; }
+.mt-1 { margin-top: var(--space-xs) !important; }
+.mt-2 { margin-top: var(--space-sm) !important; }
+.mt-3 { margin-top: var(--space-md) !important; }
+.mt-4 { margin-top: var(--space-lg) !important; }
+
+.mb-0 { margin-bottom: 0 !important; }
+.mb-1 { margin-bottom: var(--space-xs) !important; }
+.mb-2 { margin-bottom: var(--space-sm) !important; }
+.mb-3 { margin-bottom: var(--space-md) !important; }
+.mb-4 { margin-bottom: var(--space-lg) !important; }
+
+.p-0 { padding: 0 !important; }
+.p-1 { padding: var(--space-xs) !important; }
+.p-2 { padding: var(--space-sm) !important; }
+.p-3 { padding: var(--space-md) !important; }
+.p-4 { padding: var(--space-lg) !important; }
+
+.d-flex { display: flex !important; }
+.flex-column { flex-direction: column !important; }
+.align-items-center { align-items: center !important; }
+.justify-content-between { justify-content: space-between !important; }
+.justify-content-center { justify-content: center !important; }
+.gap-1 { gap: var(--space-xs) !important; }
+.gap-2 { gap: var(--space-sm) !important; }
+.gap-3 { gap: var(--space-md) !important; }
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease;
+}
+
+.slide-in {
+    animation: slideIn 0.3s ease;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Loading States */
+.loading-spinner {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border: 2px solid var(--loglynx-text-muted);
+    border-top-color: var(--loglynx-primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--loglynx-bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-color-light);
+}
+
+/* Responsive Grid */
+.grid {
+    display: grid;
+    gap: var(--space-lg);
+}
+
+.grid-cols-1 { grid-template-columns: repeat(1, 1fr); }
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+@media (max-width: 1200px) {
+    .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+    .grid-cols-2, .grid-cols-3, .grid-cols-4 {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-value {
+        font-size: var(--font-size-2xl);
+    }
+}

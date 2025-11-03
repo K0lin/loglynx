@@ -1,0 +1,246 @@
+/**
+ * LogLynx Tooltip Component
+ * Reusable information tooltips with hover effects
+ */
+
+/* Tooltip Container */
+.info-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.5rem;
+    cursor: help;
+    vertical-align: middle;
+}
+
+/* Info Icon */
+.info-tooltip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255, 107, 53, 0.2);
+    color: var(--loglynx-primary);
+    font-size: 11px;
+    transition: all var(--transition-fast);
+    border: 1px solid var(--loglynx-primary);
+}
+
+.info-tooltip:hover .info-tooltip-icon {
+    background: var(--loglynx-primary);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
+}
+
+/* Tooltip Content */
+.info-tooltip-content {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--loglynx-card);
+    color: var(--loglynx-text);
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--loglynx-primary);
+    min-width: 200px;
+    max-width: 350px;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-base);
+    pointer-events: none;
+    white-space: normal;
+    text-align: left;
+}
+
+/* Tooltip Arrow */
+.info-tooltip-content::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--loglynx-primary);
+}
+
+.info-tooltip-content::before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: var(--loglynx-card);
+    margin-top: 1px;
+}
+
+/* Show tooltip on hover */
+.info-tooltip:hover .info-tooltip-content {
+    opacity: 1;
+    visibility: visible;
+    bottom: calc(100% + 12px);
+}
+
+/* Tooltip variations for different positions */
+.info-tooltip.tooltip-bottom .info-tooltip-content {
+    bottom: auto;
+    top: calc(100% + 8px);
+}
+
+.info-tooltip.tooltip-bottom .info-tooltip-content::after {
+    top: auto;
+    bottom: 100%;
+    border-top-color: transparent;
+    border-bottom-color: var(--loglynx-primary);
+}
+
+.info-tooltip.tooltip-bottom .info-tooltip-content::before {
+    top: auto;
+    bottom: 100%;
+    border-top-color: transparent;
+    border-bottom-color: var(--loglynx-card);
+    margin-top: 0;
+    margin-bottom: 1px;
+}
+
+.info-tooltip.tooltip-bottom:hover .info-tooltip-content {
+    bottom: auto;
+    top: calc(100% + 12px);
+}
+
+/* Tooltip variations for right position */
+.info-tooltip.tooltip-right .info-tooltip-content {
+    bottom: auto;
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.info-tooltip.tooltip-right .info-tooltip-content::after {
+    top: 50%;
+    left: auto;
+    right: 100%;
+    transform: translateY(-50%);
+    border-top-color: transparent;
+    border-right-color: var(--loglynx-primary);
+}
+
+.info-tooltip.tooltip-right .info-tooltip-content::before {
+    top: 50%;
+    left: auto;
+    right: 100%;
+    transform: translateY(-50%);
+    border-top-color: transparent;
+    border-right-color: var(--loglynx-card);
+    margin-top: 0;
+    margin-right: 1px;
+}
+
+.info-tooltip.tooltip-right:hover .info-tooltip-content {
+    left: calc(100% + 12px);
+}
+
+/* Tooltip variations for left position */
+.info-tooltip.tooltip-left .info-tooltip-content {
+    bottom: auto;
+    left: auto;
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.info-tooltip.tooltip-left .info-tooltip-content::after {
+    top: 50%;
+    right: auto;
+    left: 100%;
+    transform: translateY(-50%);
+    border-top-color: transparent;
+    border-left-color: var(--loglynx-primary);
+}
+
+.info-tooltip.tooltip-left .info-tooltip-content::before {
+    top: 50%;
+    right: auto;
+    left: 100%;
+    transform: translateY(-50%);
+    border-top-color: transparent;
+    border-left-color: var(--loglynx-card);
+    margin-top: 0;
+    margin-left: 1px;
+}
+
+.info-tooltip.tooltip-left:hover .info-tooltip-content {
+    right: calc(100% + 12px);
+}
+
+/* Tooltip title and description */
+.info-tooltip-title {
+    font-weight: 600;
+    color: var(--loglynx-primary);
+    margin-bottom: 0.25rem;
+    font-size: var(--font-size-sm);
+}
+
+.info-tooltip-description {
+    color: var(--loglynx-text-light);
+    font-size: var(--font-size-xs);
+}
+
+/* Tooltip in headers */
+.card-title .info-tooltip,
+.chart-title .info-tooltip,
+.stat-label .info-tooltip,
+.page-title .info-tooltip {
+    vertical-align: middle;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .info-tooltip-content {
+        max-width: 250px;
+        font-size: 0.75rem;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .info-tooltip-icon {
+        width: 16px;
+        height: 16px;
+        font-size: 10px;
+    }
+}
+
+/* Animation for tooltip appearance */
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.info-tooltip:hover .info-tooltip-content {
+    animation: tooltipFadeIn 0.2s ease;
+}
+
+/* Inline tooltip for text elements */
+.inline-tooltip {
+    border-bottom: 1px dotted var(--loglynx-primary);
+    cursor: help;
+    position: relative;
+}
+
+.inline-tooltip:hover {
+    color: var(--loglynx-primary);
+}

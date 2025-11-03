@@ -1,0 +1,361 @@
+{{define "performance.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="fas fa-tachometer-alt"></i>
+                Performance Monitoring
+            </h2>
+            <p class="page-description">Response times, latency analysis, and performance insights</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="exportPerformanceReport()">
+                <i class="fas fa-file-export"></i> Export Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Performance KPIs -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-value text-info" id="avgResponseTime">0ms</div>
+        <div class="stat-subtitle">Overall average</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">P50 (Median)</div>
+        <div class="stat-value text-success" id="p50ResponseTime">0ms</div>
+        <div class="stat-subtitle">50th percentile</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">P95</div>
+        <div class="stat-value text-warning" id="p95ResponseTime">0ms</div>
+        <div class="stat-subtitle">95th percentile</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">P99</div>
+        <div class="stat-value text-danger" id="p99ResponseTime">0ms</div>
+        <div class="stat-subtitle">99th percentile</div>
+    </div>
+</div>
+
+<!-- Additional Performance Metrics -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Min Response Time</div>
+        <div class="stat-value" id="minResponseTime">0ms</div>
+        <div class="stat-subtitle">Fastest request</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Max Response Time</div>
+        <div class="stat-value" id="maxResponseTime">0ms</div>
+        <div class="stat-subtitle">Slowest request</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Fast Requests</div>
+        <div class="stat-value text-success" id="fastRequests">0%</div>
+        <div class="stat-subtitle">< 100ms</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Slow Requests</div>
+        <div class="stat-value text-danger" id="slowRequests">0%</div>
+        <div class="stat-subtitle">> 1000ms</div>
+    </div>
+</div>
+
+<!-- Performance Timeline -->
+<div class="chart-container medium mb-4">
+    <div class="chart-header">
+        <div>
+            <h5 class="chart-title">
+                <i class="fas fa-chart-line"></i>
+                Response Time Timeline
+            </h5>
+            <p class="chart-subtitle">Average response time over time</p>
+        </div>
+        <div class="time-range-selector">
+            <button class="time-range-btn" data-range="1">1h</button>
+            <button class="time-range-btn" data-range="24">24h</button>
+            <button class="time-range-btn active" data-range="168">7d</button>
+            <button class="time-range-btn" data-range="720">30d</button>
+        </div>
+    </div>
+    <canvas id="performanceTimelineChart"></canvas>
+</div>
+
+<!-- Performance Distribution & Percentiles -->
+<div class="grid grid-cols-2 mb-4">
+    <!-- Response Time Distribution -->
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-chart-bar"></i>
+                Response Time Distribution
+            </h5>
+        </div>
+        <canvas id="responseTimeDistributionChart"></canvas>
+    </div>
+
+    <!-- Percentile Breakdown -->
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-layer-group"></i>
+                Percentile Breakdown
+            </h5>
+        </div>
+        <canvas id="percentileChart"></canvas>
+    </div>
+</div>
+
+<!-- Slowest Paths Analysis -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-hourglass-half"></i>
+            Slowest Paths
+        </h5>
+        <div class="d-flex gap-2">
+            <select id="slowPathsLimit" class="form-select form-select-sm" style="width: auto;">
+                <option value="10">Top 10</option>
+                <option value="20" selected>Top 20</option>
+                <option value="50">Top 50</option>
+            </select>
+            <button class="btn btn-sm btn-outline" onclick="exportSlowPathsData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="slowPathsTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Path</th>
+                        <th>Hits</th>
+                        <th>Avg Response</th>
+                        <th>Min</th>
+                        <th>Max</th>
+                        <th>Total Bandwidth</th>
+                        <th>Performance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Fastest Paths Analysis -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-bolt"></i>
+            Fastest Paths
+        </h5>
+        <button class="btn btn-sm btn-outline" onclick="exportFastPathsData()">
+            <i class="fas fa-download"></i> Export
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Path</th>
+                        <th>Hits</th>
+                        <th>Avg Response</th>
+                        <th>Performance</th>
+                    </tr>
+                </thead>
+                <tbody id="fastPathsTable">
+                    <tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Backend Performance -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-server"></i>
+            Backend Performance Comparison
+        </h5>
+        <button class="btn btn-sm btn-outline" onclick="exportBackendData()">
+            <i class="fas fa-download"></i> Export
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="backendPerfTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Backend</th>
+                        <th>Backend URL</th>
+                        <th>Hits</th>
+                        <th>Avg Response</th>
+                        <th>Error Count</th>
+                        <th>Error Rate</th>
+                        <th>Bandwidth</th>
+                        <th>Health Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Trends -->
+<div class="chart-container medium mb-4">
+    <div class="chart-header">
+        <div>
+            <h5 class="chart-title">
+                <i class="fas fa-chart-area"></i>
+                Request Volume vs Response Time
+            </h5>
+            <p class="chart-subtitle">Correlation between traffic and performance</p>
+        </div>
+    </div>
+    <canvas id="volumeVsPerformanceChart"></canvas>
+</div>
+
+<!-- Performance Summary Cards -->
+<div class="grid grid-cols-3 mb-4">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-trophy"></i>
+                Performance Goals
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Sub-100ms (<100ms)</span>
+                    <strong id="goal100pct">0%</strong>
+                </div>
+                <div style="width: 100%; height: 8px; background: #1f1f21; border-radius: 4px; overflow: hidden;">
+                    <div id="goal100bar" style="width: 0%; height: 100%; background: #28a745; transition: width 0.5s;"></div>
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Sub-500ms (<500ms)</span>
+                    <strong id="goal500pct">0%</strong>
+                </div>
+                <div style="width: 100%; height: 8px; background: #1f1f21; border-radius: 4px; overflow: hidden;">
+                    <div id="goal500bar" style="width: 0%; height: 100%; background: #17a2b8; transition: width 0.5s;"></div>
+                </div>
+            </div>
+            <div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Sub-1000ms (<1s)</span>
+                    <strong id="goal1000pct">0%</strong>
+                </div>
+                <div style="width: 100%; height: 8px; background: #1f1f21; border-radius: 4px; overflow: hidden;">
+                    <div id="goal1000bar" style="width: 0%; height: 100%; background: #ffc107; transition: width 0.5s;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-exclamation-triangle"></i>
+                Performance Issues
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <span>Very Slow (>2s)</span>
+                <span class="badge badge-danger" id="verySlow">0</span>
+            </div>
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <span>Slow (1-2s)</span>
+                <span class="badge badge-warning" id="slow">0</span>
+            </div>
+            <div class="d-flex align-items-center justify-content-between">
+                <span>Moderate (500ms-1s)</span>
+                <span class="badge badge-info" id="moderate">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-tasks"></i>
+                Log Processing
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="logProcessingList">
+                <p class="text-muted">Loading...</p>
+            </div>
+        </div>
+    </div>
+</div>
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+    <script src="/static/js/pages/performance.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('performance');
+        });
+    </script>
+</body>
+</html>
+{{end}}

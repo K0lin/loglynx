@@ -1,0 +1,252 @@
+/**
+ * Geographic Analytics Specific Styles
+ * Includes map controls, popups, and legend styling
+ */
+
+/* Leaflet Popup Styling for Dark Theme */
+.leaflet-popup-content-wrapper {
+    background: #1A1A1D !important;
+    color: #E8E8E8 !important;
+    border: 1px solid #444 !important;
+    border-radius: 8px !important;
+}
+
+.leaflet-popup-tip {
+    background: #1A1A1D !important;
+}
+
+.leaflet-popup-close-button {
+    color: #E8E8E8 !important;
+    font-size: 20px !important;
+}
+
+.leaflet-popup-close-button:hover {
+    color: #FF6B35 !important;
+}
+
+/* Map Legend Styling */
+.leaflet-control-layers,
+.leaflet-bar,
+.leaflet-control {
+    background: #1A1A1D !important;
+    border: 1px solid #444 !important;
+}
+
+.leaflet-control-layers-toggle {
+    background-color: #1A1A1D !important;
+    border: 1px solid #444 !important;
+}
+
+.leaflet-control-layers-expanded {
+    color: #E8E8E8 !important;
+    background: #1A1A1D !important;
+}
+
+.leaflet-control-layers label {
+    color: #E8E8E8 !important;
+}
+
+.leaflet-control-layers-separator {
+    border-top: 1px solid #444 !important;
+}
+
+/* Zoom Control Buttons */
+.leaflet-bar a {
+    background-color: #1A1A1D !important;
+    border-bottom: 1px solid #444 !important;
+    color: #E8E8E8 !important;
+}
+
+.leaflet-bar a:hover {
+    background-color: #2A2A2D !important;
+    color: #FF6B35 !important;
+}
+
+.leaflet-bar a:first-child {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+.leaflet-bar a:last-child {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-bottom: none;
+}
+
+.leaflet-touch .leaflet-bar a {
+    width: 34px;
+    height: 34px;
+    line-height: 34px;
+}
+
+/* Attribution */
+.leaflet-control-attribution {
+    background: rgba(26, 26, 29, 0.8) !important;
+    color: #999 !important;
+}
+
+.leaflet-control-attribution a {
+    color: #FF6B35 !important;
+}
+
+/* Custom Marker Cluster Styling */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+    background-color: rgba(255, 107, 53, 0.6) !important;
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+    background-color: rgba(255, 107, 53, 0.8) !important;
+    color: #FFFFFF !important;
+    font-weight: bold;
+}
+
+/* Map Container */
+#worldMap {
+    background: #0A0A0D;
+    border-radius: 8px;
+    border: 1px solid #2A2A2D;
+}
+
+/* Map Loading State */
+.leaflet-container .leaflet-tile-pane {
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.leaflet-container.leaflet-fade-anim .leaflet-tile-pane {
+    opacity: 1;
+}
+
+/* Custom Map Controls in Card Header */
+.map-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.map-controls .btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    border: 1px solid #444;
+    background: #1A1A1D;
+    color: #E8E8E8;
+    transition: all 0.2s;
+}
+
+.map-controls .btn:hover {
+    background: #2A2A2D;
+    border-color: #FF6B35;
+    color: #FF6B35;
+}
+
+.map-controls .btn.active {
+    background: #FF6B35;
+    border-color: #FF6B35;
+    color: #FFFFFF;
+}
+
+/* Heatmap Legend (if shown) */
+.heatmap-legend {
+    background: rgba(26, 26, 29, 0.9);
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    color: #E8E8E8;
+}
+
+.heatmap-legend .legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.heatmap-legend .legend-color {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border-radius: 3px;
+    border: 1px solid #666;
+}
+
+.heatmap-legend .legend-label {
+    font-size: 12px;
+    color: #E8E8E8;
+}
+
+/* Traffic Intensity Legend */
+.traffic-legend {
+    position: absolute;
+    bottom: 30px;
+    right: 10px;
+    background: rgba(26, 26, 29, 0.95);
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    z-index: 1000;
+    min-width: 150px;
+}
+
+.traffic-legend h6 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    font-weight: bold;
+    color: #FF6B35;
+    text-transform: uppercase;
+}
+
+.traffic-legend .legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: #E8E8E8;
+}
+
+.traffic-legend .legend-item:last-child {
+    margin-bottom: 0;
+}
+
+.traffic-legend .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.traffic-legend .legend-dot.very-high { background-color: #dc3545; }
+.traffic-legend .legend-dot.high { background-color: #F46319; }
+.traffic-legend .legend-dot.medium { background-color: #ffc107; }
+.traffic-legend .legend-dot.low { background-color: #28a745; }
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .traffic-legend {
+        bottom: 10px;
+        right: 10px;
+        min-width: 120px;
+        padding: 8px;
+    }
+
+    .traffic-legend h6 {
+        font-size: 10px;
+    }
+
+    .traffic-legend .legend-item {
+        font-size: 10px;
+    }
+
+    .map-controls {
+        flex-wrap: wrap;
+    }
+
+    .map-controls .btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+}

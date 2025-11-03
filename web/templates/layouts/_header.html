@@ -1,0 +1,142 @@
+{{define "sidebar"}}
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <a href="/" class="sidebar-brand">
+            <i class="fas fa-bolt"></i>
+            <span>LogLynx</span>
+        </a>
+    </div>
+
+    <nav class="sidebar-nav">
+        <div class="nav-section">
+            <div class="nav-section-title">Dashboards</div>
+            <a href="/" class="nav-item" data-page="overview">
+                <i class="fas fa-home"></i>
+                <span>Overview</span>
+            </a>
+            <a href="/realtime" class="nav-item" data-page="realtime">
+                <i class="fas fa-broadcast-tower"></i>
+                <span>Real-time Monitor</span>
+                <span class="badge badge-live">LIVE</span>
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Analytics</div>
+            <a href="/traffic" class="nav-item" data-page="traffic">
+                <i class="fas fa-chart-line"></i>
+                <span>Traffic Analysis</span>
+            </a>
+            <a href="/geographic" class="nav-item" data-page="geographic">
+                <i class="fas fa-map-marked-alt"></i>
+                <span>Geographic Analytics</span>
+                <span class="badge badge-success">MAP</span>
+            </a>
+            <a href="/performance" class="nav-item" data-page="performance">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Performance</span>
+            </a>
+            <a href="/security" class="nav-item" data-page="security">
+                <i class="fas fa-shield-alt"></i>
+                <span>Security & Network</span>
+            </a>
+            <a href="/users" class="nav-item" data-page="users">
+                <i class="fas fa-users"></i>
+                <span>User Analytics</span>
+            </a>
+            <a href="/content" class="nav-item" data-page="content">
+                <i class="fas fa-file-alt"></i>
+                <span>Content Analytics</span>
+            </a>
+            <a href="/backends" class="nav-item" data-page="backends">
+                <i class="fas fa-server"></i>
+                <span>Backend Health</span>
+            </a>
+        </div>
+    </nav>
+</aside>
+{{end}}
+
+{{define "header"}}
+<header class="top-header">
+    <div class="header-left">
+        <button class="sidebar-toggle">
+            <i class="fas fa-bars"></i>
+        </button>
+        <h1 class="header-title">
+            {{if .PageIcon}}<i class="{{.PageIcon}}"></i>{{end}}
+            {{.PageTitle}}
+        </h1>
+    </div>
+
+    <div class="header-right">
+        <!-- Service Filter -->
+        <div class="service-filter">
+            <label for="serviceFilter">Service:</label>
+            <select id="serviceFilter" class="form-select form-select-sm">
+                <option value="">All Traffic</option>
+                <!-- Populated dynamically -->
+            </select>
+        </div>
+
+        <!-- Refresh Controls -->
+        <div class="refresh-controls">
+            <div class="refresh-interval">
+                <label for="refreshInterval">Refresh:</label>
+                <select id="refreshInterval" class="form-select form-select-sm">
+                    <option value="5">5s</option>
+                    <option value="10">10s</option>
+                    <option value="15">15s</option>
+                    <option value="30" selected>30s</option>
+                    <option value="60">1m</option>
+                    <option value="300">5m</option>
+                </select>
+            </div>
+
+            <div class="refresh-buttons">
+                <button id="playRefresh" class="btn btn-sm btn-outline" title="Start Auto-refresh">
+                    <i class="fas fa-play"></i>
+                </button>
+                <button id="pauseRefresh" class="btn btn-sm btn-outline" title="Pause Auto-refresh">
+                    <i class="fas fa-pause"></i>
+                </button>
+            </div>
+
+            <div id="refreshStatus" class="refresh-status">
+                <i class="fas fa-sync-alt fa-spin"></i>
+                <span>Auto-refresh: 30s</span>
+            </div>
+        </div>
+    </div>
+</header>
+{{end}}
+
+{{define "footer"}}
+<footer class="app-footer">
+    <p>&copy; 2024 LogLynx - Advanced Log Analytics Platform</p>
+</footer>
+{{end}}
+
+{{define "scripts-common"}}
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+
+<!-- Chart.js Matrix Plugin (for heatmaps) -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@1.1.0/dist/chartjs-chart-matrix.min.js"></script>
+
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<!-- Core JavaScript -->
+<script src="/static/js/core/api.js"></script>
+<script src="/static/js/core/charts.js"></script>
+<script src="/static/js/core/utils.js"></script>
+<script src="/static/js/core/tooltips.js"></script>
+{{end}}

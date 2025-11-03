@@ -1,0 +1,308 @@
+{{define "traffic.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="fas fa-globe"></i>
+                Traffic Analysis
+            </h2>
+            <p class="page-description">Geographic distribution, traffic patterns, and visitor insights</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="exportTrafficReport()">
+                <i class="fas fa-file-export"></i> Export Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Traffic Summary KPIs -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Total Traffic</div>
+        <div class="stat-value" id="totalTraffic">0</div>
+        <div class="stat-subtitle">Last 7 days</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Unique Visitors</div>
+        <div class="stat-value text-info" id="uniqueVisitors">0</div>
+        <div class="stat-subtitle">Unique IP addresses</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Countries</div>
+        <div class="stat-value text-success" id="totalCountries">0</div>
+        <div class="stat-subtitle">Geographic reach</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Peak Traffic</div>
+        <div class="stat-value text-warning" id="peakTraffic">0</div>
+        <div class="stat-subtitle" id="peakTrafficTime">req/hour</div>
+    </div>
+</div>
+
+<!-- Traffic Timeline -->
+<div class="chart-container medium mb-4">
+    <div class="chart-header">
+        <div>
+            <h5 class="chart-title">
+                <i class="fas fa-chart-line"></i>
+                Traffic Timeline
+            </h5>
+            <p class="chart-subtitle">Requests and unique visitors over time</p>
+        </div>
+        <div class="time-range-selector">
+            <button class="time-range-btn" data-range="1">1h</button>
+            <button class="time-range-btn" data-range="24">24h</button>
+            <button class="time-range-btn active" data-range="168">7d</button>
+            <button class="time-range-btn" data-range="720">30d</button>
+        </div>
+    </div>
+    <canvas id="trafficTimelineChart"></canvas>
+</div>
+
+<!-- Traffic Heatmap -->
+<div class="chart-container heatmap mb-4">
+    <div class="chart-header">
+        <div>
+            <h5 class="chart-title">
+                <i class="fas fa-calendar-alt"></i>
+                Traffic Heatmap - Day × Hour
+            </h5>
+            <p class="chart-subtitle">When are your visitors most active?</p>
+        </div>
+        <div class="chart-controls">
+            <select id="heatmapDays" class="form-select form-select-sm">
+                <option value="7" selected>Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+            </select>
+        </div>
+    </div>
+    <canvas id="trafficHeatmapChart"></canvas>
+</div>
+
+<!-- Device Type Distribution -->
+<div class="grid grid-cols-3 mb-4">
+    <!-- Device Types -->
+    <div class="chart-container small">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-mobile-alt"></i>
+                Device Types
+            </h5>
+        </div>
+        <canvas id="deviceTypeChart"></canvas>
+    </div>
+
+    <!-- Top Countries Pie -->
+    <div class="chart-container small" style="grid-column: span 2;">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-flag"></i>
+                Top Countries Distribution
+            </h5>
+        </div>
+        <canvas id="topCountriesPieChart"></canvas>
+    </div>
+</div>
+
+<!-- Geographic Analysis -->
+<div class="grid grid-cols-2 mb-4">
+    <!-- Top Countries -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-globe-americas"></i>
+                Top Countries
+            </h5>
+            <button class="btn btn-sm btn-outline" onclick="exportCountriesData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+        <div class="card-body table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Country</th>
+                        <th>Hits</th>
+                        <th>Visitors</th>
+                        <th>Bandwidth</th>
+                        <th>%</th>
+                    </tr>
+                </thead>
+                <tbody id="topCountriesTable">
+                    <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Top IP Addresses -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-network-wired"></i>
+                Top IP Addresses
+            </h5>
+            <button class="btn btn-sm btn-outline" onclick="exportIPsData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+        <div class="card-body table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>IP Address</th>
+                        <th>Country</th>
+                        <th>City</th>
+                        <th>Hits</th>
+                        <th>Bandwidth</th>
+                    </tr>
+                </thead>
+                <tbody id="topIPsTable">
+                    <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ASN Analysis -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-building"></i>
+            Top Autonomous Systems (ASN)
+        </h5>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline" onclick="exportASNData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="asnTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>ASN</th>
+                        <th>Organization</th>
+                        <th>Country</th>
+                        <th>Hits</th>
+                        <th>Bandwidth</th>
+                        <th>% of Total</th>
+                        <th>Avg Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Traffic Sources & Patterns -->
+<div class="grid grid-cols-2 mb-4">
+    <!-- Traffic by Hour -->
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-clock"></i>
+                Traffic by Hour of Day
+            </h5>
+        </div>
+        <canvas id="trafficByHourChart"></canvas>
+    </div>
+
+    <!-- Traffic by Day of Week -->
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-calendar-week"></i>
+                Traffic by Day of Week
+            </h5>
+        </div>
+        <canvas id="trafficByDayChart"></canvas>
+    </div>
+</div>
+
+<!-- Additional Metrics Grid -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Desktop Traffic</div>
+        <div class="stat-value" id="desktopTraffic">0%</div>
+        <div class="stat-subtitle" id="desktopCount">0 requests</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Mobile Traffic</div>
+        <div class="stat-value text-info" id="mobileTraffic">0%</div>
+        <div class="stat-subtitle" id="mobileCount">0 requests</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Bot Traffic</div>
+        <div class="stat-value text-warning" id="botTraffic">0%</div>
+        <div class="stat-subtitle" id="botCount">0 requests</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Tablet Traffic</div>
+        <div class="stat-value text-success" id="tabletTraffic">0%</div>
+        <div class="stat-subtitle" id="tabletCount">0 requests</div>
+    </div>
+</div>
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+    <script src="/static/js/pages/traffic.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('traffic');
+        });
+    </script>
+</body>
+</html>
+{{end}}

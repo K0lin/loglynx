@@ -1,0 +1,409 @@
+{{define "users.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="fas fa-users"></i>
+                User Analytics
+            </h2>
+            <p class="page-description">Browser, device, operating system, and visitor behavior insights</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="exportUserAnalytics()">
+                <i class="fas fa-file-export"></i> Export Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- User Summary KPIs -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Total Visitors</div>
+        <div class="stat-value" id="totalVisitors">0</div>
+        <div class="stat-subtitle">Unique IP addresses</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Browser Types</div>
+        <div class="stat-value text-info" id="browserTypes">0</div>
+        <div class="stat-subtitle">Different browsers</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Operating Systems</div>
+        <div class="stat-value text-success" id="osTypes">0</div>
+        <div class="stat-subtitle">Different OS</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Referral Traffic</div>
+        <div class="stat-value text-warning" id="referralTraffic">0%</div>
+        <div class="stat-subtitle">From external sources</div>
+    </div>
+</div>
+
+<!-- Device & Browser Distribution -->
+<div class="grid grid-cols-3 mb-4">
+    <!-- Device Type Distribution -->
+    <div class="chart-container small">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-mobile-alt"></i>
+                Device Types
+            </h5>
+        </div>
+        <canvas id="deviceTypeChart"></canvas>
+    </div>
+
+    <!-- Browser Distribution -->
+    <div class="chart-container small">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-browser"></i>
+                Browser Distribution
+            </h5>
+        </div>
+        <canvas id="browserChart"></canvas>
+    </div>
+
+    <!-- Operating System Distribution -->
+    <div class="chart-container small">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-laptop"></i>
+                Operating Systems
+            </h5>
+        </div>
+        <canvas id="osChart"></canvas>
+    </div>
+</div>
+
+<!-- Browser Details -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-browser"></i>
+            Browser Analysis
+        </h5>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline" onclick="exportBrowserData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="browserTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Browser</th>
+                        <th>Count</th>
+                        <th>Percentage</th>
+                        <th>Market Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Operating System Details -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-laptop-code"></i>
+            Operating System Analysis
+        </h5>
+        <button class="btn btn-sm btn-outline" onclick="exportOSData()">
+            <i class="fas fa-download"></i> Export
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="osTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Operating System</th>
+                        <th>Count</th>
+                        <th>Percentage</th>
+                        <th>Market Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Referrer Analysis -->
+<div class="grid grid-cols-2 mb-4">
+    <!-- Top Referrers -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-external-link-alt"></i>
+                Top Referrers
+            </h5>
+            <button class="btn btn-sm btn-outline" onclick="exportReferrersData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Referrer</th>
+                            <th>Hits</th>
+                            <th>%</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topReferrersTable">
+                        <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Referrer Domains -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-globe"></i>
+                Top Referrer Domains
+            </h5>
+            <button class="btn btn-sm btn-outline" onclick="exportReferrerDomainsData()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Domain</th>
+                            <th>Hits</th>
+                            <th>%</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topReferrerDomainsTable">
+                        <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Agent Analysis -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-fingerprint"></i>
+            User Agent Strings
+        </h5>
+        <button class="btn btn-sm btn-outline" onclick="exportUserAgentsData()">
+            <i class="fas fa-download"></i> Export
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="userAgentTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>User Agent</th>
+                        <th>Count</th>
+                        <th>Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Geographic Visitor Distribution -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-map-marked-alt"></i>
+            Geographic Visitor Distribution
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Country</th>
+                        <th>Unique Visitors</th>
+                        <th>Total Hits</th>
+                        <th>Avg Hits/Visitor</th>
+                        <th>Market Share</th>
+                    </tr>
+                </thead>
+                <tbody id="geoVisitorsTable">
+                    <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- User Behavior Insights -->
+<div class="grid grid-cols-3 mb-4">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-robot"></i>
+                Bot Detection
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span>Human Traffic</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge badge-success" id="humanTraffic">0</span>
+                    <span class="text-muted" id="humanPercent">0%</span>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span>Bot Traffic</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge badge-warning" id="botTraffic">0</span>
+                    <span class="text-muted" id="botPercent">0%</span>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <span>Unknown/Other</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge badge-info" id="unknownTraffic">0</span>
+                    <span class="text-muted" id="unknownPercent">0%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-chart-pie"></i>
+                Platform Distribution
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span><i class="fas fa-desktop"></i> Desktop</span>
+                <div class="d-flex align-items-center gap-2">
+                    <div style="width: 60px; height: 6px; background: #1f1f21; border-radius: 3px; overflow: hidden;">
+                        <div id="desktopBar" style="width: 0%; height: 100%; background: #F46319; transition: width 0.5s;"></div>
+                    </div>
+                    <span id="desktopPlatformPercent" class="text-muted">0%</span>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span><i class="fas fa-mobile-alt"></i> Mobile</span>
+                <div class="d-flex align-items-center gap-2">
+                    <div style="width: 60px; height: 6px; background: #1f1f21; border-radius: 3px; overflow: hidden;">
+                        <div id="mobileBar" style="width: 0%; height: 100%; background: #17a2b8; transition: width 0.5s;"></div>
+                    </div>
+                    <span id="mobilePlatformPercent" class="text-muted">0%</span>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-tablet-alt"></i> Tablet</span>
+                <div class="d-flex align-items-center gap-2">
+                    <div style="width: 60px; height: 6px; background: #1f1f21; border-radius: 3px; overflow: hidden;">
+                        <div id="tabletBar" style="width: 0%; height: 100%; background: #28a745; transition: width 0.5s;"></div>
+                    </div>
+                    <span id="tabletPlatformPercent" class="text-muted">0%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">
+                <i class="fas fa-chart-line"></i>
+                Top User Insights
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <small class="text-muted d-block mb-1">Most Popular Browser</small>
+                <strong id="topBrowser">-</strong>
+            </div>
+            <div class="mb-3">
+                <small class="text-muted d-block mb-1">Most Popular OS</small>
+                <strong id="topOS">-</strong>
+            </div>
+            <div>
+                <small class="text-muted d-block mb-1">Most Popular Device</small>
+                <strong id="topDevice">-</strong>
+            </div>
+        </div>
+    </div>
+</div>
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+    <script src="/static/js/pages/users.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('users');
+        });
+    </script>
+</body>
+</html>
+{{end}}

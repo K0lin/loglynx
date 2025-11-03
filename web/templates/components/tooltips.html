@@ -1,0 +1,321 @@
+{{/* Common tooltip definitions - can be called from any page */}}
+
+{{/* Overview Page Tooltips */}}
+{{define "tooltip-total-requests"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Total Requests</div>
+        <div class="info-tooltip-description">Total number of HTTP requests received in the selected time period. Includes all status codes and request types.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-success-rate"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Success Rate</div>
+        <div class="info-tooltip-description">Percentage of successful requests (2xx and 3xx status codes). Higher is better - aim for 95%+.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-avg-response"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Response Time</div>
+        <div class="info-tooltip-description">Average time taken to process and respond to requests. Lower values indicate better performance.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-unique-visitors"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Unique Visitors</div>
+        <div class="info-tooltip-description">Number of unique IP addresses that have accessed your service. Used to estimate distinct users.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-error-rate"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Error Rate</div>
+        <div class="info-tooltip-description">Percentage of failed requests (4xx client errors and 5xx server errors). Lower is better.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-bandwidth"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Bandwidth Usage</div>
+        <div class="info-tooltip-description">Total amount of data transferred to clients. Useful for monitoring data usage and costs.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Performance Page Tooltips */}}
+{{define "tooltip-p50"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">P50 Percentile</div>
+        <div class="info-tooltip-description">Median response time - 50% of requests are faster than this value. Good baseline metric.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-p95"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">P95 Percentile</div>
+        <div class="info-tooltip-description">95th percentile - 95% of requests are faster than this. Helps identify outliers.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-p99"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">P99 Percentile</div>
+        <div class="info-tooltip-description">99th percentile - 99% of requests are faster than this. Important for user experience.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Traffic Page Tooltips */}}
+{{define "tooltip-peak-traffic"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Peak Traffic</div>
+        <div class="info-tooltip-description">Maximum number of requests per hour during the selected period. Useful for capacity planning.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-countries"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Geographic Reach</div>
+        <div class="info-tooltip-description">Number of different countries accessing your service. Indicates global reach.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-heatmap"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Traffic Heatmap</div>
+        <div class="info-tooltip-description">Visual representation of traffic patterns by day and hour. Darker colors indicate higher traffic.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Geographic Page Tooltips */}}
+{{define "tooltip-geo-coordinates"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Coordinates</div>
+        <div class="info-tooltip-description">Latitude and longitude of the IP address location. Approximate location based on GeoIP data.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-map-clusters"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Map Clustering</div>
+        <div class="info-tooltip-description">Groups nearby markers for better map visualization. Click to zoom in and see individual locations.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Security Page Tooltips */}}
+{{define "tooltip-status-codes"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Status Codes</div>
+        <div class="info-tooltip-description">HTTP status codes indicate request outcomes. 2xx=success, 3xx=redirect, 4xx=client error, 5xx=server error.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-protocol"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Protocol Version</div>
+        <div class="info-tooltip-description">HTTP protocol version used for requests. HTTP/2 and HTTP/3 offer better performance.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-tls-version"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">TLS Version</div>
+        <div class="info-tooltip-description">TLS/SSL version used for encrypted connections. TLS 1.2+ is recommended for security.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Real-time Page Tooltips */}}
+{{define "tooltip-live-metrics"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Live Metrics</div>
+        <div class="info-tooltip-description">Real-time data streaming every 2 seconds. Shows current system activity.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-request-rate"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Request Rate</div>
+        <div class="info-tooltip-description">Current rate of incoming requests per second. Calculated from last minute of data.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Users Page Tooltips */}}
+{{define "tooltip-browser-distribution"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Browser Stats</div>
+        <div class="info-tooltip-description">Shows which web browsers your visitors use. Helps optimize for popular browsers.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-os-distribution"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">OS Distribution</div>
+        <div class="info-tooltip-description">Operating system breakdown of visitors. Useful for platform-specific optimization.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-bot-detection"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Bot Detection</div>
+        <div class="info-tooltip-description">Automated detection of bot traffic vs human visitors. Bots include search engines, scrapers, etc.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Content Page Tooltips */}}
+{{define "tooltip-top-paths"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Popular Paths</div>
+        <div class="info-tooltip-description">Most frequently accessed URLs on your site. Helps identify popular content.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-http-methods"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">HTTP Methods</div>
+        <div class="info-tooltip-description">Distribution of HTTP request methods (GET for reading, POST for submitting, etc.).</div>
+    </div>
+</span>
+{{end}}
+
+{{/* Backends Page Tooltips */}}
+{{define "tooltip-backend-health"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Health Status</div>
+        <div class="info-tooltip-description">Health status based on error rate and response time. Green=healthy, Yellow=degraded, Red=critical.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-backend-name"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Backend Service</div>
+        <div class="info-tooltip-description">Name of the backend service handling requests. Configured in your reverse proxy.</div>
+    </div>
+</span>
+{{end}}
+
+{{/* General Tooltips */}}
+{{define "tooltip-time-range"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Time Range</div>
+        <div class="info-tooltip-description">Select time period to analyze. Longer periods show trends, shorter periods show recent activity.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-auto-refresh"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Auto Refresh</div>
+        <div class="info-tooltip-description">Automatically reload data at the specified interval. Disable for detailed analysis.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-service-filter"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Service Filter</div>
+        <div class="info-tooltip-description">Filter data to show only requests for a specific service or domain.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-export-data"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Export Data</div>
+        <div class="info-tooltip-description">Download current data as CSV or JSON for external analysis.</div>
+    </div>
+</span>
+{{end}}
+
+{{define "tooltip-data-table"}}
+<span class="info-tooltip">
+    <i class="info-tooltip-icon fas fa-info"></i>
+    <div class="info-tooltip-content">
+        <div class="info-tooltip-title">Data Table</div>
+        <div class="info-tooltip-description">Interactive table with sorting, filtering, and pagination. Click column headers to sort.</div>
+    </div>
+</span>
+{{end}}

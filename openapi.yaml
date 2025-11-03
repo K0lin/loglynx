@@ -1,0 +1,1349 @@
+openapi: 3.0.3
+info:
+  title: LogLynx API
+  description: |
+    LogLynx is an advanced log analytics platform for analyzing Traefik access logs and other log sources.
+    This API provides comprehensive statistics, real-time metrics, and detailed insights into your web traffic.
+    
+    ## Features
+    - **Summary Statistics**: Get overall metrics including requests, visitors, bandwidth, and response times
+    - **Timeline Data**: Analyze traffic patterns over time with customizable time ranges
+    - **Top Statistics**: Identify top paths, countries, IPs, user agents, and more
+    - **Distribution Analytics**: View distributions of status codes, HTTP methods, protocols, and device types
+    - **Real-time Monitoring**: Stream live metrics via Server-Sent Events (SSE)
+    - **Performance Metrics**: Track response times and backend health
+    - **Geographic Analytics**: Analyze traffic by country and region
+    
+    ## Query Parameters
+    Most endpoints support optional filtering:
+    - `host`: Filter results by backend/service name
+    - `limit`: Limit the number of results (varies by endpoint)
+    - `hours`: Specify time range in hours for timeline queries
+    - `days`: Specify time range in days for heatmap queries
+    
+  version: 1.0.0
+  contact:
+    name: LogLynx Support
+  license:
+    name: MIT
+    
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+tags:
+  - name: Summary
+    description: Overall statistics and summary data
+  - name: Timeline
+    description: Time-series data and trends
+  - name: Top Statistics
+    description: Top items by various metrics
+  - name: Distributions
+    description: Distribution of categorical data
+  - name: Performance
+    description: Response time and performance metrics
+  - name: Real-time
+    description: Live metrics and streaming data
+  - name: Requests
+    description: Individual request data
+  - name: System
+    description: System information and log processing stats
+
+paths:
+  /stats/summary:
+    get:
+      tags:
+        - Summary
+      summary: Get summary statistics
+      description: Returns overall statistics including total requests, unique visitors, bandwidth, success rates, and top items
+      operationId: getSummary
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: Summary statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsSummary'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/timeline:
+    get:
+      tags:
+        - Timeline
+      summary: Get timeline statistics
+      description: Returns time-series data for requests, visitors, bandwidth, and response times
+      operationId: getTimeline
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: hours
+          in: query
+          description: Number of hours to look back (1-8760, default 168 for 7 days)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 8760
+            default: 168
+          example: 168
+      responses:
+        '200':
+          description: Timeline data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimelineData'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/timeline/status-codes:
+    get:
+      tags:
+        - Timeline
+      summary: Get status code timeline
+      description: Returns status code distribution over time for stacked area charts
+      operationId: getStatusCodeTimeline
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: hours
+          in: query
+          description: Number of hours to look back
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 8760
+            default: 168
+      responses:
+        '200':
+          description: Status code timeline data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusCodeTimelineData'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/heatmap/traffic:
+    get:
+      tags:
+        - Timeline
+      summary: Get traffic heatmap
+      description: Returns hourly traffic data grouped by day of week for heatmap visualization
+      operationId: getTrafficHeatmap
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: days
+          in: query
+          description: Number of days to analyze (1-365, default 30)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        '200':
+          description: Traffic heatmap data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrafficHeatmapData'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/paths:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top paths
+      description: Returns most accessed paths/URLs with hits, visitors, response time, and bandwidth
+      operationId: getTopPaths
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top paths
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PathStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/countries:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top countries
+      description: Returns countries with the most traffic
+      operationId: getTopCountries
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: limit
+          in: query
+          description: Maximum number of results (0-500, default 10)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 500
+            default: 10
+      responses:
+        '200':
+          description: Top countries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CountryStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/ips:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top IP addresses
+      description: Returns IP addresses with the most requests
+      operationId: getTopIPs
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top IP addresses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IPStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/user-agents:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top user agents
+      description: Returns most common user agent strings
+      operationId: getTopUserAgents
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top user agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserAgentStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/browsers:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top browsers
+      description: Returns most common browsers
+      operationId: getTopBrowsers
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top browsers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BrowserStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/operating-systems:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top operating systems
+      description: Returns most common operating systems
+      operationId: getTopOperatingSystems
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top operating systems
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OSStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/asns:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top ASNs
+      description: Returns Autonomous System Numbers with the most traffic
+      operationId: getTopASNs
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top ASNs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ASNStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/backends:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top backends
+      description: Returns backend services with traffic and performance metrics
+      operationId: getTopBackends
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Top backends
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BackendStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/referrers:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top referrers
+      description: Returns top referrer URLs
+      operationId: getTopReferrers
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: limit
+          in: query
+          description: Maximum number of results (1-100, default 10)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Top referrers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferrerStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/top/referrer-domains:
+    get:
+      tags:
+        - Top Statistics
+      summary: Get top referrer domains
+      description: Returns aggregated referrer traffic by domain
+      operationId: getTopReferrerDomains
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: limit
+          in: query
+          description: Maximum number of results (0 = unlimited, default 10)
+          schema:
+            type: integer
+            minimum: 0
+            default: 10
+      responses:
+        '200':
+          description: Top referrer domains
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferrerDomainStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/distribution/status-codes:
+    get:
+      tags:
+        - Distributions
+      summary: Get status code distribution
+      description: Returns distribution of HTTP status codes
+      operationId: getStatusCodeDistribution
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: Status code distribution
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusCodeStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/distribution/methods:
+    get:
+      tags:
+        - Distributions
+      summary: Get HTTP method distribution
+      description: Returns distribution of HTTP methods (GET, POST, etc.)
+      operationId: getMethodDistribution
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: HTTP method distribution
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MethodStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/distribution/protocols:
+    get:
+      tags:
+        - Distributions
+      summary: Get protocol distribution
+      description: Returns distribution of HTTP protocols (HTTP/1.1, HTTP/2, etc.)
+      operationId: getProtocolDistribution
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: Protocol distribution
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProtocolStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/distribution/tls-versions:
+    get:
+      tags:
+        - Distributions
+      summary: Get TLS version distribution
+      description: Returns distribution of TLS/SSL versions
+      operationId: getTLSVersionDistribution
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: TLS version distribution
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TLSVersionStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/distribution/device-types:
+    get:
+      tags:
+        - Distributions
+      summary: Get device type distribution
+      description: Returns distribution of device types (desktop, mobile, tablet, bot)
+      operationId: getDeviceTypeDistribution
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: Device type distribution
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceTypeStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/performance/response-time:
+    get:
+      tags:
+        - Performance
+      summary: Get response time statistics
+      description: Returns response time metrics including min, max, avg, and percentiles
+      operationId: getResponseTimeStats
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+      responses:
+        '200':
+          description: Response time statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseTimeStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stats/log-processing:
+    get:
+      tags:
+        - System
+      summary: Get log processing statistics
+      description: Returns information about log file processing progress
+      operationId: getLogProcessingStats
+      responses:
+        '200':
+          description: Log processing statistics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogProcessingStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /requests/recent:
+    get:
+      tags:
+        - Requests
+      summary: Get recent requests
+      description: Returns the most recent HTTP requests with full details
+      operationId: getRecentRequests
+      parameters:
+        - $ref: '#/components/parameters/HostFilter'
+        - name: limit
+          in: query
+          description: Maximum number of results (1-1000, default 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          description: Pagination offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Recent requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HTTPRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /realtime/metrics:
+    get:
+      tags:
+        - Real-time
+      summary: Get current real-time metrics
+      description: Returns a single snapshot of current real-time metrics
+      operationId: getCurrentMetrics
+      responses:
+        '200':
+          description: Current real-time metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeMetrics'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /realtime/services:
+    get:
+      tags:
+        - Real-time
+      summary: Get per-service metrics
+      description: Returns real-time metrics broken down by service/backend
+      operationId: getPerServiceMetrics
+      responses:
+        '200':
+          description: Per-service metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceMetrics'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /realtime/stream:
+    get:
+      tags:
+        - Real-time
+      summary: Stream real-time metrics
+      description: |
+        Server-Sent Events (SSE) endpoint that streams real-time metrics.
+        Connect using EventSource API in JavaScript or any SSE client.
+        
+        Example JavaScript:
+        ```javascript
+        const eventSource = new EventSource('http://localhost:8080/api/v1/realtime/stream');
+        eventSource.onmessage = (event) => {
+          const metrics = JSON.parse(event.data);
+          console.log('Real-time metrics:', metrics);
+        };
+        ```
+      operationId: streamMetrics
+      responses:
+        '200':
+          description: SSE stream of real-time metrics
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/RealtimeMetrics'
+
+  /domains:
+    get:
+      tags:
+        - System
+      summary: Get available domains/services
+      description: Returns list of available backend services for filtering
+      operationId: getDomains
+      responses:
+        '200':
+          description: List of domains
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DomainStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    HostFilter:
+      name: host
+      in: query
+      description: Filter results by backend/service name
+      required: false
+      schema:
+        type: string
+      example: "my-service"
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Maximum number of results (1-100, default 10)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+  schemas:
+    StatsSummary:
+      type: object
+      properties:
+        total_requests:
+          type: integer
+          format: int64
+          description: Total number of requests
+          example: 125643
+        valid_requests:
+          type: integer
+          format: int64
+          description: Number of successful requests (2xx, 3xx)
+          example: 119234
+        failed_requests:
+          type: integer
+          format: int64
+          description: Number of failed requests (4xx, 5xx)
+          example: 6409
+        unique_visitors:
+          type: integer
+          format: int64
+          description: Number of unique IP addresses
+          example: 1523
+        unique_files:
+          type: integer
+          format: int64
+          description: Number of unique paths accessed
+          example: 342
+        unique_404:
+          type: integer
+          format: int64
+          description: Number of unique 404 paths
+          example: 23
+        total_bandwidth:
+          type: integer
+          format: int64
+          description: Total bandwidth in bytes
+          example: 5368709120
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 142.5
+        success_rate:
+          type: number
+          format: double
+          description: Success rate percentage (0-100)
+          example: 94.9
+        not_found_rate:
+          type: number
+          format: double
+          description: 404 error rate percentage
+          example: 3.2
+        server_error_rate:
+          type: number
+          format: double
+          description: 5xx error rate percentage
+          example: 1.9
+        requests_per_hour:
+          type: number
+          format: double
+          description: Average requests per hour
+          example: 745.3
+        top_country:
+          type: string
+          description: Country code with most traffic
+          example: "US"
+        top_path:
+          type: string
+          description: Most accessed path
+          example: "/api/v1/users"
+
+    TimelineData:
+      type: object
+      properties:
+        hour:
+          type: string
+          format: date-time
+          description: Timestamp for this data point
+          example: "2025-11-03T14:00:00Z"
+        requests:
+          type: integer
+          format: int64
+          description: Number of requests in this hour
+          example: 1234
+        unique_visitors:
+          type: integer
+          format: int64
+          description: Unique visitors in this hour
+          example: 89
+        bandwidth:
+          type: integer
+          format: int64
+          description: Bandwidth in bytes for this hour
+          example: 52428800
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 125.3
+
+    StatusCodeTimelineData:
+      type: object
+      properties:
+        hour:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:00:00Z"
+        status_2xx:
+          type: integer
+          format: int64
+          description: Count of 2xx responses
+          example: 1100
+        status_3xx:
+          type: integer
+          format: int64
+          description: Count of 3xx responses
+          example: 50
+        status_4xx:
+          type: integer
+          format: int64
+          description: Count of 4xx responses
+          example: 75
+        status_5xx:
+          type: integer
+          format: int64
+          description: Count of 5xx responses
+          example: 9
+
+    TrafficHeatmapData:
+      type: object
+      properties:
+        day_of_week:
+          type: integer
+          description: Day of week (0=Sunday, 6=Saturday)
+          minimum: 0
+          maximum: 6
+          example: 1
+        hour:
+          type: integer
+          description: Hour of day (0-23)
+          minimum: 0
+          maximum: 23
+          example: 14
+        requests:
+          type: integer
+          format: int64
+          description: Number of requests
+          example: 523
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 134.2
+
+    PathStats:
+      type: object
+      properties:
+        path:
+          type: string
+          description: URL path
+          example: "/api/v1/stats/summary"
+        hits:
+          type: integer
+          format: int64
+          description: Number of requests to this path
+          example: 5432
+        unique_visitors:
+          type: integer
+          format: int64
+          description: Unique visitors to this path
+          example: 234
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 89.3
+        total_bandwidth:
+          type: integer
+          format: int64
+          description: Total bandwidth in bytes
+          example: 10485760
+
+    CountryStats:
+      type: object
+      properties:
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code
+          example: "US"
+        country_name:
+          type: string
+          description: Full country name
+          example: "United States"
+        hits:
+          type: integer
+          format: int64
+          description: Number of requests from this country
+          example: 15234
+        unique_visitors:
+          type: integer
+          format: int64
+          description: Unique visitors from this country
+          example: 892
+        bandwidth:
+          type: integer
+          format: int64
+          description: Total bandwidth in bytes
+          example: 268435456
+
+    IPStats:
+      type: object
+      properties:
+        ip_address:
+          type: string
+          format: ipv4
+          description: IP address
+          example: "192.168.1.100"
+        country:
+          type: string
+          description: Country code
+          example: "US"
+        city:
+          type: string
+          description: City name
+          example: "New York"
+        latitude:
+          type: number
+          format: double
+          description: Latitude coordinate
+          example: 40.7128
+        longitude:
+          type: number
+          format: double
+          description: Longitude coordinate
+          example: -74.0060
+        hits:
+          type: integer
+          format: int64
+          description: Number of requests from this IP
+          example: 234
+        bandwidth:
+          type: integer
+          format: int64
+          description: Total bandwidth in bytes
+          example: 5242880
+
+    StatusCodeStats:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          description: HTTP status code
+          example: 200
+        count:
+          type: integer
+          format: int64
+          description: Number of requests with this status code
+          example: 98765
+
+    MethodStats:
+      type: object
+      properties:
+        method:
+          type: string
+          description: HTTP method
+          example: "GET"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests using this method
+          example: 112345
+
+    ProtocolStats:
+      type: object
+      properties:
+        protocol:
+          type: string
+          description: HTTP protocol version
+          example: "HTTP/2.0"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests using this protocol
+          example: 85432
+
+    TLSVersionStats:
+      type: object
+      properties:
+        tls_version:
+          type: string
+          description: TLS version
+          example: "TLS 1.3"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests using this TLS version
+          example: 95123
+
+    UserAgentStats:
+      type: object
+      properties:
+        user_agent:
+          type: string
+          description: User agent string
+          example: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests with this user agent
+          example: 2345
+
+    BrowserStats:
+      type: object
+      properties:
+        browser:
+          type: string
+          description: Browser name
+          example: "Chrome"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests from this browser
+          example: 67890
+
+    OSStats:
+      type: object
+      properties:
+        os:
+          type: string
+          description: Operating system name
+          example: "Windows 10"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests from this OS
+          example: 45678
+
+    DeviceTypeStats:
+      type: object
+      properties:
+        device_type:
+          type: string
+          description: Device type
+          enum: [desktop, mobile, tablet, bot, unknown]
+          example: "desktop"
+        count:
+          type: integer
+          format: int64
+          description: Number of requests from this device type
+          example: 78901
+
+    ReferrerStats:
+      type: object
+      properties:
+        referrer:
+          type: string
+          description: Full referrer URL
+          example: "https://google.com/search"
+        hits:
+          type: integer
+          format: int64
+          description: Number of requests from this referrer
+          example: 1234
+        unique_visitors:
+          type: integer
+          format: int64
+          description: Unique visitors from this referrer
+          example: 567
+
+    ReferrerDomainStats:
+      type: object
+      properties:
+        domain:
+          type: string
+          description: Referrer domain
+          example: "google.com"
+        hits:
+          type: integer
+          format: int64
+          description: Total hits from this domain
+          example: 5678
+        unique_visitors:
+          type: integer
+          format: int64
+          description: Unique visitors from this domain
+          example: 1234
+
+    BackendStats:
+      type: object
+      properties:
+        backend_name:
+          type: string
+          description: Backend service name
+          example: "api-service-prod"
+        backend_url:
+          type: string
+          description: Backend URL
+          example: "http://api-service:8080"
+        hits:
+          type: integer
+          format: int64
+          description: Number of requests to this backend
+          example: 12345
+        bandwidth:
+          type: integer
+          format: int64
+          description: Total bandwidth in bytes
+          example: 536870912
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 95.7
+        error_count:
+          type: integer
+          format: int64
+          description: Number of errors from this backend
+          example: 23
+
+    ASNStats:
+      type: object
+      properties:
+        asn:
+          type: integer
+          description: Autonomous System Number
+          example: 15169
+        asn_org:
+          type: string
+          description: Organization name
+          example: "Google LLC"
+        hits:
+          type: integer
+          format: int64
+          description: Number of requests from this ASN
+          example: 8765
+        bandwidth:
+          type: integer
+          format: int64
+          description: Total bandwidth in bytes
+          example: 104857600
+        country:
+          type: string
+          description: Country code
+          example: "US"
+
+    ResponseTimeStats:
+      type: object
+      properties:
+        min:
+          type: number
+          format: double
+          description: Minimum response time in milliseconds
+          example: 12.5
+        max:
+          type: number
+          format: double
+          description: Maximum response time in milliseconds
+          example: 2345.8
+        avg:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 142.3
+        p50:
+          type: number
+          format: double
+          description: 50th percentile (median) in milliseconds
+          example: 98.5
+        p95:
+          type: number
+          format: double
+          description: 95th percentile in milliseconds
+          example: 345.2
+        p99:
+          type: number
+          format: double
+          description: 99th percentile in milliseconds
+          example: 567.9
+
+    LogProcessingStats:
+      type: object
+      properties:
+        log_source_name:
+          type: string
+          description: Name of the log source
+          example: "traefik-access-logs"
+        file_size:
+          type: integer
+          format: int64
+          description: Total file size in bytes
+          example: 1073741824
+        bytes_processed:
+          type: integer
+          format: int64
+          description: Bytes processed so far
+          example: 536870912
+        percentage:
+          type: number
+          format: double
+          description: Processing progress percentage
+          example: 50.0
+        last_processed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of last processing
+          example: "2025-11-03T14:32:15Z"
+
+    HTTPRequest:
+      type: object
+      description: Individual HTTP request record
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 12345
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:32:15Z"
+        client_ip:
+          type: string
+          example: "192.168.1.100"
+        method:
+          type: string
+          example: "GET"
+        path:
+          type: string
+          example: "/api/v1/users"
+        status_code:
+          type: integer
+          example: 200
+        response_time:
+          type: number
+          format: double
+          description: Response time in milliseconds
+          example: 45.2
+        bytes_sent:
+          type: integer
+          format: int64
+          description: Response size in bytes
+          example: 2048
+        referer:
+          type: string
+          example: "https://example.com"
+        user_agent:
+          type: string
+          example: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        country:
+          type: string
+          description: ISO country code
+          example: "US"
+        city:
+          type: string
+          example: "New York"
+        browser:
+          type: string
+          example: "Chrome"
+        os:
+          type: string
+          example: "Windows 10"
+        device_type:
+          type: string
+          example: "desktop"
+        backend_name:
+          type: string
+          example: "api-service-prod"
+
+    RealtimeMetrics:
+      type: object
+      description: Real-time metrics snapshot
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:32:15Z"
+        requests_per_second:
+          type: number
+          format: double
+          description: Current requests per second
+          example: 45.3
+        active_connections:
+          type: integer
+          description: Number of active connections
+          example: 123
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in last minute (ms)
+          example: 89.5
+        error_rate:
+          type: number
+          format: double
+          description: Error rate percentage
+          example: 2.3
+        bandwidth_per_second:
+          type: integer
+          format: int64
+          description: Current bandwidth usage (bytes/sec)
+          example: 5242880
+        top_paths:
+          type: array
+          description: Most requested paths in last minute
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              count:
+                type: integer
+        status_codes:
+          type: object
+          description: Status code counts in last minute
+          additionalProperties:
+            type: integer
+
+    ServiceMetrics:
+      type: object
+      description: Metrics for a specific service/backend
+      properties:
+        service_name:
+          type: string
+          example: "api-service-prod"
+        requests_per_second:
+          type: number
+          format: double
+          example: 23.4
+        avg_response_time:
+          type: number
+          format: double
+          example: 67.8
+        error_count:
+          type: integer
+          example: 3
+        bandwidth_per_second:
+          type: integer
+          format: int64
+          example: 2621440
+
+    DomainStats:
+      type: object
+      properties:
+        domain:
+          type: string
+          description: Domain/service name
+          example: "my-service"
+        request_count:
+          type: integer
+          format: int64
+          description: Total requests for this domain
+          example: 12345
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Failed to retrieve data"
+
+  responses:
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -1,0 +1,368 @@
+{{define "content.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="fas fa-file-alt"></i>
+                Content Analytics
+            </h2>
+            <p class="page-description">URLs, paths, referrers, and content performance</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="exportContentReport()">
+                <i class="fas fa-file-export"></i> Export Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Content Summary KPIs -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Total Requests</div>
+        <div class="stat-value" id="totalRequests">0</div>
+        <div class="stat-subtitle">Last 7 days</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Unique Paths</div>
+        <div class="stat-value text-info" id="uniquePaths">0</div>
+        <div class="stat-subtitle">Distinct URLs</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Most Popular Path</div>
+        <div class="stat-value text-success" id="topPath" style="font-size: 1.2rem;">-</div>
+        <div class="stat-subtitle" id="topPathHits">0 requests</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Referrers</div>
+        <div class="stat-value text-warning" id="totalReferrers">0</div>
+        <div class="stat-subtitle">Traffic sources</div>
+    </div>
+</div>
+
+<!-- Method Distribution -->
+<div class="chart-grid two-column mb-4">
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <div>
+                <h5 class="chart-title">
+                    <i class="fas fa-chart-pie"></i>
+                    HTTP Method Distribution
+                </h5>
+                <p class="chart-subtitle">Request methods (GET, POST, etc.)</p>
+            </div>
+        </div>
+        <canvas id="methodChart"></canvas>
+    </div>
+
+    <div class="chart-container medium">
+        <div class="chart-header">
+            <div>
+                <h5 class="chart-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Top Paths by Traffic
+                </h5>
+                <p class="chart-subtitle">Most requested paths</p>
+            </div>
+        </div>
+        <canvas id="topPathsChart"></canvas>
+    </div>
+</div>
+
+<!-- Top Paths Table -->
+<div class="table-container mb-4">
+    <div class="table-header">
+        <h5 class="table-title">
+            <i class="fas fa-link"></i>
+            Top Paths
+        </h5>
+        <p class="table-subtitle">Most requested URLs and paths</p>
+    </div>
+    <table id="topPathsTable" class="table table-hover">
+        <thead>
+            <tr>
+                <th>Path</th>
+                <th>Requests</th>
+                <th>Unique Visitors</th>
+                <th>Bandwidth</th>
+                <th>Avg Response</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+
+<!-- Top Referrers Table -->
+<div class="table-container mb-4">
+    <div class="table-header">
+        <h5 class="table-title">
+            <i class="fas fa-external-link-alt"></i>
+            Top Referrers
+        </h5>
+        <p class="table-subtitle">Traffic sources and referrer URLs</p>
+    </div>
+    <table id="topReferrersTable" class="table table-hover">
+        <thead>
+            <tr>
+                <th>Referrer</th>
+                <th>Requests</th>
+                <th>Unique Visitors</th>
+                <th>Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+
+<!-- Top Referrer Domains Table -->
+<div class="table-container mb-4">
+    <div class="table-header">
+        <h5 class="table-title">
+            <i class="fas fa-globe-americas"></i>
+            Top Referrer Domains
+        </h5>
+        <p class="table-subtitle">Traffic sources by domain</p>
+    </div>
+    <table id="referrerDomainsTable" class="table table-hover">
+        <thead>
+            <tr>
+                <th>Domain</th>
+                <th>Requests</th>
+                <th>Unique Visitors</th>
+                <th>Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('content');
+
+            // Initialize DataTables
+            const topPathsTable = $('#topPathsTable').DataTable({
+                ajax: {
+                    url: LogLynxAPI.buildURL('/stats/top/paths', { limit: 100 }),
+                    dataSrc: ''
+                },
+                columns: [
+                    {
+                        data: 'path',
+                        render: (data) => {
+                            const truncated = data.length > 60 ? data.substring(0, 60) + '...' : data;
+                            return `<code title="${data}">${truncated}</code>`;
+                        }
+                    },
+                    { data: 'hits', render: (data) => data.toLocaleString() },
+                    { data: 'unique_visitors', render: (data) => data.toLocaleString() },
+                    { data: 'bandwidth', render: (data) => LogLynxUtils.formatBytes(data) },
+                    { data: 'avg_response_time', render: (data) => data ? `${Math.round(data)} ms` : '-' }
+                ],
+                order: [[1, 'desc']],
+                pageLength: 25
+            });
+
+            const topReferrersTable = $('#topReferrersTable').DataTable({
+                ajax: {
+                    url: LogLynxAPI.buildURL('/stats/top/referrers', { limit: 50 }),
+                    dataSrc: ''
+                },
+                columns: [
+                    {
+                        data: 'referrer',
+                        defaultContent: '-',
+                        render: (data) => {
+                            if (!data || data === '-' || data === '') return '<span class="text-muted">Direct / None</span>';
+                            const truncated = data.length > 70 ? data.substring(0, 70) + '...' : data;
+                            return `<a href="${data}" target="_blank" title="${data}">${truncated}</a>`;
+                        }
+                    },
+                    { 
+                        data: 'hits', 
+                        defaultContent: '0', 
+                        render: (data) => (data || 0).toLocaleString() 
+                    },
+                    { 
+                        data: 'unique_visitors', 
+                        defaultContent: '0', 
+                        render: (data) => (data || 0).toLocaleString() 
+                    },
+                    {
+                        data: null,
+                        defaultContent: '-',
+                        orderable: false,
+                        render: (data, type, row) => {
+                            return '-';
+                        }
+                    }
+                ],
+                order: [[1, 'desc']],
+                pageLength: 20,
+                language: {
+                    emptyTable: 'No referrer data available',
+                    zeroRecords: 'No referrers found',
+                    loadingRecords: 'Loading...'
+                }
+            });
+
+            const referrerDomainsTable = $('#referrerDomainsTable').DataTable({
+                ajax: {
+                    url: LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 30 }),
+                    dataSrc: ''
+                },
+                columns: [
+                    {
+                        data: 'domain',
+                        defaultContent: '-',
+                        render: (data) => data || '<span class="text-muted">Direct / None</span>'
+                    },
+                    { 
+                        data: 'hits', 
+                        defaultContent: '0', 
+                        render: (data) => (data || 0).toLocaleString() 
+                    },
+                    { 
+                        data: 'unique_visitors', 
+                        defaultContent: '0', 
+                        render: (data) => (data || 0).toLocaleString() 
+                    },
+                    {
+                        data: null,
+                        defaultContent: '-',
+                        orderable: false,
+                        render: (data, type, row) => {
+                            return '-';
+                        }
+                    }
+                ],
+                order: [[1, 'desc']],
+                pageLength: 15,
+                language: {
+                    emptyTable: 'No referrer domain data available',
+                    zeroRecords: 'No referrer domains found',
+                    loadingRecords: 'Loading...'
+                }
+            });
+
+            // Load method distribution
+            fetch(LogLynxAPI.buildURL('/stats/distribution/methods'))
+                .then(response => response.json())
+                .then(data => {
+                    const ctx = document.getElementById('methodChart');
+                    new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.map(item => `${item.method} (${item.count.toLocaleString()})`),
+                            datasets: [{
+                                data: data.map(item => item.count),
+                                backgroundColor: ['#F46319', '#17a2b8', '#28a745', '#ffc107', '#dc3545']
+                            }]
+                        },
+                        options: LogLynxCharts.defaultOptions
+                    });
+                });
+
+            // Load top paths for chart
+            fetch(LogLynxAPI.buildURL('/stats/top/paths', { limit: 10 }))
+                .then(response => response.json())
+                .then(data => {
+                    const ctx = document.getElementById('topPathsChart');
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.map(item => {
+                                const path = item.path;
+                                return path.length > 30 ? path.substring(0, 30) + '...' : path;
+                            }),
+                            datasets: [{
+                                label: 'Requests',
+                                data: data.map(item => item.hits),
+                                backgroundColor: '#F46319'
+                            }]
+                        },
+                        options: {
+                            ...LogLynxCharts.defaultOptions,
+                            indexAxis: 'y'
+                        }
+                    });
+
+                    // Update KPIs
+                    if (data.length > 0) {
+                        const topPath = data[0].path;
+                        document.getElementById('topPath').textContent = topPath.length > 30 ? topPath.substring(0, 30) + '...' : topPath;
+                        document.getElementById('topPath').title = topPath;
+                        document.getElementById('topPathHits').textContent = `${data[0].hits.toLocaleString()} requests`;
+                    }
+
+                    const uniquePaths = new Set(data.map(item => item.path)).size;
+                    document.getElementById('uniquePaths').textContent = uniquePaths.toLocaleString();
+                });
+
+            // Load summary stats
+            fetch(LogLynxAPI.buildURL('/stats/summary'))
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalRequests').textContent = data.total_requests.toLocaleString();
+                });
+
+            // Load referrer count
+            fetch(LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 1000 }))
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalReferrers').textContent = data.length.toLocaleString();
+                });
+        });
+
+        function exportContentReport() {
+            alert('Export functionality coming soon!');
+        }
+    </script>
+</body>
+</html>
+{{end}}

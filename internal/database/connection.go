@@ -1,0 +1,172 @@
+package database
+
+import (
+	"context"
+	"errors"
+	"os"
+	"loglynx/internal/database/repositories"
+	"loglynx/internal/discovery"
+	"time"
+
+	"github.com/glebarez/sqlite"
+	"github.com/pterm/pterm"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+type Config struct {
+	Path         string
+	MaxOpenConns int
+	MaxIdleConns int
+	ConnMaxLife  time.Duration
+}
+
+// SlowQueryLogger logs slow database queries for performance monitoring
+type SlowQueryLogger struct {
+	logger            *pterm.Logger
+	slowThreshold     time.Duration
+	logLevel          logger.LogLevel
+	ignoreNotFoundErr bool
+}
+
+func NewSlowQueryLogger(ptermLogger *pterm.Logger, slowThreshold time.Duration) *SlowQueryLogger {
+	return &SlowQueryLogger{
+		logger:            ptermLogger,
+		slowThreshold:     slowThreshold,
+		logLevel:          logger.Warn,
+		ignoreNotFoundErr: true,
+	}
+}
+
+func (l *SlowQueryLogger) LogMode(level logger.LogLevel) logger.Interface {
+	l.logLevel = level
+	return l
+}
+
+func (l *SlowQueryLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+	if l.logLevel >= logger.Info {
+		l.logger.Info(msg, l.logger.Args("data", data))
+	}
+}
+
+func (l *SlowQueryLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+	if l.logLevel >= logger.Warn {
+		l.logger.Warn(msg, l.logger.Args("data", data))
+	}
+}
+
+func (l *SlowQueryLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+	if l.logLevel >= logger.Error {
+		l.logger.Error(msg, l.logger.Args("data", data))
+	}
+}
+
+func (l *SlowQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	elapsed := time.Since(begin)
+	sql, rows := fc()
+
+	// Log slow queries
+	if elapsed >= l.slowThreshold {
+		l.logger.Warn("SLOW QUERY DETECTED",
+			l.logger.Args(
+				"duration_ms", elapsed.Milliseconds(),
+				"rows", rows,
+				"sql", sql,
+			))
+	} else if l.logLevel >= logger.Info {
+		// Trace all queries in debug mode
+		l.logger.Trace("Database query",
+			l.logger.Args(
+				"duration_ms", elapsed.Milliseconds(),
+				"rows", rows,
+				"sql", sql,
+			))
+	}
+
+	// Log errors
+	if err != nil && (!l.ignoreNotFoundErr || !errors.Is(err, gorm.ErrRecordNotFound)) {
+		l.logger.Error("Database query error",
+			l.logger.Args(
+				"error", err,
+				"duration_ms", elapsed.Milliseconds(),
+				"sql", sql,
+			))
+	}
+}
+
+func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
+	// Optimized DSN with:
+	// - WAL mode for concurrent reads/writes
+	// - page_size=4096 for optimal performance (default is 1024)
+	// - NORMAL synchronous for balance between safety and speed
+	// - cache_size=64MB (64000 KB) for better query performance
+	dsn := cfg.Path + "?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=64000&_page_size=4096"
+	_, err := os.Stat(cfg.Path)
+
+	if errors.Is(err, os.ErrPermission) {
+		logger.WithCaller().Fatal("Permission denied to access database file.", logger.Args("error", err))
+		// Fatal() terminates the program, so no code after this will execute
+	}
+
+	logger.Debug("Permission to access database file granted.", logger.Args("path", cfg.Path))
+	logger.Debug("Initialization of the database with optimized settings (WAL mode, page_size=4096).")
+
+	// Create slow query logger (log queries taking >100ms)
+	slowQueryLogger := NewSlowQueryLogger(logger, 100*time.Millisecond)
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+		PrepareStmt: true,
+		Logger:      slowQueryLogger,
+	})
+
+	if err != nil {
+		logger.WithCaller().Fatal("Failed to connect to the database.", logger.Args("error", err))
+		// Fatal() terminates the program, so no code after this will execute
+	}
+
+	// Get underlying SQL DB for connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.WithCaller().Fatal("Failed to get database instance.", logger.Args("error", err))
+		// Fatal() terminates the program, so no code after this will execute
+	}
+
+	// Configure connection pool
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLife)
+
+	// Run migrations
+	logger.Trace("Running database migrations.")
+	if err := RunMigrations(db); err != nil {
+		logger.WithCaller().Fatal("Failed to run database migrations.", logger.Args("error", err))
+		// Fatal() terminates the program, so no code after this will execute
+	}
+
+	// Apply database optimizations (indexes, etc.)
+	if err := OptimizeDatabase(db, logger); err != nil {
+		logger.Warn("Database optimization had warnings", logger.Args("error", err))
+		// Don't fail on optimization errors, just warn
+	}
+
+	// Run discovery engine in background to speed up startup
+	go func() {
+		logger.Debug("Running log source discovery in background...")
+		engine := discovery.NewEngine(repositories.NewLogSourceRepository(db), logger)
+		if err := engine.Run(logger); err != nil {
+			logger.Warn("Failed to run discovery engine", logger.Args("error", err))
+			return
+		}
+
+		logSourceRepo, err := repositories.NewLogSourceRepository(db).FindAll()
+		if err != nil {
+			logger.Warn("Failed to retrieve log sources", logger.Args("error", err))
+			return
+		}
+
+		logger.Info("Discovered log sources", logger.Args("count", len(logSourceRepo)))
+	}()
+
+	logger.Info("Database connection established successfully.")
+	return db, nil
+}

@@ -1,0 +1,178 @@
+{{define "realtime.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="fas fa-broadcast-tower"></i>
+                Real-time Monitor
+                <span class="badge badge-live ms-2">LIVE</span>
+            </h2>
+            <p class="page-description">Live metrics streaming every 2 seconds</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" id="reconnectStream">
+                <i class="fas fa-plug"></i> Reconnect Stream
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time KPI Cards -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Request Rate</div>
+        <div class="stat-value text-success" id="liveRequestRate">0.00</div>
+        <div class="stat-subtitle">req/sec</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Error Rate</div>
+        <div class="stat-value text-danger" id="liveErrorRate">0.00</div>
+        <div class="stat-subtitle">errors/sec</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-value text-info" id="liveAvgResponse">0</div>
+        <div class="stat-subtitle">Last minute</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Status Distribution</div>
+        <div style="font-size: 0.9rem; margin-top: 10px;">
+            <span class="text-success">2xx: <strong id="live2xx">0</strong></span> |
+            <span class="text-warning">4xx: <strong id="live4xx">0</strong></span> |
+            <span class="text-danger">5xx: <strong id="live5xx">0</strong></span>
+        </div>
+        <div class="stat-subtitle">Last minute</div>
+    </div>
+</div>
+
+<!-- Live Chart -->
+<div class="chart-container large live-metrics mb-4">
+    <div class="chart-header">
+        <h5 class="chart-title">
+            <i class="fas fa-chart-line text-danger"></i>
+            Live Metrics Stream
+            <span class="live-indicator">
+                <span class="live-indicator-dot"></span>
+                STREAMING
+            </span>
+        </h5>
+        <div class="chart-controls">
+            <small class="text-muted">Updates: <span id="updateCount">0</span> | Last: <span id="lastUpdate">-</span></small>
+        </div>
+    </div>
+    <div class="chart-wrapper">
+        <canvas id="liveChart"></canvas>
+    </div>
+</div>
+
+<!-- Per-Service Metrics (Only shown when "All Traffic" is selected) -->
+<div class="chart-container large mb-4" id="perServiceSection">
+    <div class="chart-header">
+        <h5 class="chart-title">
+            <i class="fas fa-server"></i>
+            Request Rate per Service
+        </h5>
+        <div class="chart-controls">
+            <button class="btn btn-sm btn-outline chart-export-btn" onclick="exportPerServiceChart()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+    </div>
+    <div class="per-service-chart-wrapper">
+        <canvas id="perServiceChart"></canvas>
+    </div>
+</div>
+
+<!-- Recent Requests (Live Updates) -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="fas fa-stream"></i>
+            Live Request Stream
+        </h5>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline" id="pauseStream">
+                <i class="fas fa-pause"></i> Pause
+            </button>
+            <button class="btn btn-sm btn-outline" id="clearStream">
+                <i class="fas fa-trash"></i> Clear
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="liveRequestsTable" class="table table-striped table-sm" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Method</th>
+                        <th>Host</th>
+                        <th>Path</th>
+                        <th>Status</th>
+                        <th>Response Time</th>
+                        <th>Country</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody id="liveRequestsBody">
+                    <!-- Populated in real-time -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Status Indicator -->
+<div id="connectionStatus" class="notification" style="display: none;">
+    <i class="notification-icon fas fa-wifi"></i>
+    <div class="notification-content">
+        <strong>Connection Status:</strong> <span id="connectionStatusText">Connected</span>
+    </div>
+</div>
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+    <script src="/static/js/pages/realtime.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('realtime');
+        });
+    </script>
+</body>
+</html>
+{{end}}
