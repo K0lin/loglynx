@@ -19,8 +19,16 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # Final image: small, secure runtime
 FROM gcr.io/distroless/static-debian11
 
+# Create application directory and set as working dir so relative paths like
+# `web/templates/**/*.html` and `geoip/*` resolve inside the container.
+WORKDIR /app
+
 # Copy binary from builder
 COPY --from=builder /out/loglynx /usr/local/bin/loglynx
+
+# Copy web assets (templates + static) so Gin can load templates from
+# the expected relative path `web/templates/**/*.html`.
+COPY --from=builder /src/web ./web
 
 # Optional: create directories for volumes
 VOLUME ["/data", "/app/geoip", "/traefik/logs"]
