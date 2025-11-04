@@ -54,7 +54,6 @@ type LogSourcesConfig struct {
 	TraefikLogPath      string
 	TraefikLogFormat    string // auto, json, clf
 	AutoDiscover        bool
-	WatchInterval       time.Duration
 	InitialImportDays   int  // Only import last N days on first run (0 = import all)
 	InitialImportEnable bool // Enable initial import limiting
 }
@@ -100,7 +99,6 @@ func Load() (*Config, error) {
 			TraefikLogPath:      getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
 			TraefikLogFormat:    getEnv("TRAEFIK_LOG_FORMAT", "auto"),
 			AutoDiscover:        getEnvAsBool("LOG_AUTO_DISCOVER", true),
-			WatchInterval:       getEnvAsDuration("LOG_WATCH_INTERVAL", 5*time.Second),
 			InitialImportDays:   getEnvAsInt("INITIAL_IMPORT_DAYS", 60),
 			InitialImportEnable: getEnvAsBool("INITIAL_IMPORT_ENABLE", true),
 		},

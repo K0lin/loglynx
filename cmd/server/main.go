@@ -138,7 +138,7 @@ func main() {
 	)
 	cleanupService.Start()
 
-	// Initialize ingestion coordinator with initial import limiting
+	// Initialize ingestion coordinator with initial import limiting and performance config
 	logger.Debug("Initializing ingestion coordinator...")
 	coordinator := ingestion.NewCoordinator(
 		sourceRepo,
@@ -148,6 +148,8 @@ func main() {
 		logger,
 		cfg.LogSources.InitialImportDays,
 		cfg.LogSources.InitialImportEnable,
+		cfg.Performance.BatchSize,
+		cfg.Performance.WorkerPoolSize,
 	)
 
 	// Start ingestion engine

@@ -17,19 +17,20 @@ import (
 
 // SourceProcessor processes logs from a single source
 type SourceProcessor struct {
-	source       *models.LogSource
-	parser       parsers.LogParser
-	reader       *IncrementalReader
-	httpRepo     repositories.HTTPRequestRepository
-	sourceRepo   repositories.LogSourceRepository
-	geoIP        *enrichment.GeoIPEnricher
-	logger       *pterm.Logger
-	batchSize    int
-	batchTimeout time.Duration
-	pollInterval time.Duration
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
+	source         *models.LogSource
+	parser         parsers.LogParser
+	reader         *IncrementalReader
+	httpRepo       repositories.HTTPRequestRepository
+	sourceRepo     repositories.LogSourceRepository
+	geoIP          *enrichment.GeoIPEnricher
+	logger         *pterm.Logger
+	batchSize      int
+	workerPoolSize int
+	batchTimeout   time.Duration
+	pollInterval   time.Duration
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
 	// Statistics
 	totalProcessed int64
 	totalErrors    int64
@@ -45,6 +46,8 @@ func NewSourceProcessor(
 	sourceRepo repositories.LogSourceRepository,
 	geoIP *enrichment.GeoIPEnricher,
 	logger *pterm.Logger,
+	batchSize int,
+	workerPoolSize int,
 ) *SourceProcessor {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -55,6 +58,14 @@ func NewSourceProcessor(
 		logger,
 	)
 
+	// Apply defaults if not configured
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
+	if workerPoolSize <= 0 {
+		workerPoolSize = 4
+	}
+
 	return &SourceProcessor{
 		source:         source,
 		parser:         parser,
@@ -63,9 +74,10 @@ func NewSourceProcessor(
 		sourceRepo:     sourceRepo,
 		geoIP:          geoIP,
 		logger:         logger,
-		batchSize:      1000,            // Process 1000 events per batch (10x improvement)
-		batchTimeout:   2 * time.Second, // Or flush after 2 seconds (faster processing)
-		pollInterval:   1 * time.Second, // Check for new logs every second
+		batchSize:      batchSize,         // Configurable via BATCH_SIZE env var
+		workerPoolSize: workerPoolSize,    // Configurable via WORKER_POOL_SIZE env var
+		batchTimeout:   2 * time.Second,   // Or flush after 2 seconds (faster processing)
+		pollInterval:   1 * time.Second,   // Check for new logs every second
 		ctx:            ctx,
 		cancel:         cancel,
 		totalProcessed: 0,
@@ -216,9 +228,8 @@ func (sp *SourceProcessor) parseAndEnrichParallel(lines []string) []*models.HTTP
 		return nil
 	}
 
-	// Number of workers optimized for low-resource environments (0.5 CPU core)
-	// Reduced from 8 to 4 to minimize CPU usage and goroutine overhead
-	numWorkers := 4
+	// Use configured worker pool size (from WORKER_POOL_SIZE env var)
+	numWorkers := sp.workerPoolSize
 	if numWorkers > len(lines) {
 		numWorkers = len(lines)
 	}

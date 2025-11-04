@@ -24,6 +24,8 @@ type Coordinator struct {
 	isRunning           bool
 	initialImportDays   int  // Number of days to import on first run (0 = all)
 	initialImportEnable bool // Enable initial import limiting
+	batchSize           int  // Batch size for log processing
+	workerPoolSize      int  // Worker pool size for parallel parsing
 }
 
 // NewCoordinator creates a new ingestion coordinator
@@ -35,6 +37,8 @@ func NewCoordinator(
 	logger *pterm.Logger,
 	initialImportDays int,
 	initialImportEnable bool,
+	batchSize int,
+	workerPoolSize int,
 ) *Coordinator {
 	return &Coordinator{
 		sourceRepo:          sourceRepo,
@@ -46,6 +50,8 @@ func NewCoordinator(
 		isRunning:           false,
 		initialImportDays:   initialImportDays,
 		initialImportEnable: initialImportEnable,
+		batchSize:           batchSize,
+		workerPoolSize:      workerPoolSize,
 	}
 }
 
@@ -127,6 +133,8 @@ func (c *Coordinator) startSourceProcessor(source *models.LogSource) error {
 		c.sourceRepo,
 		c.geoIP,
 		c.logger,
+		c.batchSize,
+		c.workerPoolSize,
 	)
 
 	// Apply initial import limit if enabled and this is a new source
