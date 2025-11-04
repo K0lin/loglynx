@@ -72,7 +72,7 @@ your-folder/
 │   ├── GeoLite2-City.mmdb     # optional
 │   ├── GeoLite2-ASN.mmdb      # optional
 │   └── GeoLite2-Country.mmdb  # optional
-├── data/                      # database for loglynx service   
+├── loglynx-data/                      # database for loglynx service   
 ├── GeoLite2-Country_20251024/ # MaxMind license
 └──  docker-compose.yml 
 ```
@@ -87,7 +87,7 @@ loglynx:
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/data
+      - ./loglynx-data:/data
       - ./config:/app/geoip                 
       - ./config/traefik/logs:/traefik/logs
     environment:
@@ -270,4 +270,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Made with ❤️ for the community**
+
 
