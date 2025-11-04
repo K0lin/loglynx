@@ -45,12 +45,55 @@ func (r *httpRequestRepo) Create(request *models.HTTPRequest) error {
 }
 
 // CreateBatch inserts multiple HTTP requests in a single transaction
+// OPTIMIZED: Automatically splits large batches to avoid SQLite variable limit (32766)
 func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	if len(requests) == 0 {
 		r.logger.Debug("Empty batch, skipping insert")
 		return nil
 	}
 
+	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
+	// HTTPRequest has ~40 columns, so max safe batch size is ~800 records
+	const MaxSQLiteVariables = 32766
+	const ColumnsPerRecord = 40 // Approximate number of columns in HTTPRequest
+	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // ~819 records
+
+	// If batch is small enough, insert directly
+	if len(requests) <= MaxRecordsPerBatch {
+		return r.insertSubBatch(requests)
+	}
+
+	// Split large batches into smaller chunks
+	r.logger.Debug("Splitting large batch to avoid variable limit",
+		r.logger.Args("total_records", len(requests), "max_per_batch", MaxRecordsPerBatch))
+
+	totalInserted := 0
+	for i := 0; i < len(requests); i += MaxRecordsPerBatch {
+		end := i + MaxRecordsPerBatch
+		if end > len(requests) {
+			end = len(requests)
+		}
+
+		subBatch := requests[i:end]
+		if err := r.insertSubBatch(subBatch); err != nil {
+			r.logger.WithCaller().Error("Failed to insert sub-batch",
+				r.logger.Args("batch_num", (i/MaxRecordsPerBatch)+1, "count", len(subBatch), "error", err))
+			return err
+		}
+
+		totalInserted += len(subBatch)
+		r.logger.Trace("Inserted sub-batch",
+			r.logger.Args("progress", totalInserted, "total", len(requests)))
+	}
+
+	r.logger.Debug("Successfully inserted large batch in chunks",
+		r.logger.Args("total_records", len(requests), "source", requests[0].SourceName))
+
+	return nil
+}
+
+// insertSubBatch performs the actual batch insert within SQLite variable limits
+func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest) error {
 	// Start transaction
 	tx := r.db.Begin()
 	if tx.Error != nil {
@@ -71,9 +114,6 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 		r.logger.WithCaller().Error("Failed to commit transaction", r.logger.Args("error", err))
 		return err
 	}
-
-	r.logger.Debug("Successfully inserted batch",
-		r.logger.Args("count", len(requests), "source", requests[0].SourceName))
 
 	return nil
 }

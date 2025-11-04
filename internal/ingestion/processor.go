@@ -74,6 +74,52 @@ func NewSourceProcessor(
 	}
 }
 
+// ApplyInitialImportLimit applies date-based limiting for initial imports
+// This is called before starting the processor to skip old data
+func (sp *SourceProcessor) ApplyInitialImportLimit(importDays int) error {
+	// Only apply if this is a new source (position = 0)
+	if sp.source.LastPosition != 0 {
+		sp.logger.Debug("Skipping initial import limit (source already has position)",
+			sp.logger.Args("source", sp.source.Name, "position", sp.source.LastPosition))
+		return nil
+	}
+
+	if importDays <= 0 {
+		sp.logger.Debug("Initial import limit disabled (days=0)",
+			sp.logger.Args("source", sp.source.Name))
+		return nil
+	}
+
+	// Calculate cutoff date
+	cutoffDate := time.Now().AddDate(0, 0, -importDays)
+
+	sp.logger.Info("Applying initial import limit",
+		sp.logger.Args("source", sp.source.Name, "import_days", importDays, "cutoff_date", cutoffDate.Format("2006-01-02")))
+
+	// Find starting position based on cutoff date
+	startPos, err := sp.reader.FindStartPositionByDate(cutoffDate, sp.parser)
+	if err != nil {
+		sp.logger.WithCaller().Error("Failed to find start position by date",
+			sp.logger.Args("source", sp.source.Name, "error", err))
+		return err
+	}
+
+	// Update reader position
+	sp.reader.UpdatePosition(startPos, "")
+
+	// Update source tracking in database
+	if err := sp.sourceRepo.UpdateTracking(sp.source.Name, startPos, ""); err != nil {
+		sp.logger.WithCaller().Error("Failed to update source position",
+			sp.logger.Args("source", sp.source.Name, "error", err))
+		return err
+	}
+
+	sp.logger.Info("Initial import limit applied successfully",
+		sp.logger.Args("source", sp.source.Name, "start_position", startPos))
+
+	return nil
+}
+
 // Start begins processing logs from the source
 func (sp *SourceProcessor) Start() {
 	sp.wg.Add(1)

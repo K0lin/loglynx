@@ -126,7 +126,19 @@ func main() {
 		logger.WithCaller().Warn("Discovery engine failed", logger.Args("error", err))
 	}
 
-	// Initialize ingestion coordinator
+	// Initialize database cleanup service
+	logger.Debug("Initializing database cleanup service...")
+	cleanupService := database.NewCleanupService(
+		db,
+		logger,
+		cfg.Database.RetentionDays,
+		cfg.Database.CleanupInterval,
+		cfg.Database.CleanupTime,
+		cfg.Database.VacuumEnabled,
+	)
+	cleanupService.Start()
+
+	// Initialize ingestion coordinator with initial import limiting
 	logger.Debug("Initializing ingestion coordinator...")
 	coordinator := ingestion.NewCoordinator(
 		sourceRepo,
@@ -134,6 +146,8 @@ func main() {
 		parserRegistry,
 		geoIP,
 		logger,
+		cfg.LogSources.InitialImportDays,
+		cfg.LogSources.InitialImportEnable,
 	)
 
 	// Start ingestion engine
@@ -185,6 +199,10 @@ func main() {
 	// Stop ingestion coordinator first (prevents new data writes)
 	logger.Debug("Stopping ingestion coordinator...")
 	coordinator.Stop()
+
+	// Stop cleanup service
+	logger.Debug("Stopping cleanup service...")
+	cleanupService.Stop()
 
 	// Create shutdown context with timeout (30s to handle SSE connections gracefully)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*cfg.Performance.RealtimeMetricsInterval)

@@ -31,10 +31,14 @@ type Config struct {
 
 // DatabaseConfig contains database-related settings
 type DatabaseConfig struct {
-	Path         string
-	MaxOpenConns int
-	MaxIdleConns int
-	ConnMaxLife  time.Duration
+	Path            string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLife     time.Duration
+	RetentionDays   int           // Number of days to retain data (0 = unlimited)
+	CleanupInterval time.Duration // How often to check for cleanup (default: 1 hour)
+	CleanupTime     string        // Time of day to run cleanup (24-hour format, e.g., "02:00")
+	VacuumEnabled   bool          // Run VACUUM after cleanup to reclaim space
 }
 
 // GeoIPConfig contains GeoIP database paths
@@ -47,10 +51,12 @@ type GeoIPConfig struct {
 
 // LogSourcesConfig contains log source paths
 type LogSourcesConfig struct {
-	TraefikLogPath   string
-	TraefikLogFormat string // auto, json, clf
-	AutoDiscover     bool
-	WatchInterval    time.Duration
+	TraefikLogPath      string
+	TraefikLogFormat    string // auto, json, clf
+	AutoDiscover        bool
+	WatchInterval       time.Duration
+	InitialImportDays   int  // Only import last N days on first run (0 = import all)
+	InitialImportEnable bool // Enable initial import limiting
 }
 
 // ServerConfig contains web server settings
@@ -75,10 +81,14 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Database: DatabaseConfig{
-			Path:         getEnv("DB_PATH", "loglynx.db"),
-			MaxOpenConns: getEnvAsInt("DB_MAX_OPEN_CONNS", 10),
-			MaxIdleConns: getEnvAsInt("DB_MAX_IDLE_CONNS", 3),
-			ConnMaxLife:  getEnvAsDuration("DB_CONN_MAX_LIFE", time.Hour),
+			Path:            getEnv("DB_PATH", "loglynx.db"),
+			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 10),
+			MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 3),
+			ConnMaxLife:     getEnvAsDuration("DB_CONN_MAX_LIFE", time.Hour),
+			RetentionDays:   getEnvAsInt("DB_RETENTION_DAYS", 60),
+			CleanupInterval: getEnvAsDuration("DB_CLEANUP_INTERVAL", 1*time.Hour),
+			CleanupTime:     getEnv("DB_CLEANUP_TIME", "02:00"),
+			VacuumEnabled:   getEnvAsBool("DB_VACUUM_ENABLED", true),
 		},
 		GeoIP: GeoIPConfig{
 			CityDBPath:    getEnv("GEOIP_CITY_DB", "geoip/GeoLite2-City.mmdb"),
@@ -87,10 +97,12 @@ func Load() (*Config, error) {
 			Enabled:       getEnvAsBool("GEOIP_ENABLED", true),
 		},
 		LogSources: LogSourcesConfig{
-			TraefikLogPath:   getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
-			TraefikLogFormat: getEnv("TRAEFIK_LOG_FORMAT", "auto"),
-			AutoDiscover:     getEnvAsBool("LOG_AUTO_DISCOVER", true),
-			WatchInterval:    getEnvAsDuration("LOG_WATCH_INTERVAL", 5*time.Second),
+			TraefikLogPath:      getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
+			TraefikLogFormat:    getEnv("TRAEFIK_LOG_FORMAT", "auto"),
+			AutoDiscover:        getEnvAsBool("LOG_AUTO_DISCOVER", true),
+			WatchInterval:       getEnvAsDuration("LOG_WATCH_INTERVAL", 5*time.Second),
+			InitialImportDays:   getEnvAsInt("INITIAL_IMPORT_DAYS", 60),
+			InitialImportEnable: getEnvAsBool("INITIAL_IMPORT_ENABLE", true),
 		},
 		Server: ServerConfig{
 			Host:       getEnv("SERVER_HOST", "0.0.0.0"),

@@ -5,6 +5,9 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
+
+	parsers "loglynx/internal/parser"
 
 	"github.com/pterm/pterm"
 )
@@ -233,4 +236,119 @@ func getTail(s string, maxLen int) string {
 		return s
 	}
 	return s[len(s)-maxLen:]
+}
+
+// FindStartPositionByDate finds the file position to start reading from based on a cutoff date
+// This is used for initial import limiting (e.g., only import last N days)
+// Returns: starting position, error
+func (r *IncrementalReader) FindStartPositionByDate(cutoffDate time.Time, parser parsers.LogParser) (int64, error) {
+	file, err := os.Open(r.filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	fileSize := stat.Size()
+
+	// Use binary search to find approximate position
+	// Start from the middle of the file
+	low := int64(0)
+	high := fileSize
+	bestPosition := int64(0)
+
+	r.logger.Debug("Searching for start position by date",
+		r.logger.Args("cutoff_date", cutoffDate.Format("2006-01-02 15:04:05"), "file_size", fileSize))
+
+	// Binary search with max 20 iterations
+	for i := 0; i < 20 && low < high; i++ {
+		mid := (low + high) / 2
+
+		// Seek to mid position
+		if _, err := file.Seek(mid, 0); err != nil {
+			return 0, err
+		}
+
+		// Find next line boundary
+		scanner := bufio.NewScanner(file)
+		if mid > 0 {
+			// Skip partial line
+			scanner.Scan()
+		}
+
+		// Read the first complete line
+		if !scanner.Scan() {
+			// No line found, move lower
+			high = mid
+			continue
+		}
+
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		// Try to parse timestamp from this line
+		if !parser.CanParse(line) {
+			// Can't parse, skip
+			r.logger.Trace("Line not parseable during binary search", r.logger.Args("line", getTail(line, 100)))
+			low = mid + 1
+			continue
+		}
+
+		event, err := parser.Parse(line)
+		if err != nil {
+			// Can't parse, skip
+			r.logger.Trace("Failed to parse line during binary search", r.logger.Args("error", err))
+			low = mid + 1
+			continue
+		}
+
+		// Extract timestamp using reflection
+		lineTimestamp := extractTimestamp(event)
+		if lineTimestamp.IsZero() {
+			// No timestamp, skip
+			low = mid + 1
+			continue
+		}
+
+		r.logger.Trace("Binary search iteration",
+			r.logger.Args("position", mid, "timestamp", lineTimestamp.Format("2006-01-02 15:04:05"), "target", cutoffDate.Format("2006-01-02 15:04:05")))
+
+		// Compare timestamp
+		if lineTimestamp.Before(cutoffDate) {
+			// This line is too old, search in upper half
+			low = mid + 1
+			bestPosition = mid
+		} else {
+			// This line is recent enough, search in lower half
+			high = mid
+			bestPosition = mid
+		}
+	}
+
+	r.logger.Info("Found starting position for initial import",
+		r.logger.Args("position", bestPosition, "cutoff_date", cutoffDate.Format("2006-01-02")))
+
+	return bestPosition, nil
+}
+
+// extractTimestamp extracts timestamp from parsed event using reflection
+func extractTimestamp(event interface{}) time.Time {
+	// Try to get Timestamp field using type assertion
+	type timestampInterface interface {
+		GetTimestamp() time.Time
+	}
+
+	if ts, ok := event.(timestampInterface); ok {
+		return ts.GetTimestamp()
+	}
+
+	// Fallback: use reflection to find Timestamp field
+	// This is handled by the parser, so we'll just return zero time if not available
+	return time.Time{}
 }

@@ -14,14 +14,16 @@ import (
 
 // Coordinator manages multiple source processors
 type Coordinator struct {
-	sourceRepo   repositories.LogSourceRepository
-	httpRepo     repositories.HTTPRequestRepository
-	parserReg    *parsers.Registry
-	geoIP        *enrichment.GeoIPEnricher
-	processors   []*SourceProcessor
-	logger       *pterm.Logger
-	mu           sync.RWMutex
-	isRunning    bool
+	sourceRepo          repositories.LogSourceRepository
+	httpRepo            repositories.HTTPRequestRepository
+	parserReg           *parsers.Registry
+	geoIP               *enrichment.GeoIPEnricher
+	processors          []*SourceProcessor
+	logger              *pterm.Logger
+	mu                  sync.RWMutex
+	isRunning           bool
+	initialImportDays   int  // Number of days to import on first run (0 = all)
+	initialImportEnable bool // Enable initial import limiting
 }
 
 // NewCoordinator creates a new ingestion coordinator
@@ -31,15 +33,19 @@ func NewCoordinator(
 	parserReg *parsers.Registry,
 	geoIP *enrichment.GeoIPEnricher,
 	logger *pterm.Logger,
+	initialImportDays int,
+	initialImportEnable bool,
 ) *Coordinator {
 	return &Coordinator{
-		sourceRepo: sourceRepo,
-		httpRepo:   httpRepo,
-		parserReg:  parserReg,
-		geoIP:      geoIP,
-		processors: make([]*SourceProcessor, 0),
-		logger:     logger,
-		isRunning:  false,
+		sourceRepo:          sourceRepo,
+		httpRepo:            httpRepo,
+		parserReg:           parserReg,
+		geoIP:               geoIP,
+		processors:          make([]*SourceProcessor, 0),
+		logger:              logger,
+		isRunning:           false,
+		initialImportDays:   initialImportDays,
+		initialImportEnable: initialImportEnable,
 	}
 }
 
@@ -122,6 +128,15 @@ func (c *Coordinator) startSourceProcessor(source *models.LogSource) error {
 		c.geoIP,
 		c.logger,
 	)
+
+	// Apply initial import limit if enabled and this is a new source
+	if c.initialImportEnable && c.initialImportDays > 0 {
+		if err := processor.ApplyInitialImportLimit(c.initialImportDays); err != nil {
+			c.logger.WithCaller().Warn("Failed to apply initial import limit (will import all data)",
+				c.logger.Args("source", source.Name, "error", err))
+			// Don't fail - just proceed with normal import
+		}
+	}
 
 	// Start processor
 	processor.Start()

@@ -49,6 +49,27 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 	}
 	logger.Info("Composite timestamp+response_time index created/verified")
 
+	// Create composite index for summary queries (timestamp, status_code, response_time_ms)
+	// This dramatically improves GetSummary() performance
+	if err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_summary_query
+		ON http_requests(timestamp, status_code, response_time_ms)
+	`).Error; err != nil {
+		logger.Warn("Failed to create summary query index", logger.Args("error", err))
+		return err
+	}
+	logger.Info("Summary query composite index created/verified")
+
+	// Create index for cleanup queries (timestamp for deletion)
+	if err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_timestamp_cleanup
+		ON http_requests(timestamp)
+	`).Error; err != nil {
+		logger.Warn("Failed to create cleanup index", logger.Args("error", err))
+		return err
+	}
+	logger.Info("Cleanup index created/verified")
+
 	// Analyze tables for query optimizer
 	if err := db.Exec("ANALYZE").Error; err != nil {
 		logger.Warn("Failed to analyze database", logger.Args("error", err))
