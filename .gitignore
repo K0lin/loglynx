@@ -30,6 +30,7 @@ config.local.*
 *.db-shm
 *.db-wal
 loglynx.db
+*.mmdb
 
 # Log files
 *.log
