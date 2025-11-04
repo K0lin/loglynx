@@ -25,21 +25,81 @@ LogLynx is a high-performance, real-time log analytics platform designed to prov
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.25 or higher
 - Traefik access logs (optional for initial setup)
 
-### Installation
+### Standalone installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/k0lin/loglynx.git
 cd loglynx
 
+# Customize your installation (None of these parameters are mandatory, but customization for your system is recommended.)
+cp .env.example .env
+
+# Install dependencies
+go mod tidy
+```
+#### Now there are two deployment methods:
+Creating the binary to be executed
+```bash
 # Build
 go build -o loglynx cmd/server/main.go
 
 # Start the server
 ./loglynx
+```
+Run the service directly without creating the binary
+```bash
+# Build and run
+go run cmd/server/main.go
+
+```
+
+### Deployment with docker compose on standard pangolin installation
+This should be your pangolin installation in broad terms if you used the installer from the official documentation.
+```
+your-folder/
+├── config/                    # Pangolin configuration
+│   └── traefik/ 
+│   │  └── logs/
+│   │     └── access.log       # Traefik access log
+│   ├── logs/       
+│   ├── letsencrypt/     
+│   ├── db/      
+│   ├── config.yml
+│   ├── GeoLite2-City.mmdb     # optional
+│   ├── GeoLite2-ASN.mmdb      # optional
+│   └── GeoLite2-Country.mmdb  # optional
+├── data/                      # database for loglynx service   
+├── GeoLite2-Country_20251024/ # MaxMind license
+└──  docker-compose.yml 
+```
+This is the deployment of Docker Compose, which will also contain services such as Pangolin, Traefik, etc. The example configuration is set up using the Pangolin configuration described above.
+```yml
+#other service related to pangolin
+
+loglynx:
+    image: k0lin/loglynx:dev
+    container_name: loglynx
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./config:/app/geoip                 
+      - ./config/traefik/logs:/traefik/logs
+    environment:
+      - DB_PATH=/data/loglynx.db
+      - GEOIP_ENABLED=true  #if the geolite database are installed
+      - GEOIP_CITY_DB=/app/geoip/GeoLite2-City.mmdb  #only if GEOIP_ENABLED is set to true, It is not mandatory to set all three, even just one is fine (obviously it will work with limited functionality)
+      - GEOIP_COUNTRY_DB=/app/geoip/GeoLite2-Country.mmdb  #(only if GEOIP_ENABLED is set to true), It is not mandatory to set all three, even just one is fine (obviously it will work with limited functionality)
+      - GEOIP_ASN_DB=/app/geoip/GeoLite2-ASN.mmdb  #(only if GEOIP_ENABLED is set to true), It is not mandatory to set all three, even just one is fine (obviously it will work with limited functionality)
+      - TRAEFIK_LOG_PATH=/traefik/logs/access.log
+      - LOG_LEVEL=info
+      - SERVER_PRODUCTION=false
+      # There are several configurable environment variables to optimize program startup (check the wiki).
 ```
 
 The dashboard will be available at `http://localhost:8080`
@@ -210,3 +270,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Made with ❤️ for the community**
+
