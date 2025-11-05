@@ -300,65 +300,145 @@ const LogLynxUtils = {
     },
 
     /**
-     * Initialize service filter with type selector
+     * Initialize service filter with multi-select
      */
     initServiceFilter(onChangeCallback) {
-        const filterSelect = document.getElementById('serviceFilter');
+        const toggleBtn = document.getElementById('serviceFilterToggle');
+        const dropdown = document.getElementById('serviceDropdownMenu');
         const filterTypeSelect = document.getElementById('filterType');
-        if (!filterSelect || !filterTypeSelect) return;
+        const searchInput = document.getElementById('serviceSearchInput');
+        const clearBtn = document.getElementById('clearServiceSelection');
+        const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
+
+        if (!toggleBtn || !dropdown || !filterTypeSelect) return;
 
         // Restore from sessionStorage
-        const savedService = sessionStorage.getItem('selectedService');
+        const savedServices = sessionStorage.getItem('selectedServices');
         const savedType = sessionStorage.getItem('selectedServiceType') || 'auto';
 
-        if (savedService) {
-            filterSelect.value = savedService;
-            filterTypeSelect.value = savedType;
-            LogLynxAPI.setServiceFilter(savedService, savedType);
+        if (savedServices) {
+            try {
+                const services = JSON.parse(savedServices);
+                LogLynxAPI.setServiceFilters(services);
+            } catch (e) {
+                console.error('Failed to parse saved services:', e);
+            }
         }
+        filterTypeSelect.value = savedType;
+
+        // Toggle dropdown visibility
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('show');
+            toggleBtn.classList.toggle('open');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.remove('show');
+                toggleBtn.classList.remove('open');
+            }
+        });
 
         // Handle filter type changes
-        filterTypeSelect.addEventListener('change', (e) => {
-            const serviceType = e.target.value;
-            const service = filterSelect.value;
+        filterTypeSelect.addEventListener('change', () => {
+            const newType = filterTypeSelect.value;
 
-            LogLynxAPI.setServiceFilter(service, serviceType);
-            sessionStorage.setItem('selectedServiceType', serviceType);
+            // Remove selected services that don't match the new type
+            const currentServices = LogLynxAPI.getServiceFilters();
+            let validServices = currentServices;
 
-            // Reload service list based on new type
-            this.loadServiceFilter();
-
-            if (onChangeCallback && service) {
-                onChangeCallback(service, serviceType);
+            if (newType !== 'auto') {
+                validServices = currentServices.filter(s => s.type === newType);
             }
-        });
 
-        // Handle service selection changes
-        filterSelect.addEventListener('change', (e) => {
-            const service = e.target.value;
-            const serviceType = filterTypeSelect.value;
-
-            LogLynxAPI.setServiceFilter(service, serviceType);
-
-            if (service) {
-                sessionStorage.setItem('selectedService', service);
+            // Update selection with only valid services
+            LogLynxAPI.setServiceFilters(validServices);
+            if (validServices.length === 0) {
+                sessionStorage.removeItem('selectedServices');
+                // Check "All Traffic" checkbox
+                if (allTrafficCheckbox) {
+                    allTrafficCheckbox.checked = true;
+                }
             } else {
-                sessionStorage.removeItem('selectedService');
+                sessionStorage.setItem('selectedServices', JSON.stringify(validServices));
+                // Uncheck "All Traffic" if there are valid services
+                if (allTrafficCheckbox) {
+                    allTrafficCheckbox.checked = false;
+                }
             }
 
-            if (onChangeCallback) {
-                onChangeCallback(service, serviceType);
+            // Save the selected type
+            sessionStorage.setItem('selectedServiceType', newType);
+
+            // Reload service list and update label
+            this.loadServiceFilter();
+            this.updateServiceFilterLabel();
+
+            // Trigger callback if selection changed
+            if (this._serviceFilterCallback) {
+                this._serviceFilterCallback();
             }
         });
+
+        // Handle "All Traffic" checkbox
+        if (allTrafficCheckbox) {
+            allTrafficCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    // Uncheck all other checkboxes
+                    document.querySelectorAll('.service-option input[type="checkbox"]').forEach(cb => {
+                        if (cb !== allTrafficCheckbox) cb.checked = false;
+                    });
+                    LogLynxAPI.setServiceFilters([]);
+                    sessionStorage.removeItem('selectedServices');
+                    this.updateServiceFilterLabel();
+                    if (onChangeCallback) onChangeCallback();
+                }
+            });
+        }
+
+        // Handle search input
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                document.querySelectorAll('.service-option').forEach(option => {
+                    if (option.querySelector('input').value === '') return; // Skip "All Traffic"
+                    const text = option.textContent.toLowerCase();
+                    option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
+                });
+            });
+        }
+
+        // Handle clear button
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                document.querySelectorAll('.service-option input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                allTrafficCheckbox.checked = true;
+                LogLynxAPI.setServiceFilters([]);
+                sessionStorage.removeItem('selectedServices');
+                this.updateServiceFilterLabel();
+                if (onChangeCallback) onChangeCallback();
+            });
+        }
+
+        // Store callback for later use
+        this._serviceFilterCallback = onChangeCallback;
+
+        // Initial load
+        this.loadServiceFilter();
+        this.updateServiceFilterLabel();
     },
 
     /**
      * Load services into filter with type information
      */
     async loadServiceFilter() {
-        const filterSelect = document.getElementById('serviceFilter');
+        const optionsContainer = document.getElementById('serviceOptions');
         const filterTypeSelect = document.getElementById('filterType');
-        if (!filterSelect) return;
+        if (!optionsContainer) return;
 
         const result = await LogLynxAPI.getServices();
         if (result.success && result.data) {
@@ -366,7 +446,11 @@ const LogLynxUtils = {
             const currentType = filterTypeSelect ? filterTypeSelect.value : 'auto';
 
             // Clear existing options except "All Traffic"
-            filterSelect.innerHTML = '<option value="">All Traffic</option>';
+            const allTrafficOption = optionsContainer.querySelector('label:first-child');
+            optionsContainer.innerHTML = '';
+            if (allTrafficOption) {
+                optionsContainer.appendChild(allTrafficOption);
+            }
 
             // Filter services based on selected type
             let services = result.data;
@@ -374,11 +458,27 @@ const LogLynxUtils = {
                 services = services.filter(s => s.type === currentType);
             }
 
-            // Add service options with type labels
+            // Get currently selected services, but only those matching the current type
+            const currentServices = LogLynxAPI.getServiceFilters();
+            const validCurrentServices = currentType === 'auto'
+                ? currentServices
+                : currentServices.filter(s => s.type === currentType);
+            const currentServiceNames = validCurrentServices.map(s => s.name);
+
+            // Add service options with checkboxes
             services.forEach(service => {
-                const option = document.createElement('option');
-                option.value = service.name;
-                option.setAttribute('data-type', service.type);
+                const label = document.createElement('label');
+                label.className = 'service-option';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = service.name;
+                checkbox.setAttribute('data-type', service.type);
+
+                // Check if this service is currently selected
+                if (currentServiceNames.includes(service.name)) {
+                    checkbox.checked = true;
+                }
 
                 // Create a row object for formatHostDisplay based on service type
                 let rowObj = {};
@@ -389,23 +489,91 @@ const LogLynxUtils = {
                 } else if (service.type === 'host') {
                     rowObj.host = service.name;
                 } else {
-                    // Auto - try to determine which field it is
                     rowObj.backend_name = service.name;
                 }
 
                 // Format display using formatHostDisplay
                 const displayName = this.formatHostDisplay(rowObj, service.name);
                 const typeLabel = this.formatServiceType(service.type);
-                option.textContent = `${displayName} (${typeLabel}) - ${this.formatNumber(service.count)}`;
+                const displayText = `${displayName} (${typeLabel}) - ${this.formatNumber(service.count)}`;
 
-                filterSelect.appendChild(option);
+                const span = document.createElement('span');
+                span.textContent = displayText;
+                span.title = service.name; // Tooltip with full name
+
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                optionsContainer.appendChild(label);
+
+                // Handle checkbox changes
+                checkbox.addEventListener('change', () => {
+                    this.handleServiceCheckboxChange();
+                });
             });
+        }
+    },
 
-            // Restore selection
-            const savedService = sessionStorage.getItem('selectedService');
-            if (savedService) {
-                filterSelect.value = savedService;
+    /**
+     * Handle service checkbox change
+     */
+    handleServiceCheckboxChange() {
+        const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
+        const checkboxes = document.querySelectorAll('.service-option input[type="checkbox"]:not(#allTrafficCheckbox)');
+
+        // Get all checked services
+        const selectedServices = [];
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                selectedServices.push({
+                    name: cb.value,
+                    type: cb.getAttribute('data-type')
+                });
             }
+        });
+
+        // If no services selected, check "All Traffic"
+        if (selectedServices.length === 0) {
+            allTrafficCheckbox.checked = true;
+            LogLynxAPI.setServiceFilters([]);
+            sessionStorage.removeItem('selectedServices');
+        } else {
+            allTrafficCheckbox.checked = false;
+            LogLynxAPI.setServiceFilters(selectedServices);
+            sessionStorage.setItem('selectedServices', JSON.stringify(selectedServices));
+        }
+
+        // Update label and trigger callback
+        this.updateServiceFilterLabel();
+        if (this._serviceFilterCallback) {
+            this._serviceFilterCallback();
+        }
+    },
+
+    /**
+     * Update the service filter button label
+     */
+    updateServiceFilterLabel() {
+        const label = document.getElementById('serviceFilterLabel');
+        if (!label) return;
+
+        const selectedServices = LogLynxAPI.getServiceFilters();
+
+        if (selectedServices.length === 0) {
+            label.textContent = 'All Traffic';
+        } else if (selectedServices.length === 1) {
+            // Create row object for display
+            const service = selectedServices[0];
+            let rowObj = {};
+            if (service.type === 'backend_name') {
+                rowObj.backend_name = service.name;
+            } else if (service.type === 'backend_url') {
+                rowObj.backend_url = service.name;
+            } else if (service.type === 'host') {
+                rowObj.host = service.name;
+            }
+            label.textContent = this.formatHostDisplay(rowObj, service.name);
+        } else {
+            label.textContent = `${selectedServices.length} Services Selected`;
         }
     },
 
@@ -667,6 +835,241 @@ const LogLynxUtils = {
         }
     },
 
+    /**
+     * Initialize Hide My Traffic filter
+     */
+    initHideMyTrafficFilter(onChangeCallback) {
+        const checkbox = document.getElementById('hideMyTrafficCheckbox');
+        const container = document.getElementById('hideTrafficServicesContainer');
+        const toggleBtn = document.getElementById('hideTrafficToggle');
+        const dropdown = document.getElementById('hideTrafficDropdownMenu');
+        const searchInput = document.getElementById('hideTrafficSearchInput');
+        const clearBtn = document.getElementById('clearHideTrafficSelection');
+        const allServicesCheckbox = document.getElementById('hideAllServicesCheckbox');
+
+        if (!checkbox) return;
+
+        // Restore from sessionStorage
+        const hideEnabled = sessionStorage.getItem('hideMyTraffic') === 'true';
+        const hideServices = sessionStorage.getItem('hideMyTrafficServices');
+
+        checkbox.checked = hideEnabled;
+        if (hideEnabled && container) {
+            container.style.display = 'flex';
+        }
+
+        if (hideServices) {
+            try {
+                const services = JSON.parse(hideServices);
+                LogLynxAPI.setHideTrafficFilters(services);
+            } catch (e) {
+                console.error('Failed to parse hide traffic services:', e);
+            }
+        }
+
+        // Handle checkbox toggle
+        if (checkbox) {
+            checkbox.addEventListener('change', (e) => {
+                const isEnabled = e.target.checked;
+                sessionStorage.setItem('hideMyTraffic', isEnabled);
+                LogLynxAPI.setHideMyTraffic(isEnabled);
+
+                if (container) {
+                    container.style.display = isEnabled ? 'flex' : 'none';
+                }
+
+                if (onChangeCallback) {
+                    onChangeCallback();
+                }
+            });
+        }
+
+        // Toggle dropdown
+        if (toggleBtn && dropdown) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dropdown.classList.toggle('show');
+                toggleBtn.classList.toggle('open');
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                    toggleBtn.classList.remove('open');
+                }
+            });
+        }
+
+        // Handle "All Services" checkbox
+        if (allServicesCheckbox) {
+            allServicesCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]').forEach(cb => {
+                        if (cb !== allServicesCheckbox) cb.checked = false;
+                    });
+                    LogLynxAPI.setHideTrafficFilters([]);
+                    sessionStorage.removeItem('hideMyTrafficServices');
+                    this.updateHideTrafficLabel();
+                    if (onChangeCallback) onChangeCallback();
+                }
+            });
+        }
+
+        // Handle search
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                document.querySelectorAll('#hideTrafficOptions .service-option').forEach(option => {
+                    if (option.querySelector('input').value === '') return;
+                    const text = option.textContent.toLowerCase();
+                    option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
+                });
+            });
+        }
+
+        // Handle clear button
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                allServicesCheckbox.checked = true;
+                LogLynxAPI.setHideTrafficFilters([]);
+                sessionStorage.removeItem('hideMyTrafficServices');
+                this.updateHideTrafficLabel();
+                if (onChangeCallback) onChangeCallback();
+            });
+        }
+
+        // Store callback
+        this._hideTrafficCallback = onChangeCallback;
+
+        // Initial load
+        this.loadHideTrafficServices();
+        this.updateHideTrafficLabel();
+    },
+
+    /**
+     * Load services into hide traffic filter
+     */
+    async loadHideTrafficServices() {
+        const optionsContainer = document.getElementById('hideTrafficOptions');
+        if (!optionsContainer) return;
+
+        const result = await LogLynxAPI.getServices();
+        if (result.success && result.data) {
+            // Clear existing options except "All Services"
+            const allServicesOption = optionsContainer.querySelector('label:first-child');
+            optionsContainer.innerHTML = '';
+            if (allServicesOption) {
+                optionsContainer.appendChild(allServicesOption);
+            }
+
+            const currentServices = LogLynxAPI.getHideTrafficFilters();
+            const currentServiceNames = currentServices.map(s => s.name);
+
+            // Add all services (no filtering by type)
+            result.data.forEach(service => {
+                const label = document.createElement('label');
+                label.className = 'service-option';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = service.name;
+                checkbox.setAttribute('data-type', service.type);
+
+                if (currentServiceNames.includes(service.name)) {
+                    checkbox.checked = true;
+                }
+
+                let rowObj = {};
+                if (service.type === 'backend_name') {
+                    rowObj.backend_name = service.name;
+                } else if (service.type === 'backend_url') {
+                    rowObj.backend_url = service.name;
+                } else if (service.type === 'host') {
+                    rowObj.host = service.name;
+                }
+
+                const displayName = this.formatHostDisplay(rowObj, service.name);
+                const typeLabel = this.formatServiceType(service.type);
+                const displayText = `${displayName} (${typeLabel}) - ${this.formatNumber(service.count)}`;
+
+                const span = document.createElement('span');
+                span.textContent = displayText;
+                span.title = service.name;
+
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                optionsContainer.appendChild(label);
+
+                checkbox.addEventListener('change', () => {
+                    this.handleHideTrafficCheckboxChange();
+                });
+            });
+        }
+    },
+
+    /**
+     * Handle hide traffic checkbox change
+     */
+    handleHideTrafficCheckboxChange() {
+        const allServicesCheckbox = document.getElementById('hideAllServicesCheckbox');
+        const checkboxes = document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]:not(#hideAllServicesCheckbox)');
+
+        const selectedServices = [];
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                selectedServices.push({
+                    name: cb.value,
+                    type: cb.getAttribute('data-type')
+                });
+            }
+        });
+
+        if (selectedServices.length === 0) {
+            allServicesCheckbox.checked = true;
+            LogLynxAPI.setHideTrafficFilters([]);
+            sessionStorage.removeItem('hideMyTrafficServices');
+        } else {
+            allServicesCheckbox.checked = false;
+            LogLynxAPI.setHideTrafficFilters(selectedServices);
+            sessionStorage.setItem('hideMyTrafficServices', JSON.stringify(selectedServices));
+        }
+
+        this.updateHideTrafficLabel();
+        if (this._hideTrafficCallback) {
+            this._hideTrafficCallback();
+        }
+    },
+
+    /**
+     * Update hide traffic label
+     */
+    updateHideTrafficLabel() {
+        const label = document.getElementById('hideTrafficLabel');
+        if (!label) return;
+
+        const selectedServices = LogLynxAPI.getHideTrafficFilters();
+
+        if (selectedServices.length === 0) {
+            label.textContent = 'All Services';
+        } else if (selectedServices.length === 1) {
+            const service = selectedServices[0];
+            let rowObj = {};
+            if (service.type === 'backend_name') {
+                rowObj.backend_name = service.name;
+            } else if (service.type === 'backend_url') {
+                rowObj.backend_url = service.name;
+            } else if (service.type === 'host') {
+                rowObj.host = service.name;
+            }
+            label.textContent = this.formatHostDisplay(rowObj, service.name);
+        } else {
+            label.textContent = `${selectedServices.length} Services`;
+        }
+    },
 
     extractBackendName(backendName) {
         if (!backendName || backendName === '') {

@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"loglynx/internal/database/models"
+	"strings"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -13,7 +14,7 @@ type HTTPRequestRepository interface {
 	Create(request *models.HTTPRequest) error
 	CreateBatch(requests []*models.HTTPRequest) error
 	FindByID(id uint) (*models.HTTPRequest, error)
-	FindAll(limit int, offset int, serviceName string, serviceType string) ([]*models.HTTPRequest, error)
+	FindAll(limit int, offset int, serviceName string, serviceType string, clientIP string, excludeServices []ServiceFilter) ([]*models.HTTPRequest, error)
 	FindBySourceName(sourceName string, limit int) ([]*models.HTTPRequest, error)
 	FindByTimeRange(start, end time.Time, limit int) ([]*models.HTTPRequest, error)
 	Count() (int64, error)
@@ -132,12 +133,40 @@ func (r *httpRequestRepo) FindByID(id uint) (*models.HTTPRequest, error) {
 }
 
 // FindAll retrieves all HTTP requests with pagination
-func (r *httpRequestRepo) FindAll(limit int, offset int, serviceName string, serviceType string) ([]*models.HTTPRequest, error) {
+func (r *httpRequestRepo) FindAll(limit int, offset int, serviceName string, serviceType string, clientIP string, excludeServices []ServiceFilter) ([]*models.HTTPRequest, error) {
 	var requests []*models.HTTPRequest
 	query := r.db.Order("timestamp DESC")
 
 	// Apply service filter if provided
 	query = r.applyServiceFilter(query, serviceName, serviceType)
+	
+	// Apply exclude own IP if specified
+	if clientIP != "" {
+		if len(excludeServices) == 0 {
+			query = query.Where("client_ip != ?", clientIP)
+		} else {
+			// Build exclude condition for specific services
+			serviceConds := []string{}
+			args := []interface{}{clientIP}
+			for _, filter := range excludeServices {
+				switch filter.Type {
+				case "backend_name":
+					serviceConds = append(serviceConds, "backend_name = ?")
+					args = append(args, filter.Name)
+				case "backend_url":
+					serviceConds = append(serviceConds, "backend_url = ?")
+					args = append(args, filter.Name)
+				case "host":
+					serviceConds = append(serviceConds, "host = ?")
+					args = append(args, filter.Name)
+				}
+			}
+			if len(serviceConds) > 0 {
+				whereClause := "NOT (client_ip = ? AND (" + strings.Join(serviceConds, " OR ") + "))"
+				query = query.Where(whereClause, args...)
+			}
+		}
+	}
 
 	if limit > 0 {
 		query = query.Limit(limit)

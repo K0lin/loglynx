@@ -395,6 +395,13 @@ function initServiceFilterWithReload() {
     });
 }
 
+// Initialize hide my traffic filter with reload callback
+function initHideTrafficFilterWithReload() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        loadDashboardData();
+    });
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
@@ -408,6 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize controls
     initTimeRangeSelector();
     initServiceFilterWithReload();
+    initHideTrafficFilterWithReload();
 
     // Initial data load
     loadDashboardData();

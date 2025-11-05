@@ -7,8 +7,10 @@ const LogLynxAPI = {
     baseURL: '/api/v1',
     cache: new Map(),
     cacheTimeout: 30000, // 30 seconds default cache
-    currentService: '', // Currently selected service
+    currentServices: [], // Array of selected services [{name: 'X', type: 'backend_name'}, ...]
     currentServiceType: 'auto', // Currently selected service type (auto, backend_name, backend_url, host)
+    hideMyTraffic: false, // Whether to hide own IP traffic
+    hideTrafficServices: [], // Array of services to hide traffic on [{name: 'X', type: 'backend_name'}, ...]
 
     /**
      * Make a GET request with optional caching
@@ -50,13 +52,28 @@ const LogLynxAPI = {
     buildURL(endpoint, params = {}) {
         const url = new URL(this.baseURL + endpoint, window.location.origin);
 
-        // Add service filter if set
-        if (this.currentService) {
-            params.service = this.currentService;
-            params.service_type = this.currentServiceType;
+        // Add service filters if set (multiple services)
+        if (this.currentServices && this.currentServices.length > 0) {
+            this.currentServices.forEach(service => {
+                url.searchParams.append('services[]', service.name);
+                url.searchParams.append('service_types[]', service.type);
+            });
         }
 
-        // Add all parameters
+        // Add hide my traffic parameters
+        if (this.hideMyTraffic) {
+            url.searchParams.append('exclude_own_ip', 'true');
+
+            // Add exclude services if specified
+            if (this.hideTrafficServices && this.hideTrafficServices.length > 0) {
+                this.hideTrafficServices.forEach(service => {
+                    url.searchParams.append('exclude_services[]', service.name);
+                    url.searchParams.append('exclude_service_types[]', service.type);
+                });
+            }
+        }
+
+        // Add all other parameters
         Object.keys(params).forEach(key => {
             if (params[key] !== null && params[key] !== undefined) {
                 url.searchParams.append(key, params[key]);
@@ -67,22 +84,43 @@ const LogLynxAPI = {
     },
 
     /**
-     * Set service filter for all requests
+     * Set service filters for all requests (multiple services)
+     * @param {Array} services - Array of {name: string, type: string} objects
      */
-    setServiceFilter(service, serviceType = 'auto') {
-        this.currentService = service;
-        this.currentServiceType = serviceType;
+    setServiceFilters(services) {
+        this.currentServices = services || [];
         this.clearCache(); // Clear cache when filter changes
     },
 
     /**
-     * Get current service filter
+     * Get current service filters
+     */
+    getServiceFilters() {
+        return this.currentServices;
+    },
+
+    /**
+     * DEPRECATED: Use setServiceFilters instead
+     */
+    setServiceFilter(service, serviceType = 'auto') {
+        if (service) {
+            this.setServiceFilters([{name: service, type: serviceType}]);
+        } else {
+            this.setServiceFilters([]);
+        }
+    },
+
+    /**
+     * DEPRECATED: Use getServiceFilters instead
      */
     getServiceFilter() {
-        return {
-            service: this.currentService,
-            type: this.currentServiceType
-        };
+        if (this.currentServices.length > 0) {
+            return {
+                service: this.currentServices[0].name,
+                type: this.currentServices[0].type
+            };
+        }
+        return { service: '', type: 'auto' };
     },
 
     /**
@@ -97,6 +135,38 @@ const LogLynxAPI = {
      */
     getHostFilter() {
         return this.currentService;
+    },
+
+    /**
+     * Set hide my traffic filter
+     * @param {boolean} enabled - Whether to hide own IP traffic
+     */
+    setHideMyTraffic(enabled) {
+        this.hideMyTraffic = enabled;
+        this.clearCache();
+    },
+
+    /**
+     * Get hide my traffic status
+     */
+    getHideMyTraffic() {
+        return this.hideMyTraffic;
+    },
+
+    /**
+     * Set services to hide traffic on
+     * @param {Array} services - Array of {name: string, type: string} objects
+     */
+    setHideTrafficFilters(services) {
+        this.hideTrafficServices = services || [];
+        this.clearCache();
+    },
+
+    /**
+     * Get hide traffic service filters
+     */
+    getHideTrafficFilters() {
+        return this.hideTrafficServices;
     },
 
     /**
