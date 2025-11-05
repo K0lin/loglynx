@@ -588,6 +588,13 @@ function initServiceFilterWithReload() {
 }
 
 // Initialize page
+// Initialize hide my traffic filter with reload callback
+function initHideTrafficFilterWithReload() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        loadUserAnalyticsData();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize all charts
     initDeviceTypeChart();
@@ -596,6 +603,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize controls
     initServiceFilterWithReload();
+    initHideTrafficFilterWithReload();
 
     // Initial data load
     loadUserAnalyticsData();

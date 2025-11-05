@@ -633,6 +633,13 @@ function initServiceFilterWithReload() {
 }
 
 // Initialize page
+// Initialize hide my traffic filter with reload callback
+function initHideTrafficFilterWithReload() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        loadPerformanceData();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize all charts
     initPerformanceTimelineChart();
@@ -643,6 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize controls
     initTimeRangeSelector();
     initServiceFilterWithReload();
+    initHideTrafficFilterWithReload();
 
     // Initial data load
     loadPerformanceData();

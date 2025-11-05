@@ -634,6 +634,13 @@ function initServiceFilterWithReload() {
 }
 
 // Initialize page
+// Initialize hide my traffic filter with reload callback
+function initHideTrafficFilterWithReload() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        loadTrafficData();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize all charts
     initTrafficTimelineChart();
@@ -647,6 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTimeRangeSelector();
     initHeatmapDaysSelector();
     initServiceFilterWithReload();
+    initHideTrafficFilterWithReload();
 
     // Initial data load
     loadTrafficData();

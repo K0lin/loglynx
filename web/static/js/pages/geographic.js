@@ -700,6 +700,13 @@ function initServiceFilterWithReload() {
 }
 
 // Initialize page
+// Initialize hide my traffic filter with reload callback
+function initHideTrafficFilterWithReload() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        loadGeographicData();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
     initContinentChart();
@@ -707,6 +714,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize controls
     initServiceFilterWithReload();
+    initHideTrafficFilterWithReload();
 
     // Initial data load
     loadGeographicData();

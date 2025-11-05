@@ -353,6 +353,17 @@ function initEventListeners() {
 }
 
 // Initialize page
+// Initialize hide my traffic filter with reconnect callback
+function initHideTrafficFilterWithReconnect() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        // Reconnect to stream with new filter
+        if (eventSource) {
+            eventSource.close();
+        }
+        connectRealtimeStream();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
     initLiveChart();
@@ -363,6 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize service filter
     initServiceFilterWithReconnect();
+    initHideTrafficFilterWithReconnect();
 
     // Initialize event listeners
     initEventListeners();
