@@ -4,7 +4,7 @@ info:
   description: |
     LogLynx is an advanced log analytics platform for analyzing Traefik access logs and other log sources.
     This API provides comprehensive statistics, real-time metrics, and detailed insights into your web traffic.
-    
+
     ## Features
     - **Summary Statistics**: Get overall metrics including requests, visitors, bandwidth, and response times
     - **Timeline Data**: Analyze traffic patterns over time with customizable time ranges
@@ -13,20 +13,56 @@ info:
     - **Real-time Monitoring**: Stream live metrics via Server-Sent Events (SSE)
     - **Performance Metrics**: Track response times and backend health
     - **Geographic Analytics**: Analyze traffic by country and region
-    
-    ## Query Parameters
-    Most endpoints support optional filtering:
-    - `host`: Filter results by backend/service name
-    - `limit`: Limit the number of results (varies by endpoint)
-    - `hours`: Specify time range in hours for timeline queries
-    - `days`: Specify time range in days for heatmap queries
-    
+    - **IP Analytics**: Deep-dive analytics for specific IP addresses
+    - **Service Filtering**: Filter by backend name, URL, or host with intelligent auto-detection
+
+    ## Service Filtering
+    Most endpoints support service-based filtering with the following parameters:
+
+    ### Single Service Filtering
+    - `service`: Service name to filter by (e.g., "api-service", "web-frontend")
+    - `service_type`: Type of service identifier
+      - `auto` (default): Automatically detects and uses backend_name, backend_url, or host
+      - `backend_name`: Filter by Traefik backend name
+      - `backend_url`: Filter by backend URL
+      - `host`: Filter by HTTP Host header
+    - `host`: Legacy parameter (backward compatible), equivalent to `service` with `service_type=auto`
+
+    ### Multi-Service Filtering (Array Parameters)
+    For filtering across multiple services simultaneously, use array parameters:
+    - `services[]`: Array of service names (can be repeated)
+    - `service_types[]`: Corresponding array of service types (must match length of services[])
+
+    **Example**: Filter for two services
+    ```
+    /api/v1/stats/summary?services[]=api-service&service_types[]=backend_name&services[]=web-app&service_types[]=host
+    ```
+
+    ## Hide My Traffic
+    Endpoints that return request data support excluding your own IP address:
+    - `exclude_own_ip`: Set to `true` to exclude requests from your IP (boolean)
+    - `exclude_services[]`: Optional array of service names to exclude your IP from (if omitted, excludes from all services)
+    - `exclude_service_types[]`: Corresponding array of service types for exclude_services[]
+
+    **Example**: Hide my traffic only on specific services
+    ```
+    /api/v1/requests/recent?exclude_own_ip=true&exclude_services[]=admin-panel&exclude_service_types[]=backend_name
+    ```
+
+    ## Common Query Parameters
+    - `limit`: Maximum number of results (varies by endpoint, typically 1-100)
+    - `offset`: Pagination offset for results
+    - `hours`: Time range in hours (1-8760, default varies by endpoint)
+    - `days`: Time range in days (1-365, default varies by endpoint)
+
   version: 1.0.0
   contact:
     name: LogLynx Support
+    url: https://github.com/k0lin/loglynx
   license:
     name: MIT
-    
+    url: https://opensource.org/licenses/MIT
+
 servers:
   - url: http://localhost:8080/api/v1
     description: Local development server
@@ -57,10 +93,23 @@ paths:
       tags:
         - Summary
       summary: Get summary statistics
-      description: Returns overall statistics including total requests, unique visitors, bandwidth, success rates, and top items
+      description: |
+        Returns overall statistics including total requests, unique visitors, bandwidth, success rates, and top items.
+
+        **Service Filtering**: Use `service` and `service_type` for single service filtering, or `services[]` and `service_types[]` for multi-service filtering.
+        Legacy `host` parameter is supported for backward compatibility.
+
+        **Hide My Traffic**: Use `exclude_own_ip=true` to exclude your IP from results.
       operationId: getSummary
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
         '200':
           description: Summary statistics
@@ -76,19 +125,20 @@ paths:
       tags:
         - Timeline
       summary: Get timeline statistics
-      description: Returns time-series data for requests, visitors, bandwidth, and response times
+      description: |
+        Returns time-series data for requests, visitors, bandwidth, and response times.
+        Supports service filtering and hide my traffic functionality.
       operationId: getTimeline
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - name: hours
-          in: query
-          description: Number of hours to look back (1-8760, default 168 for 7 days)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-            default: 168
-          example: 168
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
         '200':
           description: Timeline data
@@ -106,18 +156,20 @@ paths:
       tags:
         - Timeline
       summary: Get status code timeline
-      description: Returns status code distribution over time for stacked area charts
+      description: |
+        Returns status code distribution over time for stacked area charts.
+        Supports service filtering and hide my traffic functionality.
       operationId: getStatusCodeTimeline
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - name: hours
-          in: query
-          description: Number of hours to look back
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-            default: 168
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
         '200':
           description: Status code timeline data
@@ -135,18 +187,20 @@ paths:
       tags:
         - Timeline
       summary: Get traffic heatmap
-      description: Returns hourly traffic data grouped by day of week for heatmap visualization
+      description: |
+        Returns hourly traffic data grouped by day of week for heatmap visualization.
+        Supports service filtering and hide my traffic functionality.
       operationId: getTrafficHeatmap
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - name: days
-          in: query
-          description: Number of days to analyze (1-365, default 30)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 365
-            default: 30
+        - $ref: '#/components/parameters/DaysParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
         '200':
           description: Traffic heatmap data
@@ -167,8 +221,15 @@ paths:
       description: Returns most accessed paths/URLs with hits, visitors, response time, and bandwidth
       operationId: getTopPaths
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top paths
@@ -189,7 +250,14 @@ paths:
       description: Returns countries with the most traffic
       operationId: getTopCountries
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
           in: query
           description: Maximum number of results (0-500, default 10)
@@ -218,8 +286,15 @@ paths:
       description: Returns IP addresses with the most requests
       operationId: getTopIPs
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top IP addresses
@@ -240,8 +315,15 @@ paths:
       description: Returns most common user agent strings
       operationId: getTopUserAgents
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top user agents
@@ -262,8 +344,15 @@ paths:
       description: Returns most common browsers
       operationId: getTopBrowsers
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top browsers
@@ -284,8 +373,15 @@ paths:
       description: Returns most common operating systems
       operationId: getTopOperatingSystems
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top operating systems
@@ -306,8 +402,15 @@ paths:
       description: Returns Autonomous System Numbers with the most traffic
       operationId: getTopASNs
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top ASNs
@@ -328,8 +431,15 @@ paths:
       description: Returns backend services with traffic and performance metrics
       operationId: getTopBackends
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Top backends
@@ -350,7 +460,14 @@ paths:
       description: Returns top referrer URLs
       operationId: getTopReferrers
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
           in: query
           description: Maximum number of results (1-100, default 10)
@@ -379,7 +496,14 @@ paths:
       description: Returns aggregated referrer traffic by domain
       operationId: getTopReferrerDomains
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
           in: query
           description: Maximum number of results (0 = unlimited, default 10)
@@ -407,7 +531,15 @@ paths:
       description: Returns distribution of HTTP status codes
       operationId: getStatusCodeDistribution
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Status code distribution
@@ -428,7 +560,15 @@ paths:
       description: Returns distribution of HTTP methods (GET, POST, etc.)
       operationId: getMethodDistribution
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: HTTP method distribution
@@ -449,7 +589,15 @@ paths:
       description: Returns distribution of HTTP protocols (HTTP/1.1, HTTP/2, etc.)
       operationId: getProtocolDistribution
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Protocol distribution
@@ -470,7 +618,15 @@ paths:
       description: Returns distribution of TLS/SSL versions
       operationId: getTLSVersionDistribution
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: TLS version distribution
@@ -491,7 +647,15 @@ paths:
       description: Returns distribution of device types (desktop, mobile, tablet, bot)
       operationId: getDeviceTypeDistribution
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Device type distribution
@@ -512,7 +676,15 @@ paths:
       description: Returns response time metrics including min, max, avg, and percentiles
       operationId: getResponseTimeStats
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+
       responses:
         '200':
           description: Response time statistics
@@ -550,7 +722,14 @@ paths:
       description: Returns the most recent HTTP requests with full details
       operationId: getRecentRequests
       parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
           in: query
           description: Maximum number of results (1-1000, default 100)
@@ -640,22 +819,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/RealtimeMetrics'
 
-  /domains:
+  /services:
     get:
       tags:
         - System
-      summary: Get available domains/services
-      description: Returns list of available backend services for filtering
-      operationId: getDomains
+      summary: Get available services with types
+      description: |
+        Returns list of all available services with their identification types and request counts.
+
+        **Service Types** (priority-based):
+        1. `backend_name`: Traefik backend name (highest priority)
+        2. `backend_url`: Backend URL
+        3. `host`: HTTP Host header (lowest priority)
+
+        The API intelligently selects the best available identifier for each service.
+        Use this endpoint to discover available services for filtering in other API calls.
+      operationId: getServices
       responses:
         '200':
-          description: List of domains
+          description: List of services with types and request counts
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/DomainStats'
+                  $ref: '#/components/schemas/ServiceInfo'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -673,7 +861,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168"
+          example: 192.168
         - name: limit
           in: query
           description: Maximum number of results (1-100, default 10)
@@ -708,7 +896,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
       responses:
         '200':
           description: Detailed IP statistics
@@ -733,7 +921,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - name: hours
           in: query
           description: Number of hours to look back (1-8760, default 168)
@@ -768,7 +956,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - name: days
           in: query
           description: Number of days to analyze (1-365, default 30)
@@ -803,7 +991,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
@@ -831,7 +1019,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
@@ -859,7 +1047,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
       responses:
         '200':
           description: Status code distribution
@@ -886,7 +1074,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
@@ -914,7 +1102,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
@@ -942,7 +1130,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
       responses:
         '200':
           description: Device type distribution
@@ -969,7 +1157,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
       responses:
         '200':
           description: Response time statistics
@@ -994,7 +1182,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "192.168.1.100"
+          example: 192.168.1.100
         - name: limit
           in: query
           description: Maximum number of results (1-250, default 25)
@@ -1017,15 +1205,127 @@ paths:
 
 components:
   parameters:
+    # Legacy service filter (backward compatible)
     HostFilter:
       name: host
       in: query
-      description: Filter results by backend/service name
+      description: |
+        **Legacy parameter** - Filter results by backend/service name.
+        Equivalent to using `service` parameter with `service_type=auto`.
+        Kept for backward compatibility with older clients.
       required: false
       schema:
         type: string
-      example: "my-service"
+      example: my-service
 
+    # New single service filtering
+    ServiceFilter:
+      name: service
+      in: query
+      description: Service name to filter by (backend name, URL, or host depending on service_type)
+      required: false
+      schema:
+        type: string
+      example: api-service
+
+    ServiceTypeFilter:
+      name: service_type
+      in: query
+      description: |
+        Type of service identifier to use for filtering:
+        - `auto` (default): Automatically detects and uses backend_name, backend_url, or host based on availability
+        - `backend_name`: Filter specifically by Traefik backend name
+        - `backend_url`: Filter by backend URL
+        - `host`: Filter by HTTP Host header
+      required: false
+      schema:
+        type: string
+        enum: [auto, backend_name, backend_url, host]
+        default: auto
+      example: backend_name
+
+    # Multi-service filtering (arrays)
+    ServicesArray:
+      name: services[]
+      in: query
+      description: |
+        Array of service names for multi-service filtering.
+        Must be used together with `service_types[]` parameter with matching array length.
+        Can be repeated multiple times: `?services[]=api&services[]=web`
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example: [api-service, web-frontend]
+
+    ServiceTypesArray:
+      name: service_types[]
+      in: query
+      description: |
+        Array of service types corresponding to `services[]` parameter.
+        Must have the same length as `services[]` array.
+        Each element can be: auto, backend_name, backend_url, or host
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [auto, backend_name, backend_url, host]
+      style: form
+      explode: true
+      example: [backend_name, host]
+
+    # Hide My Traffic parameters
+    ExcludeOwnIP:
+      name: exclude_own_ip
+      in: query
+      description: |
+        Set to `true` to exclude requests from your own IP address.
+        The server automatically detects your IP from the request.
+        When `true` without `exclude_services[]`, excludes your IP from ALL services.
+      required: false
+      schema:
+        type: boolean
+        default: false
+      example: true
+
+    ExcludeServices:
+      name: exclude_services[]
+      in: query
+      description: |
+        Array of service names to exclude your IP from (used with `exclude_own_ip=true`).
+        If omitted, your IP is excluded from all services.
+        If specified, your IP is only excluded from the listed services.
+        Must be used together with `exclude_service_types[]`.
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example: [admin-panel, internal-api]
+
+    ExcludeServiceTypes:
+      name: exclude_service_types[]
+      in: query
+      description: |
+        Array of service types corresponding to `exclude_services[]`.
+        Must have the same length as `exclude_services[]` array.
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [auto, backend_name, backend_url, host]
+      style: form
+      explode: true
+      example: [backend_name, host]
+
+    # Common parameters
     LimitParam:
       name: limit
       in: query
@@ -1035,6 +1335,45 @@ components:
         minimum: 1
         maximum: 100
         default: 10
+
+    LimitParam1000:
+      name: limit
+      in: query
+      description: Maximum number of results (1-1000, default 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+
+    OffsetParam:
+      name: offset
+      in: query
+      description: Pagination offset (number of items to skip)
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    HoursParam:
+      name: hours
+      in: query
+      description: Number of hours to look back (1-8760 for up to 1 year, default 168 for 7 days)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 8760
+        default: 168
+
+    DaysParam:
+      name: days
+      in: query
+      description: Number of days to analyze (1-365, default 30)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 365
+        default: 30
 
   schemas:
     StatsSummary:
@@ -1679,15 +2018,40 @@ components:
 
     DomainStats:
       type: object
+      deprecated: true
+      description: "DEPRECATED: Use ServiceInfo instead"
       properties:
         domain:
           type: string
-          description: Domain/service name
-          example: "my-service"
+          description: Domain/service name (from backend_name field only)
+          example: my-service
         request_count:
           type: integer
           format: int64
           description: Total requests for this domain
+          example: 12345
+
+    ServiceInfo:
+      type: object
+      description: Service information with type identification and request count
+      properties:
+        name:
+          type: string
+          description: Service name (backend name, URL, or host depending on type)
+          example: api-service-prod
+        type:
+          type: string
+          enum: [backend_name, backend_url, host]
+          description: |
+            Type of service identifier:
+            - `backend_name`: Traefik backend name (highest priority)
+            - `backend_url`: Backend URL
+            - `host`: HTTP Host header (lowest priority)
+          example: backend_name
+        count:
+          type: integer
+          format: int64
+          description: Total number of requests for this service
           example: 12345
 
     IPDetailedStats:
