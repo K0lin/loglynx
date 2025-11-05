@@ -340,6 +340,8 @@ type ReferrerDomainStats struct {
 type BackendStats struct {
 	BackendName     string  `json:"backend_name"`
 	BackendURL      string  `json:"backend_url"`
+	Host            string  `json:"host"`
+	ServiceType     string  `json:"service_type"` // "backend_name", "backend_url", or "host"
 	Hits            int64   `json:"hits"`
 	Bandwidth       int64   `json:"bandwidth"`
 	AvgResponseTime float64 `json:"avg_response_time"`
@@ -950,19 +952,71 @@ func extractBackendName(backendName string) string {
 
 // GetTopBackends returns backend statistics
 func (r *statsRepo) GetTopBackends(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error) {
-	var backends []*BackendStats
 	since := r.getTimeRange()
 
+	// Query with fallback logic: backend_name > backend_url > host
 	query := r.db.Model(&models.HTTPRequest{}).
-		Select("backend_name, MAX(backend_url) as backend_url, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth, COALESCE(AVG(response_time_ms), 0) as avg_response_time, SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count").
-		Where("timestamp > ? AND backend_name != ''", since)
+		Select(`
+			COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host) as backend_name,
+			backend_name as backend_name_original,
+			backend_url,
+			host,
+			CASE
+				WHEN backend_name != '' THEN 'backend_name'
+				WHEN backend_url != '' THEN 'backend_url'
+				ELSE 'host'
+			END as service_type,
+			COUNT(*) as hits,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(response_time_ms), 0) as avg_response_time,
+			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
+		`).
+		Where("timestamp > ?", since).
+		Where("COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host) IS NOT NULL")
 
 	query = r.applyServiceFilters(query, filters)
-	err := query.Group("backend_name").Order("hits DESC").Limit(limit).Scan(&backends).Error
 
+	// Apply IP exclusion filter
+	if excludeIP != nil {
+		query = r.applyExcludeOwnIP(query, excludeIP.ClientIP, excludeIP.ExcludeServices)
+	}
+
+	// Group by all three fields to maintain distinction
+	query = query.Group("backend_name_original, backend_url, host").
+		Order("hits DESC").
+		Limit(limit)
+
+	var results []struct {
+		BackendName         string  `gorm:"column:backend_name"`
+		BackendNameOriginal string  `gorm:"column:backend_name_original"`
+		BackendURL          string  `gorm:"column:backend_url"`
+		Host                string  `gorm:"column:host"`
+		ServiceType         string  `gorm:"column:service_type"`
+		Hits                int64   `gorm:"column:hits"`
+		Bandwidth           int64   `gorm:"column:bandwidth"`
+		AvgResponseTime     float64 `gorm:"column:avg_response_time"`
+		ErrorCount          int64   `gorm:"column:error_count"`
+	}
+
+	err := query.Scan(&results).Error
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get top backends", r.logger.Args("error", err))
 		return nil, err
+	}
+
+	// Convert to BackendStats
+	backends := make([]*BackendStats, len(results))
+	for i, result := range results {
+		backends[i] = &BackendStats{
+			BackendName:     result.BackendName, // This is the display name (with fallback applied)
+			BackendURL:      result.BackendURL,
+			Host:            result.Host,
+			ServiceType:     result.ServiceType,
+			Hits:            result.Hits,
+			Bandwidth:       result.Bandwidth,
+			AvgResponseTime: result.AvgResponseTime,
+			ErrorCount:      result.ErrorCount,
+		}
 	}
 
 	return backends, nil

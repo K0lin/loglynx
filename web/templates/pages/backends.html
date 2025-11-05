@@ -159,9 +159,23 @@
                 },
                 columns: [
                     {
-                        data: 'backend_name',
+                        data: null,
                         render: (data) => {
-                            return `<span class="badge"><code><i class="fas fa-server"></i> ${data || 'Unknown'}</code></span>`;
+                            const name = data.backend_name || 'Unknown';
+                            let icon = 'fa-server';
+                            let typeLabel = '';
+
+                            if (data.service_type === 'backend_url') {
+                                icon = 'fa-link';
+                                typeLabel = '<span class="badge badge-info badge-sm">URL</span> ';
+                            } else if (data.service_type === 'host') {
+                                icon = 'fa-globe';
+                                typeLabel = '<span class="badge badge-warning badge-sm">Host</span> ';
+                            } else {
+                                typeLabel = '<span class="badge badge-success badge-sm">Backend</span> ';
+                            }
+
+                            return typeLabel + `<span class="badge"><code><i class="fas ${icon}"></i> ${LogLynxUtils.formatHostDisplay(data, name)}</code></span>`;
                         }
                     },
                     { data: 'hits', render: (data) => data.toLocaleString() },
@@ -235,7 +249,7 @@
                     new Chart(ctx1, {
                         type: 'bar',
                         data: {
-                            labels: data.map(item => item.backend_name || 'Unknown'),
+                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Unknown')),
                             datasets: [{
                                 label: 'Requests',
                                 data: data.map(item => item.hits),
@@ -253,7 +267,7 @@
                     new Chart(ctx2, {
                         type: 'bar',
                         data: {
-                            labels: data.map(item => item.backend_name || 'Unknown'),
+                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Unknown')),
                             datasets: [{
                                 label: 'Avg Response Time (ms)',
                                 data: data.map(item => Math.round(item.avg_response_time || 0)),
