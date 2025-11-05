@@ -300,7 +300,7 @@ function initDataTable() {
     $('#recentRequestsTable').DataTable({
         ajax: function(data, callback, settings) {
             // Custom ajax function that rebuilds URL with current filters
-            const url = LogLynxAPI.buildURL('/requests/recent', { limit: 100 });
+            const url = LogLynxAPI.buildURL('/requests/recent', { limit: 500 });
 
             fetch(url)
                 .then(response => response.json())

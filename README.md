@@ -122,6 +122,26 @@ Access the web interface at `http://localhost:8080` to explore:
 
 LogLynx provides a comprehensive REST API for programmatic access to all analytics.
 
+### API-Only Mode
+
+You can disable the dashboard UI and run LogLynx in API-only mode by setting:
+
+```bash
+DASHBOARD_ENABLED=false
+```
+
+This is useful for:
+- **Headless deployments** - API-only access without web interface overhead
+- **Security-focused setups** - Restrict UI access while keeping API available
+- **Integration scenarios** - When using LogLynx as a backend service for custom frontends
+- **Microservices architecture** - Deploy LogLynx as a pure API service
+
+When dashboard is disabled:
+- All `/api/v1/*` endpoints remain fully accessible
+- `/health` endpoint continues to work for health checks
+- Dashboard routes (`/`, `/traffic`, etc.) are not exposed
+- Static assets are not loaded, reducing memory footprint
+
 ### Example Requests
 
 ```bash

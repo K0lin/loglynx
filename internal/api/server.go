@@ -22,9 +22,10 @@ type Server struct {
 
 // Config holds server configuration
 type Config struct {
-	Host       string
-	Port       int
-	Production bool
+	Host             string
+	Port             int
+	Production       bool
+	DashboardEnabled bool // If false, only API routes are exposed
 }
 
 // NewServer creates a new HTTP server
@@ -51,60 +52,75 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		})
 	})
 
-	// Load HTML templates with pattern for nested directories
-	router.LoadHTMLGlob("web/templates/**/*.html")
+	// Dashboard UI routes (only if dashboard is enabled)
+	if cfg.DashboardEnabled {
+		// Load HTML templates with pattern for nested directories
+		router.LoadHTMLGlob("web/templates/**/*.html")
 
-	// Static files
-	router.Static("/static", "./web/static")
+		// Static files
+		router.Static("/static", "./web/static")
 
-	// Dashboard pages (HTML)
-	router.GET("/", func(c *gin.Context) {
-		serveTemplatePage(c, "overview", "Executive Overview", "fas fa-home")
-	})
-
-	router.GET("/realtime", func(c *gin.Context) {
-		serveTemplatePage(c, "realtime", "Real-time Monitor", "fas fa-broadcast-tower")
-	})
-
-	router.GET("/traffic", func(c *gin.Context) {
-		serveTemplatePage(c, "traffic", "Traffic Analysis", "fas fa-globe")
-	})
-
-	router.GET("/performance", func(c *gin.Context) {
-		serveTemplatePage(c, "performance", "Performance Monitoring", "fas fa-tachometer-alt")
-	})
-
-	router.GET("/security", func(c *gin.Context) {
-		serveTemplatePage(c, "security", "Security & Network", "fas fa-shield-alt")
-	})
-
-	router.GET("/users", func(c *gin.Context) {
-		serveTemplatePage(c, "users", "User Analytics", "fas fa-users")
-	})
-
-	router.GET("/content", func(c *gin.Context) {
-		serveTemplatePage(c, "content", "Content Analytics", "fas fa-file-alt")
-	})
-
-	router.GET("/backends", func(c *gin.Context) {
-		serveTemplatePage(c, "backends", "Backend Health", "fas fa-server")
-	})
-
-	router.GET("/geographic", func(c *gin.Context) {
-		serveTemplatePage(c, "geographic", "Geographic Analytics", "fas fa-map-marked-alt")
-	})
-
-	// IP Analytics page
-	router.GET("/ip/:ip", func(c *gin.Context) {
-		ip := c.Param("ip")
-		c.HTML(http.StatusOK, "ip-detail.html", gin.H{
-			"Title":     "IP Analytics - " + ip,
-			"PageName":  "ip-detail",
-			"PageTitle": "IP Analytics",
-			"PageIcon":  "fas fa-network-wired",
-			"IPAddress": ip,
+		// Dashboard pages (HTML)
+		router.GET("/", func(c *gin.Context) {
+			serveTemplatePage(c, "overview", "Executive Overview", "fas fa-home")
 		})
-	})
+
+		router.GET("/realtime", func(c *gin.Context) {
+			serveTemplatePage(c, "realtime", "Real-time Monitor", "fas fa-broadcast-tower")
+		})
+
+		router.GET("/traffic", func(c *gin.Context) {
+			serveTemplatePage(c, "traffic", "Traffic Analysis", "fas fa-globe")
+		})
+
+		router.GET("/performance", func(c *gin.Context) {
+			serveTemplatePage(c, "performance", "Performance Monitoring", "fas fa-tachometer-alt")
+		})
+
+		router.GET("/security", func(c *gin.Context) {
+			serveTemplatePage(c, "security", "Security & Network", "fas fa-shield-alt")
+		})
+
+		router.GET("/users", func(c *gin.Context) {
+			serveTemplatePage(c, "users", "User Analytics", "fas fa-users")
+		})
+
+		router.GET("/content", func(c *gin.Context) {
+			serveTemplatePage(c, "content", "Content Analytics", "fas fa-file-alt")
+		})
+
+		router.GET("/backends", func(c *gin.Context) {
+			serveTemplatePage(c, "backends", "Backend Health", "fas fa-server")
+		})
+
+		router.GET("/geographic", func(c *gin.Context) {
+			serveTemplatePage(c, "geographic", "Geographic Analytics", "fas fa-map-marked-alt")
+		})
+
+		// IP Analytics page
+		router.GET("/ip/:ip", func(c *gin.Context) {
+			ip := c.Param("ip")
+			c.HTML(http.StatusOK, "ip-detail.html", gin.H{
+				"Title":     "IP Analytics - " + ip,
+				"PageName":  "ip-detail",
+				"PageTitle": "IP Analytics",
+				"PageIcon":  "fas fa-network-wired",
+				"IPAddress": ip,
+			})
+		})
+
+		logger.Info("Dashboard UI routes enabled")
+	} else {
+		logger.Info("Dashboard UI disabled - API-only mode")
+		// Serve a simple message at root when dashboard is disabled
+		router.GET("/", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": "LogLynx API Server - Dashboard UI is disabled",
+				"api":     "/api/v1",
+				"health":  "/health",
+			})
+		})
+	}
 
 	// API routes
 	api := router.Group("/api/v1")
