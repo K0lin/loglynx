@@ -30,15 +30,36 @@ func NewDashboardHandler(
 	}
 }
 
-// getServiceFilter extracts service filter parameters from request
-// Returns combined filter string in format "service|type" for repository methods
-// Falls back to legacy "host" parameter for backward compatibility
-func (h *DashboardHandler) getServiceFilter(c *gin.Context) (string, string) {
-	// Try new parameters first
+// ServiceFilter represents a single service filter
+type ServiceFilter struct {
+	Name string
+	Type string
+}
+
+// getServiceFilters extracts service filter parameters from request
+// Returns array of service filters
+// Supports both new multi-select (services[], service_types[]) and legacy single-select (service, service_type)
+func (h *DashboardHandler) getServiceFilters(c *gin.Context) []ServiceFilter {
+	// Try new multi-select parameters first
+	serviceNames := c.QueryArray("services[]")
+	serviceTypes := c.QueryArray("service_types[]")
+
+	if len(serviceNames) > 0 && len(serviceNames) == len(serviceTypes) {
+		filters := make([]ServiceFilter, len(serviceNames))
+		for i := range serviceNames {
+			filters[i] = ServiceFilter{
+				Name: serviceNames[i],
+				Type: serviceTypes[i],
+			}
+		}
+		return filters
+	}
+
+	// Fallback to legacy single-select parameters
 	service := c.Query("service")
 	serviceType := c.Query("service_type")
 
-	// Fallback to legacy "host" parameter
+	// Fallback to even older "host" parameter
 	if service == "" {
 		service = c.Query("host")
 	}
@@ -48,19 +69,81 @@ func (h *DashboardHandler) getServiceFilter(c *gin.Context) (string, string) {
 		serviceType = "auto"
 	}
 
-	// Return combined format for new filter system
+	// Return single filter if specified
 	if service != "" {
-		return service, serviceType
+		return []ServiceFilter{{Name: service, Type: serviceType}}
 	}
 
+	return []ServiceFilter{}
+}
+
+// convertToRepoFilters converts handler ServiceFilter to repository ServiceFilter
+func (h *DashboardHandler) convertToRepoFilters(filters []ServiceFilter) []repositories.ServiceFilter {
+	repoFilters := make([]repositories.ServiceFilter, len(filters))
+	for i, f := range filters {
+		repoFilters[i] = repositories.ServiceFilter{
+			Name: f.Name,
+			Type: f.Type,
+		}
+	}
+	return repoFilters
+}
+
+// getExcludeOwnIP extracts exclude_own_ip and related parameters
+// Returns (excludeIP bool, clientIP string, excludeServices []ServiceFilter)
+func (h *DashboardHandler) getExcludeOwnIP(c *gin.Context) (bool, string, []ServiceFilter) {
+	excludeIP := c.Query("exclude_own_ip") == "true"
+	if !excludeIP {
+		return false, "", nil
+	}
+
+	// Get client IP
+	clientIP := c.ClientIP()
+
+	// Get exclude services
+	serviceNames := c.QueryArray("exclude_services[]")
+	serviceTypes := c.QueryArray("exclude_service_types[]")
+
+	var excludeServices []ServiceFilter
+	if len(serviceNames) > 0 && len(serviceNames) == len(serviceTypes) {
+		excludeServices = make([]ServiceFilter, len(serviceNames))
+		for i := range serviceNames {
+			excludeServices[i] = ServiceFilter{
+				Name: serviceNames[i],
+				Type: serviceTypes[i],
+			}
+		}
+	}
+
+	return true, clientIP, excludeServices
+}
+
+// buildExcludeIPFilter builds ExcludeIPFilter from request
+func (h *DashboardHandler) buildExcludeIPFilter(c *gin.Context) *repositories.ExcludeIPFilter {
+	excludeIPEnabled, clientIP, excludeServices := h.getExcludeOwnIP(c)
+	if !excludeIPEnabled {
+		return nil
+	}
+
+	return &repositories.ExcludeIPFilter{
+		ClientIP:        clientIP,
+		ExcludeServices: h.convertToRepoFilters(excludeServices),
+	}
+}
+
+// DEPRECATED: Use getServiceFilters instead
+func (h *DashboardHandler) getServiceFilter(c *gin.Context) (string, string) {
+	filters := h.getServiceFilters(c)
+	if len(filters) > 0 {
+		return filters[0].Name, filters[0].Type
+	}
 	return "", "auto"
 }
 
 // HandleDashboard renders the main dashboard page
 func (h *DashboardHandler) HandleDashboard(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	summary, err := h.statsRepo.GetSummary(serviceName, serviceType)
+	summary, err := h.statsRepo.GetSummary(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get summary stats", h.logger.Args("error", err))
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{
@@ -77,9 +160,8 @@ func (h *DashboardHandler) HandleDashboard(c *gin.Context) {
 
 // GetSummary returns summary statistics
 func (h *DashboardHandler) GetSummary(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	summary, err := h.statsRepo.GetSummary(serviceName, serviceType)
+	summary, err := h.statsRepo.GetSummary(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get summary", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get summary"})
@@ -91,7 +173,6 @@ func (h *DashboardHandler) GetSummary(c *gin.Context) {
 
 // GetTimeline returns timeline statistics
 func (h *DashboardHandler) GetTimeline(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	hours := 168            // Default to 7 days
 	if hoursParam := c.Query("hours"); hoursParam != "" {
 		if h, err := strconv.Atoi(hoursParam); err == nil && h > 0 {
@@ -104,7 +185,7 @@ func (h *DashboardHandler) GetTimeline(c *gin.Context) {
 		}
 	}
 
-	timeline, err := h.statsRepo.GetTimelineStats(hours, serviceName, serviceType)
+	timeline, err := h.statsRepo.GetTimelineStats(hours, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get timeline", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get timeline"})
@@ -116,7 +197,6 @@ func (h *DashboardHandler) GetTimeline(c *gin.Context) {
 
 // GetStatusCodeTimeline returns status code distribution over time
 func (h *DashboardHandler) GetStatusCodeTimeline(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	hours := 168            // Default to 7 days
 	if hoursParam := c.Query("hours"); hoursParam != "" {
 		if h, err := strconv.Atoi(hoursParam); err == nil && h > 0 {
@@ -128,7 +208,7 @@ func (h *DashboardHandler) GetStatusCodeTimeline(c *gin.Context) {
 		}
 	}
 
-	timeline, err := h.statsRepo.GetStatusCodeTimeline(hours, serviceName, serviceType)
+	timeline, err := h.statsRepo.GetStatusCodeTimeline(hours, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get status code timeline", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get status code timeline"})
@@ -140,7 +220,6 @@ func (h *DashboardHandler) GetStatusCodeTimeline(c *gin.Context) {
 
 // GetTrafficHeatmap returns traffic heatmap data grouped by day and hour
 func (h *DashboardHandler) GetTrafficHeatmap(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	days := 30
 	if daysParam := c.Query("days"); daysParam != "" {
 		if d, err := strconv.Atoi(daysParam); err == nil && d > 0 {
@@ -152,7 +231,7 @@ func (h *DashboardHandler) GetTrafficHeatmap(c *gin.Context) {
 		}
 	}
 
-	data, err := h.statsRepo.GetTrafficHeatmap(days, serviceName, serviceType)
+	data, err := h.statsRepo.GetTrafficHeatmap(days, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get traffic heatmap", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get traffic heatmap"})
@@ -164,7 +243,6 @@ func (h *DashboardHandler) GetTrafficHeatmap(c *gin.Context) {
 
 // GetTopPaths returns top paths
 func (h *DashboardHandler) GetTopPaths(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -172,7 +250,7 @@ func (h *DashboardHandler) GetTopPaths(c *gin.Context) {
 		}
 	}
 
-	paths, err := h.statsRepo.GetTopPaths(limit, serviceName, serviceType)
+	paths, err := h.statsRepo.GetTopPaths(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top paths", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top paths"})
@@ -184,7 +262,6 @@ func (h *DashboardHandler) GetTopPaths(c *gin.Context) {
 
 // GetTopCountries returns top countries
 func (h *DashboardHandler) GetTopCountries(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l >= 0 && l <= 500 {
@@ -192,7 +269,7 @@ func (h *DashboardHandler) GetTopCountries(c *gin.Context) {
 		}
 	}
 
-	countries, err := h.statsRepo.GetTopCountries(limit, serviceName, serviceType)
+	countries, err := h.statsRepo.GetTopCountries(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top countries", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top countries"})
@@ -204,7 +281,6 @@ func (h *DashboardHandler) GetTopCountries(c *gin.Context) {
 
 // GetTopIPs returns top IP addresses
 func (h *DashboardHandler) GetTopIPs(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -212,7 +288,7 @@ func (h *DashboardHandler) GetTopIPs(c *gin.Context) {
 		}
 	}
 
-	ips, err := h.statsRepo.GetTopIPAddresses(limit, serviceName, serviceType)
+	ips, err := h.statsRepo.GetTopIPAddresses(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top IPs", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top IPs"})
@@ -224,7 +300,6 @@ func (h *DashboardHandler) GetTopIPs(c *gin.Context) {
 
 // GetTopUserAgents returns top user agents
 func (h *DashboardHandler) GetTopUserAgents(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -232,7 +307,7 @@ func (h *DashboardHandler) GetTopUserAgents(c *gin.Context) {
 		}
 	}
 
-	agents, err := h.statsRepo.GetTopUserAgents(limit, serviceName, serviceType)
+	agents, err := h.statsRepo.GetTopUserAgents(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top user agents", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top user agents"})
@@ -244,7 +319,6 @@ func (h *DashboardHandler) GetTopUserAgents(c *gin.Context) {
 
 // GetTopReferrers returns top referrers
 func (h *DashboardHandler) GetTopReferrers(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -252,7 +326,7 @@ func (h *DashboardHandler) GetTopReferrers(c *gin.Context) {
 		}
 	}
 
-	referrers, err := h.statsRepo.GetTopReferrers(limit, serviceName, serviceType)
+	referrers, err := h.statsRepo.GetTopReferrers(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top referrers", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top referrers"})
@@ -264,7 +338,6 @@ func (h *DashboardHandler) GetTopReferrers(c *gin.Context) {
 
 // GetTopReferrerDomains returns top referrer domains
 func (h *DashboardHandler) GetTopReferrerDomains(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
@@ -277,7 +350,7 @@ func (h *DashboardHandler) GetTopReferrerDomains(c *gin.Context) {
 		}
 	}
 
-	domains, err := h.statsRepo.GetTopReferrerDomains(limit, serviceName, serviceType)
+	domains, err := h.statsRepo.GetTopReferrerDomains(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top referrer domains", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top referrer domains"})
@@ -289,7 +362,6 @@ func (h *DashboardHandler) GetTopReferrerDomains(c *gin.Context) {
 
 // GetTopBackends returns top backends
 func (h *DashboardHandler) GetTopBackends(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -297,7 +369,7 @@ func (h *DashboardHandler) GetTopBackends(c *gin.Context) {
 		}
 	}
 
-	backends, err := h.statsRepo.GetTopBackends(limit, serviceName, serviceType)
+	backends, err := h.statsRepo.GetTopBackends(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top backends", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top backends"})
@@ -309,7 +381,6 @@ func (h *DashboardHandler) GetTopBackends(c *gin.Context) {
 
 // GetTopASNs returns top ASNs
 func (h *DashboardHandler) GetTopASNs(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -317,7 +388,7 @@ func (h *DashboardHandler) GetTopASNs(c *gin.Context) {
 		}
 	}
 
-	asns, err := h.statsRepo.GetTopASNs(limit, serviceName, serviceType)
+	asns, err := h.statsRepo.GetTopASNs(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top ASNs", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top ASNs"})
@@ -329,9 +400,8 @@ func (h *DashboardHandler) GetTopASNs(c *gin.Context) {
 
 // GetStatusCodeDistribution returns status code distribution
 func (h *DashboardHandler) GetStatusCodeDistribution(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	stats, err := h.statsRepo.GetStatusCodeDistribution(serviceName, serviceType)
+	stats, err := h.statsRepo.GetStatusCodeDistribution(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get status code distribution", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get status code distribution"})
@@ -343,9 +413,8 @@ func (h *DashboardHandler) GetStatusCodeDistribution(c *gin.Context) {
 
 // GetMethodDistribution returns HTTP method distribution
 func (h *DashboardHandler) GetMethodDistribution(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	stats, err := h.statsRepo.GetMethodDistribution(serviceName, serviceType)
+	stats, err := h.statsRepo.GetMethodDistribution(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get method distribution", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get method distribution"})
@@ -357,9 +426,8 @@ func (h *DashboardHandler) GetMethodDistribution(c *gin.Context) {
 
 // GetProtocolDistribution returns HTTP protocol distribution
 func (h *DashboardHandler) GetProtocolDistribution(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	stats, err := h.statsRepo.GetProtocolDistribution(serviceName, serviceType)
+	stats, err := h.statsRepo.GetProtocolDistribution(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get protocol distribution", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get protocol distribution"})
@@ -371,9 +439,8 @@ func (h *DashboardHandler) GetProtocolDistribution(c *gin.Context) {
 
 // GetTLSVersionDistribution returns TLS version distribution
 func (h *DashboardHandler) GetTLSVersionDistribution(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	stats, err := h.statsRepo.GetTLSVersionDistribution(serviceName, serviceType)
+	stats, err := h.statsRepo.GetTLSVersionDistribution(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get TLS version distribution", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get TLS version distribution"})
@@ -385,9 +452,8 @@ func (h *DashboardHandler) GetTLSVersionDistribution(c *gin.Context) {
 
 // GetResponseTimeStats returns response time statistics
 func (h *DashboardHandler) GetResponseTimeStats(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	stats, err := h.statsRepo.GetResponseTimeStats(serviceName, serviceType)
+	stats, err := h.statsRepo.GetResponseTimeStats(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get response time stats", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get response time stats"})
@@ -413,9 +479,17 @@ func (h *DashboardHandler) GetRecentRequests(c *gin.Context) {
 		}
 	}
 
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
+	serviceName, serviceType := h.getServiceFilter(c)
 
-	requests, err := h.httpRepo.FindAll(limit, offset, serviceName, serviceType)
+	excludeIPEnabled, clientIP, excludeServices := h.getExcludeOwnIP(c)
+	var excludeIP string
+	var excludeSvcs []repositories.ServiceFilter
+	if excludeIPEnabled {
+		excludeIP = clientIP
+		excludeSvcs = h.convertToRepoFilters(excludeServices)
+	}
+	
+	requests, err := h.httpRepo.FindAll(limit, offset, serviceName, serviceType, excludeIP, excludeSvcs)
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get recent requests", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get recent requests"})
@@ -439,7 +513,6 @@ func (h *DashboardHandler) GetLogProcessingStats(c *gin.Context) {
 
 // GetTopBrowsers returns top browsers
 func (h *DashboardHandler) GetTopBrowsers(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -447,7 +520,7 @@ func (h *DashboardHandler) GetTopBrowsers(c *gin.Context) {
 		}
 	}
 
-	browsers, err := h.statsRepo.GetTopBrowsers(limit, serviceName, serviceType)
+	browsers, err := h.statsRepo.GetTopBrowsers(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top browsers", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top browsers"})
@@ -459,7 +532,6 @@ func (h *DashboardHandler) GetTopBrowsers(c *gin.Context) {
 
 // GetTopOperatingSystems returns top operating systems
 func (h *DashboardHandler) GetTopOperatingSystems(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -467,7 +539,7 @@ func (h *DashboardHandler) GetTopOperatingSystems(c *gin.Context) {
 		}
 	}
 
-	osList, err := h.statsRepo.GetTopOperatingSystems(limit, serviceName, serviceType)
+	osList, err := h.statsRepo.GetTopOperatingSystems(limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get top operating systems", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top operating systems"})
@@ -479,9 +551,8 @@ func (h *DashboardHandler) GetTopOperatingSystems(c *gin.Context) {
 
 // GetDeviceTypeDistribution returns device type distribution
 func (h *DashboardHandler) GetDeviceTypeDistribution(c *gin.Context) {
-	serviceName, serviceType := h.getServiceFilter(c) // Service filter (supports service and service_type)
 
-	devices, err := h.statsRepo.GetDeviceTypeDistribution(serviceName, serviceType)
+	devices, err := h.statsRepo.GetDeviceTypeDistribution(h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get device type distribution", h.logger.Args("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get device type distribution"})

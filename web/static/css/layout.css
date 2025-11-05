@@ -200,6 +200,196 @@
     max-width: 220px;
 }
 
+/* Service Multi-Select Dropdown */
+.service-multiselect {
+    position: relative;
+    min-width: 180px;
+    max-width: 220px;
+}
+
+#serviceFilterToggle {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background-color: var(--loglynx-bg-secondary);
+    border: 1px solid var(--loglynx-border);
+    color: var(--loglynx-text);
+}
+
+#serviceFilterToggle:hover {
+    background-color: var(--loglynx-bg-tertiary);
+}
+
+#serviceFilterToggle i {
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+
+#serviceFilterToggle.open i {
+    transform: rotate(180deg);
+}
+
+.service-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: var(--loglynx-bg-secondary);
+    border: 1px solid var(--loglynx-border);
+    border-radius: 4px;
+    margin-top: 4px;
+    max-height: 400px;
+    display: none;
+    flex-direction: column;
+    z-index: 1000;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.service-dropdown-menu.show {
+    display: flex;
+}
+
+.service-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--loglynx-border);
+}
+
+.service-search input {
+    width: 100%;
+    background-color: var(--loglynx-bg-tertiary);
+    border: 1px solid var(--loglynx-border);
+    color: var(--loglynx-text);
+}
+
+.service-options {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.service-option {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 3px;
+    margin: 2px 0;
+    font-size: var(--font-size-sm);
+    color: var(--loglynx-text);
+}
+
+.service-option:hover {
+    background-color: var(--loglynx-bg-tertiary);
+}
+
+.service-option input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.service-option span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.service-actions {
+    padding: 8px;
+    border-top: 1px solid var(--loglynx-border);
+    text-align: right;
+}
+
+.service-actions .btn-link {
+    color: var(--loglynx-primary);
+    text-decoration: none;
+    font-size: var(--font-size-sm);
+    padding: 4px 8px;
+}
+
+.service-actions .btn-link:hover {
+    text-decoration: underline;
+}
+
+/* Hide My Traffic Filter */
+.hide-traffic-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.hide-traffic-toggle {
+    display: flex;
+    align-items: center;
+}
+
+.traffic-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    color: var(--loglynx-text);
+    margin: 0;
+}
+
+.traffic-checkbox-label input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+.traffic-checkbox-label:hover {
+    color: var(--loglynx-primary);
+}
+
+.hide-traffic-services {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: 4px;
+}
+
+.hide-traffic-services label {
+    color: var(--loglynx-text-muted);
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.hide-traffic-multiselect {
+    position: relative;
+    min-width: 180px;
+    max-width: 220px;
+}
+
+#hideTrafficToggle {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background-color: var(--loglynx-bg-secondary);
+    border: 1px solid var(--loglynx-border);
+    color: var(--loglynx-text);
+}
+
+#hideTrafficToggle:hover {
+    background-color: var(--loglynx-bg-tertiary);
+}
+
+#hideTrafficToggle i {
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+
+#hideTrafficToggle.open i {
+    transform: rotate(180deg);
+}
+
 /* Refresh Controls */
 .refresh-controls {
     display: flex;

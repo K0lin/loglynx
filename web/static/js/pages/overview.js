@@ -300,7 +300,7 @@ function initDataTable() {
     $('#recentRequestsTable').DataTable({
         ajax: function(data, callback, settings) {
             // Custom ajax function that rebuilds URL with current filters
-            const url = LogLynxAPI.buildURL('/requests/recent', { limit: 100 });
+            const url = LogLynxAPI.buildURL('/requests/recent', { limit: 500 });
 
             fetch(url)
                 .then(response => response.json())
@@ -395,6 +395,13 @@ function initServiceFilterWithReload() {
     });
 }
 
+// Initialize hide my traffic filter with reload callback
+function initHideTrafficFilterWithReload() {
+    LogLynxUtils.initHideMyTrafficFilter(() => {
+        loadDashboardData();
+    });
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
@@ -408,6 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize controls
     initTimeRangeSelector();
     initServiceFilterWithReload();
+    initHideTrafficFilterWithReload();
 
     // Initial data load
     loadDashboardData();

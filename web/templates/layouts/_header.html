@@ -89,12 +89,63 @@
                     <option value="host">Host</option>
                 </select>
             </div>
-            <div>
-                <label for="serviceFilter">Service:</label>
-                <select id="serviceFilter" class="form-select form-select-sm">
-                    <option value="">All Traffic</option>
-                    <!-- Populated dynamically -->
-                </select>
+            <div class="service-filter-dropdown">
+                <label>Services:</label>
+                <div class="service-multiselect">
+                    <button type="button" class="form-select form-select-sm" id="serviceFilterToggle">
+                        <span id="serviceFilterLabel">All Traffic</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="service-dropdown-menu" id="serviceDropdownMenu">
+                        <div class="service-search">
+                            <input type="text" class="form-control form-control-sm" id="serviceSearchInput" placeholder="Search services...">
+                        </div>
+                        <div class="service-options" id="serviceOptions">
+                            <label class="service-option">
+                                <input type="checkbox" value="" data-type="all" id="allTrafficCheckbox" checked>
+                                <span>All Traffic</span>
+                            </label>
+                            <!-- Populated dynamically -->
+                        </div>
+                        <div class="service-actions">
+                            <button type="button" class="btn btn-sm btn-link" id="clearServiceSelection">Clear All</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hide My Traffic -->
+        <div class="hide-traffic-filter">
+            <div class="hide-traffic-toggle">
+                <label class="traffic-checkbox-label">
+                    <input type="checkbox" id="hideMyTrafficCheckbox">
+                    <span>Hide My Traffic</span>
+                </label>
+            </div>
+            <div class="hide-traffic-services" id="hideTrafficServicesContainer" style="display: none;">
+                <label>Hide on:</label>
+                <div class="hide-traffic-multiselect">
+                    <button type="button" class="form-select form-select-sm" id="hideTrafficToggle">
+                        <span id="hideTrafficLabel">All Services</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="service-dropdown-menu" id="hideTrafficDropdownMenu">
+                        <div class="service-search">
+                            <input type="text" class="form-control form-control-sm" id="hideTrafficSearchInput" placeholder="Search services...">
+                        </div>
+                        <div class="service-options" id="hideTrafficOptions">
+                            <label class="service-option">
+                                <input type="checkbox" value="" data-type="all" id="hideAllServicesCheckbox" checked>
+                                <span>All Services</span>
+                            </label>
+                            <!-- Populated dynamically -->
+                        </div>
+                        <div class="service-actions">
+                            <button type="button" class="btn btn-sm btn-link" id="clearHideTrafficSelection">Clear All</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
