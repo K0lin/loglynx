@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"loglynx/internal/database/repositories"
+
 	"github.com/pterm/pterm"
 	"gorm.io/gorm"
 )
@@ -284,22 +286,69 @@ type ServiceMetrics struct {
 }
 
 // GetPerServiceMetrics returns real-time metrics for each service
-func (m *MetricsCollector) GetPerServiceMetrics() []ServiceMetrics {
+func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
 	now := time.Now()
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	// Query database for per-service metrics
 	type ServiceResult struct {
 		BackendName string `gorm:"column:backend_name"`
+		BackendURL  string `gorm:"column:backend_url"`
+		Host        string `gorm:"column:host"`
 		TotalCount  int64  `gorm:"column:total_count"`
 	}
 
+	query := m.db.Table("http_requests").
+		Select("backend_name, backend_url, host, COUNT(*) as total_count").
+		Where("timestamp > ?", oneMinuteAgo)
+
+	// Apply service filters (if any)
+	if len(filters) > 0 {
+		serviceQuery := m.db.Where("1 = 0") // Start with false condition
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				serviceQuery = serviceQuery.Or("backend_name = ?", filter.Name)
+			case "backend_url":
+				serviceQuery = serviceQuery.Or("backend_url = ?", filter.Name)
+			case "host":
+				serviceQuery = serviceQuery.Or("host = ?", filter.Name)
+			}
+		}
+		query = query.Where(serviceQuery)
+	}
+
+	// Apply IP exclusion filter (if any)
+	if excludeIP != nil && excludeIP.ClientIP != "" {
+		if len(excludeIP.ExcludeServices) == 0 {
+			// Exclude IP from all services
+			query = query.Where("client_ip != ?", excludeIP.ClientIP)
+		} else {
+			// Exclude IP only on specific services
+			serviceConds := []string{}
+			args := []interface{}{excludeIP.ClientIP}
+
+			for _, filter := range excludeIP.ExcludeServices {
+				switch filter.Type {
+				case "backend_name":
+					serviceConds = append(serviceConds, "backend_name = ?")
+					args = append(args, filter.Name)
+				case "backend_url":
+					serviceConds = append(serviceConds, "backend_url = ?")
+					args = append(args, filter.Name)
+				case "host":
+					serviceConds = append(serviceConds, "host = ?")
+					args = append(args, filter.Name)
+				}
+			}
+
+			whereClause := "NOT (client_ip = ? AND (" + strings.Join(serviceConds, " OR ") + "))"
+			query = query.Where(whereClause, args...)
+		}
+	}
+
 	var results []ServiceResult
-	err := m.db.Table("http_requests").
-		Select("backend_name, COUNT(*) as total_count").
-		Where("timestamp > ? AND backend_name != ? AND backend_name != ? AND backend_name != ?",
-			oneMinuteAgo, "next-service@file", "api-service@file", "").
-		Group("backend_name").
+	err := query.Group("backend_name, backend_url, host").
 		Scan(&results).Error
 
 	if err != nil {
@@ -310,7 +359,16 @@ func (m *MetricsCollector) GetPerServiceMetrics() []ServiceMetrics {
 	// Extract service names and calculate rates
 	serviceMetrics := make([]ServiceMetrics, 0, len(results))
 	for _, result := range results {
-		serviceName := extractServiceName(result.BackendName)
+		// Determine service name based on priority: backend_name > backend_url > host
+		serviceName := ""
+		if result.BackendName != "" {
+			serviceName = extractServiceName(result.BackendName)
+		} else if result.BackendURL != "" {
+			serviceName = result.BackendURL
+		} else if result.Host != "" {
+			serviceName = result.Host
+		}
+
 		if serviceName == "" {
 			continue
 		}

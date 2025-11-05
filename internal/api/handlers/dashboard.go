@@ -479,16 +479,24 @@ func (h *DashboardHandler) GetRecentRequests(c *gin.Context) {
 		}
 	}
 
-	serviceName, serviceType := h.getServiceFilter(c)
+	serviceFilters := h.getServiceFilters(c)
 
-	excludeIPEnabled, clientIP, excludeServices := h.getExcludeOwnIP(c)
+	excludeIPFilter := h.buildExcludeIPFilter(c)
 	var excludeIP string
 	var excludeSvcs []repositories.ServiceFilter
-	if excludeIPEnabled {
-		excludeIP = clientIP
-		excludeSvcs = h.convertToRepoFilters(excludeServices)
+	if excludeIPFilter != nil {
+		excludeIP = excludeIPFilter.ClientIP
+		excludeSvcs = excludeIPFilter.ExcludeServices
 	}
-	
+
+	// Use first service for legacy FindAll method (or empty if no filter)
+	serviceName := ""
+	serviceType := "auto"
+	if len(serviceFilters) > 0 {
+		serviceName = serviceFilters[0].Name
+		serviceType = serviceFilters[0].Type
+	}
+
 	requests, err := h.httpRepo.FindAll(limit, offset, serviceName, serviceType, excludeIP, excludeSvcs)
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get recent requests", h.logger.Args("error", err))

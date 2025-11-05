@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"loglynx/internal/database/repositories"
 	"loglynx/internal/realtime"
 
 	"github.com/gin-gonic/gin"
@@ -196,6 +197,31 @@ func (h *RealtimeHandler) GetCurrentMetrics(c *gin.Context) {
 
 // GetPerServiceMetrics returns current metrics for each service
 func (h *RealtimeHandler) GetPerServiceMetrics(c *gin.Context) {
-	metrics := h.collector.GetPerServiceMetrics()
+	serviceFilters := h.getServiceFilters(c)
+	excludeIPFilter := h.getExcludeOwnIP(c)
+
+	// Convert realtime filters to repositories filters
+	var repoFilters []repositories.ServiceFilter
+	if len(serviceFilters) > 0 {
+		repoFilters = make([]repositories.ServiceFilter, len(serviceFilters))
+		for i, f := range serviceFilters {
+			repoFilters[i] = repositories.ServiceFilter{Name: f.Name, Type: f.Type}
+		}
+	}
+
+	var repoExcludeIP *repositories.ExcludeIPFilter
+	if excludeIPFilter != nil {
+		repoExcludeIP = &repositories.ExcludeIPFilter{
+			ClientIP: excludeIPFilter.ClientIP,
+		}
+		if len(excludeIPFilter.ExcludeServices) > 0 {
+			repoExcludeIP.ExcludeServices = make([]repositories.ServiceFilter, len(excludeIPFilter.ExcludeServices))
+			for i, f := range excludeIPFilter.ExcludeServices {
+				repoExcludeIP.ExcludeServices[i] = repositories.ServiceFilter{Name: f.Name, Type: f.Type}
+			}
+		}
+	}
+
+	metrics := h.collector.GetPerServiceMetrics(repoFilters, repoExcludeIP)
 	c.JSON(200, metrics)
 }
