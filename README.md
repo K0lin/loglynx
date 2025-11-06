@@ -8,6 +8,11 @@ LogLynx is a high-performance, real-time log analytics platform designed to prov
 ![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
+> **📚 Important Documentation**
+>
+> - **[Traefik Setup Guide](../../wiki/Traefik-Configuration)** - Recommended Traefik configuration for optimal LogLynx performance and complete field capture
+> - **[Deduplication System](../../wiki/Deduplication-System)** - Learn how LogLynx prevents duplicate log entries and handles various scenarios (log rotation, crashes, re-imports)
+
 ## ✨ Features
 
 - 📊 **Real-time Analytics** - Live metrics with Server-Sent Events (SSE)
