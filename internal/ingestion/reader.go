@@ -2,10 +2,9 @@ package ingestion
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -384,23 +383,44 @@ func extractTimestamp(event interface{}) time.Time {
 	return time.Time{}
 }
 
-// getFileInode returns a unique identifier for the file
-// This is used to detect when a file has been deleted and recreated
-// On Unix/Linux, this would ideally use the inode number, but for cross-platform
-// compatibility, we use a hash of file path + modification time
+// getFileInode returns a stable identifier for the file using reflection to access system-specific inode
+// This works across platforms (Linux, macOS, Windows) without build tags
 func getFileInode(file *os.File) (int64, error) {
 	stat, err := file.Stat()
 	if err != nil {
 		return 0, err
 	}
 
-	// Use file path + modification time as unique identifier
-	// When a file is deleted and recreated, it will have a different mod time
-	// This approach works consistently across Windows and Unix
-	identifier := fmt.Sprintf("%s:%d:%d", file.Name(), stat.ModTime().Unix(), stat.Size())
-	hash := sha256.Sum256([]byte(identifier))
+	// Try to get the real inode using reflection on stat.Sys()
+	// This works on Unix/Linux/macOS where Sys() returns *syscall.Stat_t with Ino field
+	sys := stat.Sys()
+	if sys != nil {
+		// Use reflection to safely access Ino field if it exists
+		v := reflect.ValueOf(sys)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		if v.Kind() == reflect.Struct {
+			// Try to get Ino field (Unix/Linux/macOS)
+			inoField := v.FieldByName("Ino")
+			if inoField.IsValid() && inoField.CanUint() {
+				return int64(inoField.Uint()), nil
+			}
 
-	// Convert first 8 bytes of hash to int64 (SQLite only supports signed integers)
-	return int64(hash[0])<<56 | int64(hash[1])<<48 | int64(hash[2])<<40 | int64(hash[3])<<32 |
-		int64(hash[4])<<24 | int64(hash[5])<<16 | int64(hash[6])<<8 | int64(hash[7]), nil
+			// Try FileIndex for Windows (similar to inode)
+			fileIndexField := v.FieldByName("FileIndexHigh")
+			if fileIndexField.IsValid() && fileIndexField.CanUint() {
+				fileIndexHigh := fileIndexField.Uint()
+				fileIndexLow := uint64(0)
+				if lowField := v.FieldByName("FileIndexLow"); lowField.IsValid() && lowField.CanUint() {
+					fileIndexLow = lowField.Uint()
+				}
+				return int64((fileIndexHigh << 32) | fileIndexLow), nil
+			}
+		}
+	}
+
+	// Fallback: Since we can't get a real inode, we return 0 and rely only on file size changes
+	// This means we won't detect rotation by inode, but we'll still detect truncation
+	return 0, nil
 }
