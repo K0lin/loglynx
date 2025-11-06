@@ -77,10 +77,10 @@ func NewSourceProcessor(
 		sourceRepo:     sourceRepo,
 		geoIP:          geoIP,
 		logger:         logger,
-		batchSize:      batchSize,         // Configurable via BATCH_SIZE env var
-		workerPoolSize: workerPoolSize,    // Configurable via WORKER_POOL_SIZE env var
-		batchTimeout:   2 * time.Second,   // Or flush after 2 seconds (faster processing)
-		pollInterval:   1 * time.Second,   // Check for new logs every second
+		batchSize:      batchSize,       // Configurable via BATCH_SIZE env var
+		workerPoolSize: workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
+		batchTimeout:   2 * time.Second, // Or flush after 2 seconds (faster processing)
+		pollInterval:   1 * time.Second, // Check for new logs every second
 		ctx:            ctx,
 		cancel:         cancel,
 		totalProcessed: 0,
