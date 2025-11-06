@@ -21,26 +21,31 @@ type HTTPRequestEvent struct {
 	Path           string
 	QueryString    string
 	RequestLength  int64
+	RequestScheme  string // Request scheme: http, https (from request_X-Forwarded-Proto)
 
 	// Response info
-	StatusCode     int
-	ResponseSize   int64
-	ResponseTimeMs float64
+	StatusCode          int
+	ResponseSize        int64
+	ResponseTimeMs      float64
+	ResponseContentType string // downstream_Content-Type
 
 	// Detailed timing (for hash calculation precision)
 	Duration       int64   // Duration in nanoseconds (Traefik's Duration field)
 	StartUTC       string  // Start timestamp with nanosecond precision (Traefik's StartUTC field)
 	UpstreamResponseTimeMs float64
+	RetryAttempts  int     // Number of retry attempts
 
 	// Headers
 	UserAgent      string
 	Referer        string
 
 	// Proxy/Upstream info
-	BackendName    string
-	BackendURL     string
-	RouterName     string
-	UpstreamStatus int
+	BackendName         string
+	BackendURL          string
+	RouterName          string
+	UpstreamStatus      int
+	UpstreamContentType string // origin_Content-Type
+	ClientHostname      string // ClientHost field (may contain hostname)
 
 	// TLS info
 	TLSVersion     string

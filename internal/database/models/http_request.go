@@ -22,16 +22,19 @@ type HTTPRequest struct {
     Path           string    `gorm:"not null"`
     QueryString    string
     RequestLength  int64     // Request size in bytes (NPM/Caddy)
+    RequestScheme  string    // Request scheme: http, https (from X-Forwarded-Proto)
 
     // Response info
-    StatusCode     int       `gorm:"not null;index:idx_status"`
-    ResponseSize   int64
-    ResponseTimeMs float64   `gorm:"index:idx_response_time"` // Total response time
+    StatusCode         int       `gorm:"not null;index:idx_status"`
+    ResponseSize       int64
+    ResponseTimeMs     float64   `gorm:"index:idx_response_time"` // Total response time
+    ResponseContentType string   `gorm:"index:idx_response_content_type"` // downstream Content-Type
 
     // Detailed timing (optional, for advanced proxies)
     Duration       int64     // Duration in nanoseconds (for precise hash calculation)
     StartUTC       string    // Start timestamp with nanosecond precision (for precise hash calculation)
     UpstreamResponseTimeMs float64 // Time spent waiting for upstream/backend
+    RetryAttempts  int       `gorm:"index:idx_retry_attempts"` // Number of retry attempts (Traefik)
 
     // Headers
     UserAgent      string
@@ -46,10 +49,12 @@ type HTTPRequest struct {
 
     // Proxy/Upstream info (proxy-agnostic naming)
     // These fields work for Traefik, NPM, Caddy, HAProxy, etc.
-    BackendName    string    // Traefik: BackendName, NPM: proxy_upstream_name, Caddy: upstream_addr
-    BackendURL     string    // Full backend URL (Traefik: BackendURL, others: constructed)
-    RouterName     string    // Traefik: RouterName, NPM: server_name, Caddy: logger name
-    UpstreamStatus int       // Upstream/backend response status (if different from final status)
+    BackendName         string // Traefik: BackendName, NPM: proxy_upstream_name, Caddy: upstream_addr
+    BackendURL          string // Full backend URL (Traefik: BackendURL, others: constructed)
+    RouterName          string `gorm:"index:idx_router_name"` // Traefik: RouterName, NPM: server_name, Caddy: logger name
+    UpstreamStatus      int    // Upstream/backend response status (if different from final status)
+    UpstreamContentType string // Origin/backend Content-Type (origin_Content-Type in Traefik)
+    ClientHostname      string // Client hostname (if reverse DNS available, from ClientHost)
 
     // TLS info
     TLSVersion     string

@@ -148,6 +148,9 @@ func (p *Parser) parseJSON(line string) (*HTTPRequestEvent, error) {
 	// Extract client IP and port
 	ip, port := parseClientHost(clientIP)
 
+	// Extract client hostname (may be same as IP or actual hostname)
+	clientHostname := getString(raw, "ClientHost")
+
 	// Extract query string from path if present
 	path := getString(raw, "RequestPath")
 	if path == "" {
@@ -167,33 +170,38 @@ func (p *Parser) parseJSON(line string) (*HTTPRequestEvent, error) {
 		SourceName: "", // Will be set by ingestion engine
 
 		// Client info
-		ClientIP:   ip,
-		ClientPort: port,
+		ClientIP:       ip,
+		ClientPort:     port,
+		ClientHostname: clientHostname, // May be hostname or same as IP
 
 		// Request info
-		Method:      strings.ToUpper(method),
-		Protocol:    getString(raw, "RequestProtocol"),
-		Host:        getString(raw, "request_Host"),
-		Path:        path,
-		QueryString: queryString,
+		Method:        strings.ToUpper(method),
+		Protocol:      getString(raw, "RequestProtocol"),
+		Host:          getString(raw, "request_Host"),
+		Path:          path,
+		QueryString:   queryString,
+		RequestScheme: getString(raw, "request_X-Forwarded-Proto"), // http or https
 
 		// Response info
-		StatusCode:     getInt(raw, "DownstreamStatus"),
-		ResponseSize:   getInt64(raw, "DownstreamContentSize"),
-		ResponseTimeMs: getDuration(raw, "Duration") / 1000000, // Convert nanoseconds to milliseconds
+		StatusCode:          getInt(raw, "DownstreamStatus"),
+		ResponseSize:        getInt64(raw, "DownstreamContentSize"),
+		ResponseTimeMs:      getDuration(raw, "Duration") / 1000000, // Convert nanoseconds to milliseconds
+		ResponseContentType: getString(raw, "downstream_Content-Type"),
 
 		// Detailed timing (for hash calculation precision)
-		Duration:       int64(getDuration(raw, "Duration")), // Nanoseconds
-		StartUTC:       getString(raw, "StartUTC"),          // Timestamp with nanosecond precision
+		Duration:      int64(getDuration(raw, "Duration")), // Nanoseconds
+		StartUTC:      getString(raw, "StartUTC"),          // Timestamp with nanosecond precision
+		RetryAttempts: getInt(raw, "RetryAttempts"),
 
 		// Headers
 		UserAgent: getString(raw, "request_User-Agent"),
 		Referer:   getString(raw, "request_Referer"),
 
 		// Traefik-specific (may not be present)
-		BackendName: getString(raw, "ServiceName"),
-		BackendURL:  getString(raw, "backend_URL"),
-		RouterName:  getString(raw, "router_Name"),
+		BackendName:         getString(raw, "ServiceName"),
+		BackendURL:          getString(raw, "backend_URL"),
+		RouterName:          getString(raw, "router_Name"),
+		UpstreamContentType: getString(raw, "origin_Content-Type"),
 
 		// TLS info
 		TLSVersion: getString(raw, "TLSVersion"),
@@ -337,33 +345,38 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 		SourceName: "", // Will be set by ingestion engine
 
 		// Client info
-		ClientIP:   ip,
-		ClientPort: port,
+		ClientIP:       ip,
+		ClientPort:     port,
+		ClientHostname: "", // Not available in CLF
 
 		// Request info
-		Method:      strings.ToUpper(method),
-		Protocol:    "", // Not available in CLF
-		Host:        "", // Not available in CLF
-		Path:        path,
-		QueryString: queryString,
+		Method:        strings.ToUpper(method),
+		Protocol:      "",   // Not available in CLF
+		Host:          "",   // Not available in CLF
+		Path:          path,
+		QueryString:   queryString,
+		RequestScheme: "",   // Not available in CLF
 
 		// Response info
-		StatusCode:     statusCode,
-		ResponseSize:   responseSize,
-		ResponseTimeMs: durationMs,
+		StatusCode:          statusCode,
+		ResponseSize:        responseSize,
+		ResponseTimeMs:      durationMs,
+		ResponseContentType: "", // Not available in CLF
 
 		// Detailed timing (for hash calculation precision)
-		Duration:   durationNs, // Converted from ms to ns
-		StartUTC:   startUTC,   // Constructed from CLF timestamp
+		Duration:      durationNs, // Converted from ms to ns
+		StartUTC:      startUTC,   // Constructed from CLF timestamp
+		RetryAttempts: 0,          // Not available in CLF
 
 		// Headers
 		UserAgent: userAgent,
 		Referer:   referer,
 
 		// Traefik-specific
-		BackendName: "", // ServiceName not in CLF
-		BackendURL:  backendURL,
-		RouterName:  routerName,
+		BackendName:         "",         // ServiceName not in CLF
+		BackendURL:          backendURL,
+		RouterName:          routerName,
+		UpstreamContentType: "", // Not available in CLF
 
 		// TLS info
 		TLSVersion: "", // Not available in CLF
@@ -459,33 +472,45 @@ func (p *Parser) parseGenericCLF(matches []string) (*HTTPRequestEvent, error) {
 		Timestamp:  timestamp,
 		SourceName: "",
 
-		ClientIP:   ip,
-		ClientPort: port,
+		// Client info
+		ClientIP:       ip,
+		ClientPort:     port,
+		ClientHostname: "",
 
-		Method:      strings.ToUpper(method),
-		Protocol:    "",
-		Host:        "",
-		Path:        path,
-		QueryString: queryString,
+		// Request info
+		Method:        strings.ToUpper(method),
+		Protocol:      "",
+		Host:          "",
+		Path:          path,
+		QueryString:   queryString,
+		RequestScheme: "",
 
-		StatusCode:     statusCode,
-		ResponseSize:   responseSize,
-		ResponseTimeMs: 0, // Not available in generic CLF
+		// Response info
+		StatusCode:          statusCode,
+		ResponseSize:        responseSize,
+		ResponseTimeMs:      0, // Not available in generic CLF
+		ResponseContentType: "",
 
 		// Detailed timing (for hash calculation precision)
-		Duration: 0,        // Not available in generic CLF
-		StartUTC: startUTC, // Constructed from CLF timestamp
+		Duration:      0,        // Not available in generic CLF
+		StartUTC:      startUTC, // Constructed from CLF timestamp
+		RetryAttempts: 0,
 
+		// Headers
 		UserAgent: userAgent,
 		Referer:   referer,
 
-		BackendName: "",
-		BackendURL:  "",
-		RouterName:  "",
+		// Proxy/Upstream info
+		BackendName:         "",
+		BackendURL:          "",
+		RouterName:          "",
+		UpstreamContentType: "",
 
+		// TLS info
 		TLSVersion: "",
 		TLSCipher:  "",
 
+		// Tracing
 		RequestID: "",
 	}
 
