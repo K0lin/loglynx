@@ -75,11 +75,6 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		 ON http_requests(timestamp DESC, response_time_ms, path, host, method)
 		 WHERE response_time_ms > 1000`,
 
-		// Recent data only (last 30 days) - covering index for dashboard
-		`CREATE INDEX IF NOT EXISTS idx_recent_dashboard
-		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, path)
-		 WHERE timestamp > datetime('now', '-30 days')`,
-
 		// Server errors only (50x)
 		`CREATE INDEX IF NOT EXISTS idx_server_errors
 		 ON http_requests(timestamp DESC, status_code, path, backend_name)
@@ -93,14 +88,15 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		// ===== COVERING INDEXES (include data columns) =====
 
 		// Dashboard covering index (includes most displayed columns)
+		// Note: Removed datetime() WHERE clause as it's non-deterministic in indexes
 		`CREATE INDEX IF NOT EXISTS idx_dashboard_covering
-		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, method, path)
-		 WHERE timestamp > datetime('now', '-7 days')`,
+		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, method, path)`,
 
 		// Error analysis covering index
+		// Note: Removed datetime() WHERE clause as it's non-deterministic in indexes
 		`CREATE INDEX IF NOT EXISTS idx_error_analysis
 		 ON http_requests(timestamp DESC, status_code, path, method, client_ip, response_time_ms, backend_name)
-		 WHERE status_code >= 400 AND timestamp > datetime('now', '-7 days')`,
+		 WHERE status_code >= 400`,
 
 		// ===== CLEANUP INDEX =====
 		// Index for cleanup queries (timestamp for deletion)

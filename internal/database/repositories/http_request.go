@@ -54,10 +54,10 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	}
 
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
-	// HTTPRequest has ~40 columns, so max safe batch size is ~800 records
+	// HTTPRequest has 48 columns (as of schema optimization update), so max safe batch size is ~680 records
 	const MaxSQLiteVariables = 32766
-	const ColumnsPerRecord = 40 // Approximate number of columns in HTTPRequest
-	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // ~819 records
+	const ColumnsPerRecord = 48 // Actual number of columns in HTTPRequest model
+	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // ~682 records
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
