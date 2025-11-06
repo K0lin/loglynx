@@ -204,7 +204,7 @@
                     },
                     { data: 'hits', render: (data) => data.toLocaleString() },
                     { data: 'unique_visitors', render: (data) => data.toLocaleString() },
-                    { data: 'bandwidth', render: (data) => LogLynxUtils.formatBytes(data) },
+                    { data: 'total_bandwidth', render: (data) => LogLynxUtils.formatBytes(data || 0) },
                     { data: 'avg_response_time', render: (data) => data ? `${Math.round(data)} ms` : '-' }
                 ],
                 order: [[1, 'desc']],
