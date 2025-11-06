@@ -6,7 +6,7 @@
 const LogLynxStartupLoader = {
     MIN_PROCESSING_PERCENTAGE: 95,
     CHECK_INTERVAL: 1000, // Check every 1 second
-    MAX_WAIT_TIME: 300000, // Maximum 300 seconds wait time (fail-safe)
+    MAX_WAIT_TIME: 1800000, // Maximum 30 minutes wait time (fail-safe)
     isReady: false,
     checkTimer: null,
     startTime: null,
