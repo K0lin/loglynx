@@ -163,7 +163,7 @@ function initializeMap(ipsData, countriesData) {
                 <hr style="margin: 8px 0; border-color: #444;">
                 <div style="max-height: 100px; overflow-y: auto; font-size: 11px; color: #E8E8E8;">
                     <strong style="color: #FF6B35;">IP Addresses:</strong><br>
-                    ${loc.ips.slice(0, 5).map(ip => `<code style="background: #1A1A1D; color: #FFB800; padding: 2px 4px; border-radius: 3px;">${ip}</code>`).join('<br>')}
+                    ${loc.ips.slice(0, 5).map(ip => `<code style="background: #1A1A1D; color: #FFB800; padding: 2px 4px; border-radius: 3px;"><a href="/ip/${ip}">${ip}</a></code>`).join('<br>')}
                     ${loc.ips.length > 5 ? `<br><span style="color: #999;">...and ${loc.ips.length - 5} more</span>` : ''}
                 </div>
             </div>
