@@ -29,6 +29,8 @@ type HTTPRequest struct {
     ResponseTimeMs float64   `gorm:"index:idx_response_time"` // Total response time
 
     // Detailed timing (optional, for advanced proxies)
+    Duration       int64     // Duration in nanoseconds (for precise hash calculation)
+    StartUTC       string    // Start timestamp with nanosecond precision (for precise hash calculation)
     UpstreamResponseTimeMs float64 // Time spent waiting for upstream/backend
 
     // Headers

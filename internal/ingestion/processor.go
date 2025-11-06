@@ -433,10 +433,12 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 	}
 
 	// Generate hash for deduplication
-	// Hash is based on: timestamp + client IP + method + host + path + query string + status code
+	// Hash is based on: timestamp + client IP + method + host + path + query string + status code + duration + startUTC
+	// Duration and StartUTC provide nanosecond precision for better deduplication accuracy
 	// This uniquely identifies a request while allowing for legitimate duplicates
 	// (e.g., same endpoint hit multiple times in same second from different IPs)
-	hashInput := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%d",
+	// If Duration or StartUTC are not available (CLF logs), they will be empty/zero and hash will use other fields
+	hashInput := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%d|%d|%s",
 		dbModel.Timestamp.Unix(),
 		dbModel.ClientIP,
 		dbModel.Method,
@@ -444,6 +446,8 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 		dbModel.Path,
 		dbModel.QueryString,
 		dbModel.StatusCode,
+		dbModel.Duration,  // Nanosecond precision duration
+		dbModel.StartUTC,  // Nanosecond precision start time
 	)
 	hash := sha256.Sum256([]byte(hashInput))
 	dbModel.RequestHash = fmt.Sprintf("%x", hash)

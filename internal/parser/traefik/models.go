@@ -27,7 +27,9 @@ type HTTPRequestEvent struct {
 	ResponseSize   int64
 	ResponseTimeMs float64
 
-	// Detailed timing
+	// Detailed timing (for hash calculation precision)
+	Duration       int64   // Duration in nanoseconds (Traefik's Duration field)
+	StartUTC       string  // Start timestamp with nanosecond precision (Traefik's StartUTC field)
 	UpstreamResponseTimeMs float64
 
 	// Headers

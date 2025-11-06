@@ -182,6 +182,10 @@ func (p *Parser) parseJSON(line string) (*HTTPRequestEvent, error) {
 		ResponseSize:   getInt64(raw, "DownstreamContentSize"),
 		ResponseTimeMs: getDuration(raw, "Duration") / 1000000, // Convert nanoseconds to milliseconds
 
+		// Detailed timing (for hash calculation precision)
+		Duration:       int64(getDuration(raw, "Duration")), // Nanoseconds
+		StartUTC:       getString(raw, "StartUTC"),          // Timestamp with nanosecond precision
+
 		// Headers
 		UserAgent: getString(raw, "request_User-Agent"),
 		Referer:   getString(raw, "request_Referer"),
@@ -292,8 +296,16 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 		responseSize, _ = strconv.ParseInt(sizeStr, 10, 64)
 	}
 
-	// Parse duration (already in milliseconds)
+	// Parse duration (already in milliseconds in CLF format)
 	durationMs, _ := strconv.ParseFloat(durationStr, 64)
+
+	// Convert milliseconds to nanoseconds for Duration field (consistent with JSON format)
+	durationNs := int64(durationMs * 1000000) // ms to ns
+
+	// For CLF logs, we construct a StartUTC from timestamp since it's not in the log
+	// This gives us second-level precision (CLF only has second precision)
+	// Format matches Traefik's StartUTC format for consistency
+	startUTC := timestamp.Format(time.RFC3339Nano)
 
 	// Extract path and query string
 	path := requestPath
@@ -339,6 +351,10 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 		StatusCode:     statusCode,
 		ResponseSize:   responseSize,
 		ResponseTimeMs: durationMs,
+
+		// Detailed timing (for hash calculation precision)
+		Duration:   durationNs, // Converted from ms to ns
+		StartUTC:   startUTC,   // Constructed from CLF timestamp
 
 		// Headers
 		UserAgent: userAgent,
@@ -416,6 +432,10 @@ func (p *Parser) parseGenericCLF(matches []string) (*HTTPRequestEvent, error) {
 		responseSize, _ = strconv.ParseInt(sizeStr, 10, 64)
 	}
 
+	// For generic CLF, we don't have duration in the log, so it will be 0
+	// StartUTC is constructed from timestamp (second-level precision)
+	startUTC := timestamp.Format(time.RFC3339Nano)
+
 	// Extract path and query string
 	path := requestPath
 	queryString := ""
@@ -451,6 +471,10 @@ func (p *Parser) parseGenericCLF(matches []string) (*HTTPRequestEvent, error) {
 		StatusCode:     statusCode,
 		ResponseSize:   responseSize,
 		ResponseTimeMs: 0, // Not available in generic CLF
+
+		// Detailed timing (for hash calculation precision)
+		Duration: 0,        // Not available in generic CLF
+		StartUTC: startUTC, // Constructed from CLF timestamp
 
 		UserAgent: userAgent,
 		Referer:   referer,
