@@ -161,7 +161,7 @@
                     {
                         data: null,
                         render: (data) => {
-                            const name = data.backend_name || 'Unknown';
+                            const name = data.backend_name || 'Direct Access';
                             let icon = 'fa-server';
                             let typeLabel = '';
 
@@ -249,7 +249,7 @@
                     new Chart(ctx1, {
                         type: 'bar',
                         data: {
-                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Unknown')),
+                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access')),
                             datasets: [{
                                 label: 'Requests',
                                 data: data.map(item => item.hits),
@@ -267,7 +267,7 @@
                     new Chart(ctx2, {
                         type: 'bar',
                         data: {
-                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Unknown')),
+                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access')),
                             datasets: [{
                                 label: 'Avg Response Time (ms)',
                                 data: data.map(item => Math.round(item.avg_response_time || 0)),
