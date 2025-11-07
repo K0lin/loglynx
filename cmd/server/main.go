@@ -103,6 +103,7 @@ func main() {
 			cfg.GeoIP.ASNDBPath,
 			db,
 			logger,
+			cfg.Performance.GeoIPCacheSize, // Pass configured cache size
 		)
 		if err != nil {
 			logger.Warn("GeoIP enricher initialization failed, continuing without GeoIP", logger.Args("error", err))

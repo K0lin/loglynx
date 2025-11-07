@@ -2,8 +2,8 @@ package enrichment
 
 import (
 	"fmt"
-	"net"
 	"loglynx/internal/database/models"
+	"net"
 	"sync"
 	"time"
 
@@ -23,16 +23,22 @@ type GeoIPEnricher struct {
 	cache     map[string]*models.IPReputation
 	cacheMu   sync.RWMutex
 	enabled   bool
+	cacheSize int // Maximum cache size from config (GEOIP_CACHE_SIZE)
 }
 
 // NewGeoIPEnricher creates a new GeoIP enricher
 // Handles City, Country, and ASN databases - works with any combination available
-func NewGeoIPEnricher(cityDBPath, countryDBPath, asnDBPath string, db *gorm.DB, logger *pterm.Logger) (*GeoIPEnricher, error) {
+func NewGeoIPEnricher(cityDBPath, countryDBPath, asnDBPath string, db *gorm.DB, logger *pterm.Logger, cacheSize int) (*GeoIPEnricher, error) {
+	if cacheSize <= 0 {
+		cacheSize = 10000 // Default fallback
+	}
+
 	enricher := &GeoIPEnricher{
-		db:      db,
-		logger:  logger,
-		cache:   make(map[string]*models.IPReputation),
-		enabled: false,
+		db:        db,
+		logger:    logger,
+		cache:     make(map[string]*models.IPReputation, cacheSize), // Pre-allocate with capacity
+		enabled:   false,
+		cacheSize: cacheSize,
 	}
 
 	// Try to load City database (provides most detailed location data)
@@ -186,6 +192,53 @@ func (g *GeoIPEnricher) lookupAndCache(request *models.HTTPRequest) error {
 
 	// Store in memory cache first (fast, thread-safe)
 	g.cacheMu.Lock()
+
+	// Check if cache is full before adding
+	if len(g.cache) >= g.cacheSize {
+		// Cache is full - implement LRU-style eviction
+		// Remove oldest entries (simple strategy: remove 10% of cache)
+		evictCount := g.cacheSize / 10
+		if evictCount < 1 {
+			evictCount = 1
+		}
+
+		// Find and remove oldest entries based on LastSeen
+		type ipAge struct {
+			ip       string
+			lastSeen time.Time
+		}
+		ages := make([]ipAge, 0, len(g.cache))
+		for ip, rep := range g.cache {
+			ages = append(ages, ipAge{ip: ip, lastSeen: rep.LastSeen})
+		}
+
+		// Sort by oldest first
+		for i := 0; i < len(ages)-1; i++ {
+			for j := i + 1; j < len(ages); j++ {
+				if ages[i].lastSeen.After(ages[j].lastSeen) {
+					ages[i], ages[j] = ages[j], ages[i]
+				}
+			}
+		}
+
+		// Remove oldest entries
+		evicted := 0
+		for _, age := range ages {
+			if evicted >= evictCount {
+				break
+			}
+			delete(g.cache, age.ip)
+			evicted++
+		}
+
+		g.logger.Debug("GeoIP cache eviction performed",
+			g.logger.Args(
+				"evicted", evicted,
+				"cache_size", len(g.cache),
+				"max_size", g.cacheSize,
+			))
+	}
+
 	g.cache[request.ClientIP] = reputation
 	g.cacheMu.Unlock()
 
@@ -216,8 +269,9 @@ func (g *GeoIPEnricher) LoadCache() error {
 	currentSize := len(g.cache)
 	g.cacheMu.RUnlock()
 
-	if currentSize > 5000 {
-		g.logger.Info("GeoIP cache already populated, skipping load", g.logger.Args("entries", currentSize))
+	if currentSize > (g.cacheSize / 2) {
+		g.logger.Info("GeoIP cache already populated, skipping load",
+			g.logger.Args("entries", currentSize, "max_size", g.cacheSize))
 		return nil
 	}
 
@@ -237,7 +291,7 @@ func (g *GeoIPEnricher) LoadCache() error {
 		Group("client_ip").
 		Having("COUNT(*) > 5"). // Only IPs with >5 requests
 		Order("repetition DESC").
-		Limit(5000). // Reduced from 10000 to save memory
+		Limit(g.cacheSize). // Use configured cache size
 		Scan(&topIPs).
 		Error
 
@@ -245,7 +299,7 @@ func (g *GeoIPEnricher) LoadCache() error {
 		g.logger.Warn("Failed to query hot IPs from http_requests", g.logger.Args("error", err))
 		// Fall back to loading from ip_reputation (most recent)
 		var reputations []models.IPReputation
-		if err := g.db.Order("last_seen DESC").Limit(5000).Find(&reputations).Error; err != nil {
+		if err := g.db.Order("last_seen DESC").Limit(g.cacheSize).Find(&reputations).Error; err != nil {
 			g.logger.WithCaller().Error("Failed to load IP reputation cache", g.logger.Args("error", err))
 			return err
 		}

@@ -63,6 +63,56 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		`CREATE INDEX IF NOT EXISTS idx_summary_query
 		 ON http_requests(timestamp DESC, status_code, response_time_ms)`,
 
+		// ===== NEW: TIMELINE OPTIMIZATION INDEXES =====
+
+		// Timeline queries by date grouping (strftime optimization)
+		`CREATE INDEX IF NOT EXISTS idx_timeline_date
+		 ON http_requests(date(timestamp), status_code, response_time_ms)`,
+
+		// Timeline with backend filtering
+		`CREATE INDEX IF NOT EXISTS idx_timeline_backend
+		 ON http_requests(timestamp DESC, backend_name, status_code)`,
+
+		// Timeline with service filtering (host + backend_name)
+		`CREATE INDEX IF NOT EXISTS idx_timeline_service
+		 ON http_requests(timestamp DESC, host, backend_name, status_code)`,
+
+		// ===== NEW: GEO ANALYTICS OPTIMIZATION =====
+
+		// Geographic queries (country-based analytics)
+		`CREATE INDEX IF NOT EXISTS idx_geo_country_time
+		 ON http_requests(geo_country, timestamp DESC)
+		 WHERE geo_country != ''`,
+
+		// City-level analytics
+		`CREATE INDEX IF NOT EXISTS idx_geo_city
+		 ON http_requests(geo_country, geo_city, timestamp DESC)
+		 WHERE geo_city != ''`,
+
+		// ASN analytics (ISP/organization tracking)
+		`CREATE INDEX IF NOT EXISTS idx_asn_time
+		 ON http_requests(asn, timestamp DESC)
+		 WHERE asn > 0`,
+
+		// ===== NEW: DASHBOARD AGGREGATION INDEXES =====
+
+		// Top paths aggregation (path + timestamp for trending)
+		`CREATE INDEX IF NOT EXISTS idx_top_paths
+		 ON http_requests(path, timestamp DESC, status_code)`,
+
+		// Top IPs aggregation
+		`CREATE INDEX IF NOT EXISTS idx_top_ips
+		 ON http_requests(client_ip, timestamp DESC, status_code)`,
+
+		// Method distribution
+		`CREATE INDEX IF NOT EXISTS idx_method_dist
+		 ON http_requests(method, timestamp DESC)`,
+
+		// Browser/User-Agent analytics
+		`CREATE INDEX IF NOT EXISTS idx_browser_time
+		 ON http_requests(browser, timestamp DESC)
+		 WHERE browser != ''`,
+
 		// ===== PARTIAL INDEXES (for specific queries) =====
 
 		// Errors only (40x and 50x status codes)
