@@ -30,7 +30,9 @@ type HTTPRequest struct {
 	RequestScheme string `gorm:"type:varchar(10);check:request_scheme IN ('http', 'https', 'ws', 'wss', '')"` // Request scheme: http, https, ws (WebSocket), wss (WebSocket Secure)
 
 	// Response info
-	StatusCode          int     `gorm:"not null;index:idx_status;check:status_code >= 100 AND status_code < 600"`
+	// Allow 0 to represent unknown/invalid status codes produced by some parsers
+	// Parser code may set StatusCode=0 for invalid values, so permit 0 in DB
+	StatusCode          int     `gorm:"not null;index:idx_status;check:status_code >= 0 AND status_code < 600"`
 	ResponseSize        int64   `gorm:"check:response_size >= 0"`
 	ResponseTimeMs      float64 `gorm:"index:idx_response_time;check:response_time_ms >= 0"` // Total response time
 	ResponseContentType string  `gorm:"type:varchar(255);index:idx_response_content_type"`   // downstream Content-Type
