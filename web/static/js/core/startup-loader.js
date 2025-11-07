@@ -6,12 +6,17 @@
 const LogLynxStartupLoader = {
     MIN_PROCESSING_PERCENTAGE: 95,
     CHECK_INTERVAL: 1000, // Check every 1 second
+    CHECK_INTERVAL_ERROR: 3000, // Slower polling when errors occur (3 seconds)
+    MAX_CONSECUTIVE_ERRORS: 5, // Max errors before showing warning
     isReady: false,
     checkTimer: null,
     alreadyChecked: false, // Flag to avoid re-checking on subsequent page loads
     previousPercentage: 0, // Track previous percentage for ETA calculation
     lastCheckTime: null, // Track last check time for velocity calculation
     processingHistory: [], // Store recent processing speeds for better ETA
+    consecutiveErrors: 0, // Track consecutive API errors
+    databaseUnderLoad: false, // Flag for database load warning
+    lastSuccessfulPercentage: 0, // Track last known good percentage
     
     /**
      * Initialize the startup loader
@@ -154,6 +159,20 @@ const LogLynxStartupLoader = {
                 <div id="loadingDetails" style="font-size: 13px; color: #666; font-family: monospace;">
                     Waiting for log sources...
                 </div>
+                
+                <!-- Database Load Warning -->
+                <div id="databaseWarning" style="
+                    display: none;
+                    margin-top: 20px;
+                    padding: 12px 20px;
+                    background: rgba(255, 152, 0, 0.1);
+                    border: 1px solid rgba(255, 152, 0, 0.3);
+                    border-radius: 8px;
+                    color: #FFA726;
+                ">
+                    <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
+                    <span id="warningMessage">Database under heavy load, processing may be slower...</span>
+                </div>
             </div>
             
             <style>
@@ -203,7 +222,7 @@ const LogLynxStartupLoader = {
         const progressBar = document.getElementById('loadingProgressBar');
         const percentageText = document.getElementById('loadingPercentageText');
         const detailsEl = document.getElementById('loadingDetails');
-        
+
         if (!stats || stats.length === 0) {
             if (messageEl) messageEl.textContent = 'Waiting for log sources...';
             if (progressBar) progressBar.style.width = '0%';
@@ -211,33 +230,36 @@ const LogLynxStartupLoader = {
             if (detailsEl) detailsEl.textContent = 'No log sources configured yet';
             return;
         }
-        
+
         // Calculate average percentage across all sources
         let totalPercentage = 0;
         let totalBytes = 0;
         let processedBytes = 0;
-        
+
         stats.forEach(source => {
             totalPercentage += source.percentage || 0;
             totalBytes += source.file_size || 0;
             processedBytes += source.bytes_processed || 0;
         });
-        
+
         const avgPercentage = stats.length > 0 ? (totalPercentage / stats.length) : 0;
         const roundedPercentage = Math.round(avgPercentage * 10) / 10; // Round to 1 decimal
-        
+
+        // Store last successful percentage
+        this.lastSuccessfulPercentage = avgPercentage;
+
         // Calculate ETA based on processing speed
         const eta = this.calculateETA(avgPercentage);
-        
+
         // Update progress bar
         if (progressBar) {
             progressBar.style.width = `${avgPercentage}%`;
         }
-        
+
         if (percentageText) {
             percentageText.textContent = `${roundedPercentage.toFixed(1)}%`;
         }
-        
+
         // Update message based on progress
         if (messageEl) {
             if (avgPercentage < 50) {
@@ -250,7 +272,7 @@ const LogLynxStartupLoader = {
                 messageEl.textContent = 'Ready! Loading dashboard...';
             }
         }
-        
+
         // Update details
         if (detailsEl) {
             const bytesText = this.formatBytes(processedBytes) + ' / ' + this.formatBytes(totalBytes);
@@ -260,65 +282,136 @@ const LogLynxStartupLoader = {
             detailsEl.textContent = `Processing ${bytesText} from ${sourcesText}${speedText}`;
         }
     },
+
+    /**
+     * Show database load warning
+     */
+    showDatabaseWarning() {
+        const warningEl = document.getElementById('databaseWarning');
+        const messageEl = document.getElementById('warningMessage');
+
+        if (warningEl && !this.databaseUnderLoad) {
+            this.databaseUnderLoad = true;
+            warningEl.style.display = 'block';
+
+            if (messageEl) {
+                if (this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
+                    messageEl.textContent = 'Database under heavy load. Please wait, processing continues...';
+                } else {
+                    messageEl.textContent = 'Temporary connection issues. Retrying...';
+                }
+            }
+        }
+    },
+
+    /**
+     * Hide database load warning
+     */
+    hideDatabaseWarning() {
+        const warningEl = document.getElementById('databaseWarning');
+
+        if (warningEl && this.databaseUnderLoad) {
+            warningEl.style.transition = 'opacity 0.5s ease';
+            warningEl.style.opacity = '0';
+
+            setTimeout(() => {
+                warningEl.style.display = 'none';
+                warningEl.style.opacity = '1';
+                this.databaseUnderLoad = false;
+            }, 500);
+        }
+    },
     
     /**
-     * Calculate ETA based on processing speed
+     * Calculate ETA based on processing speed (improved algorithm)
      */
     calculateETA(currentPercentage) {
         const now = Date.now();
-        
+
         // First check, no ETA yet
         if (this.lastCheckTime === null) {
             this.lastCheckTime = now;
             this.previousPercentage = currentPercentage;
             return null;
         }
-        
+
         // Calculate time elapsed since last check (in seconds)
         const timeElapsed = (now - this.lastCheckTime) / 1000;
-        
+
         // Calculate percentage progress since last check
         const percentageProgress = currentPercentage - this.previousPercentage;
-        
+
         // Calculate speed (percentage per second)
         const speed = timeElapsed > 0 ? percentageProgress / timeElapsed : 0;
-        
-        // Store in history (keep last 5 measurements for smoothing)
-        if (speed > 0) {
-            this.processingHistory.push(speed);
-            if (this.processingHistory.length > 5) {
+
+        // Store in history (keep last 10 measurements for better smoothing)
+        if (speed > 0 && percentageProgress > 0) {
+            this.processingHistory.push({
+                speed: speed,
+                timestamp: now,
+                percentage: currentPercentage
+            });
+
+            // Keep only last 10 measurements
+            if (this.processingHistory.length > 10) {
                 this.processingHistory.shift();
             }
         }
-        
+
         // Update tracking variables
         this.lastCheckTime = now;
         this.previousPercentage = currentPercentage;
-        
-        // Need at least 2 measurements for ETA
-        if (this.processingHistory.length < 2) {
+
+        // Need at least 3 measurements for reliable ETA
+        if (this.processingHistory.length < 3) {
             return null;
         }
-        
-        // Calculate average speed from history (smoothing)
-        const avgSpeed = this.processingHistory.reduce((a, b) => a + b, 0) / this.processingHistory.length;
-        
-        // If speed is too slow or negative (shouldn't happen), no ETA
-        if (avgSpeed <= 0) {
+
+        // Remove outliers and calculate weighted average (recent measurements more important)
+        const speeds = this.processingHistory.map(h => h.speed);
+        const sortedSpeeds = [...speeds].sort((a, b) => a - b);
+
+        // Remove top and bottom 20% if we have enough samples
+        let filteredSpeeds = speeds;
+        if (speeds.length >= 5) {
+            const removeCount = Math.floor(speeds.length * 0.2);
+            const min = sortedSpeeds[removeCount];
+            const max = sortedSpeeds[sortedSpeeds.length - removeCount - 1];
+            filteredSpeeds = speeds.filter(s => s >= min && s <= max);
+        }
+
+        // Weighted average - give more weight to recent measurements
+        let weightedSum = 0;
+        let weightSum = 0;
+        filteredSpeeds.forEach((speed, index) => {
+            const weight = index + 1; // Linear weight increase
+            weightedSum += speed * weight;
+            weightSum += weight;
+        });
+
+        const avgSpeed = weightSum > 0 ? weightedSum / weightSum : 0;
+
+        // If speed is too slow or negative, no reliable ETA
+        if (avgSpeed <= 0.001) {
             return null;
         }
-        
+
         // Calculate remaining percentage
         const remainingPercentage = this.MIN_PROCESSING_PERCENTAGE - currentPercentage;
-        
+
         // If already past target, no ETA needed
         if (remainingPercentage <= 0) {
             return 'a few seconds';
         }
-        
+
         // Calculate ETA in seconds
-        const etaSeconds = remainingPercentage / avgSpeed;
-        
+        let etaSeconds = remainingPercentage / avgSpeed;
+
+        // Add some buffer for final processing (last 5% typically slower)
+        if (currentPercentage > 90) {
+            etaSeconds *= 1.2; // 20% buffer for final phase
+        }
+
         // Format ETA
         return this.formatETA(etaSeconds);
     },
@@ -330,8 +423,10 @@ const LogLynxStartupLoader = {
         if (this.processingHistory.length === 0) {
             return null;
         }
-        
-        const avgSpeed = this.processingHistory.reduce((a, b) => a + b, 0) / this.processingHistory.length;
+
+        // Get average speed from recent history
+        const speeds = this.processingHistory.map(h => h.speed);
+        const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
         return avgSpeed.toFixed(2);
     },
     
@@ -357,18 +452,25 @@ const LogLynxStartupLoader = {
     },
     
     /**
-     * Check processing status
+     * Check processing status (with retry logic and error handling)
      */
     async checkProcessingStatus() {
         try {
             const result = await LogLynxAPI.getLogProcessingStats();
-            
+
             if (result.success && result.data) {
                 const stats = result.data;
-                
+
+                // Reset error counter on success
+                if (this.consecutiveErrors > 0) {
+                    console.log('[StartupLoader] Connection restored after errors');
+                    this.hideDatabaseWarning();
+                }
+                this.consecutiveErrors = 0;
+
                 // Update progress display
                 this.updateProgress(stats);
-                
+
                 // Check if all sources are processed enough
                 if (stats.length === 0) {
                     // No sources yet, keep waiting
@@ -376,16 +478,16 @@ const LogLynxStartupLoader = {
                     this.scheduleNextCheck();
                     return;
                 }
-                
+
                 // Calculate average percentage
                 let totalPercentage = 0;
                 stats.forEach(source => {
                     totalPercentage += source.percentage || 0;
                 });
                 const avgPercentage = totalPercentage / stats.length;
-                
+
                 console.log(`[StartupLoader] Processing status: ${avgPercentage.toFixed(2)}%`);
-                
+
                 if (avgPercentage >= this.MIN_PROCESSING_PERCENTAGE) {
                     // Ready to show application
                     console.log('[StartupLoader] Processing complete, showing application');
@@ -396,34 +498,59 @@ const LogLynxStartupLoader = {
                     this.scheduleNextCheck();
                 }
             } else {
-                console.error('[StartupLoader] Failed to get processing stats:', result);
-                // On error, assume ready after a short delay (fail-open approach)
-                setTimeout(() => {
-                    this.isReady = true;
-                    this.onReady();
-                }, 2000);
+                // API returned error or invalid data
+                this.handleCheckError(result.error || 'Invalid response from API');
             }
         } catch (error) {
-            console.error('[StartupLoader] Error checking processing status:', error);
-            // On error, assume ready after a short delay (fail-open approach)
-            setTimeout(() => {
-                this.isReady = true;
-                this.onReady();
-            }, 2000);
+            // Network or other error
+            this.handleCheckError(error);
         }
+    },
+
+    /**
+     * Handle check errors with retry logic
+     */
+    handleCheckError(error) {
+        this.consecutiveErrors++;
+
+        console.warn(`[StartupLoader] Error checking processing status (attempt ${this.consecutiveErrors}/${this.MAX_CONSECUTIVE_ERRORS}):`, error);
+
+        // Show warning after consecutive errors
+        if (this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
+            this.showDatabaseWarning();
+        }
+
+        // Keep last known progress visible
+        if (this.lastSuccessfulPercentage > 0) {
+            const progressBar = document.getElementById('loadingProgressBar');
+            const percentageText = document.getElementById('loadingPercentageText');
+
+            if (progressBar) {
+                progressBar.style.opacity = '0.7'; // Dim to indicate stale data
+            }
+            if (percentageText) {
+                percentageText.textContent = `${this.lastSuccessfulPercentage.toFixed(1)}%`;
+            }
+        }
+
+        // Continue checking with slower interval during errors
+        this.scheduleNextCheck(true);
     },
     
     /**
      * Schedule next status check
      */
-    scheduleNextCheck() {
+    scheduleNextCheck(isError = false) {
         if (this.checkTimer) {
             clearTimeout(this.checkTimer);
         }
-        
+
+        // Use slower interval during errors to reduce load
+        const interval = isError ? this.CHECK_INTERVAL_ERROR : this.CHECK_INTERVAL;
+
         this.checkTimer = setTimeout(() => {
             this.checkProcessingStatus();
-        }, this.CHECK_INTERVAL);
+        }, interval);
     },
     
     /**
