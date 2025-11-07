@@ -53,6 +53,18 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 		return nil
 	}
 
+	// Check if database is empty (first load optimization)
+	// IMPORTANT: Check ONCE at the beginning, not per sub-batch
+	// During first load of large files, subsequent sub-batches would incorrectly see records
+	var count int64
+	r.db.Model(&models.HTTPRequest{}).Count(&count)
+	isFirstLoad := (count == 0)
+
+	if isFirstLoad {
+		r.logger.Debug("First load detected, skipping deduplication checks for all batches",
+			r.logger.Args("total_records", len(requests)))
+	}
+
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
 	// HTTPRequest has 48 columns (as of schema optimization update), so max safe batch size is ~680 records
 	const MaxSQLiteVariables = 32766
@@ -61,7 +73,7 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
-		return r.insertSubBatch(requests)
+		return r.insertSubBatch(requests, isFirstLoad)
 	}
 
 	// Split large batches into smaller chunks
@@ -76,7 +88,7 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 		}
 
 		subBatch := requests[i:end]
-		if err := r.insertSubBatch(subBatch); err != nil {
+		if err := r.insertSubBatch(subBatch, isFirstLoad); err != nil {
 			r.logger.WithCaller().Error("Failed to insert sub-batch",
 				r.logger.Args("batch_num", (i/MaxRecordsPerBatch)+1, "count", len(subBatch), "error", err))
 			return err
@@ -94,18 +106,7 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 }
 
 // insertSubBatch performs the actual batch insert within SQLite variable limits
-func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest) error {
-	// Check if database is empty (first load optimization)
-	// On first load, we can skip the expensive deduplication handling
-	var count int64
-	r.db.Model(&models.HTTPRequest{}).Count(&count)
-	isFirstLoad := (count == 0)
-
-	if isFirstLoad {
-		r.logger.Debug("First load detected, skipping deduplication checks for optimal performance",
-			r.logger.Args("batch_size", len(requests)))
-	}
-
+func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirstLoad bool) error {
 	// Start transaction
 	tx := r.db.Begin()
 	if tx.Error != nil {
