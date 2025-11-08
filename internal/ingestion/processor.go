@@ -38,6 +38,10 @@ type SourceProcessor struct {
 	totalErrors    int64
 	startTime      time.Time
 	statsMu        sync.Mutex
+	// First-load tracking
+	isInitialLoad       bool // True if this is the first time reading this file (lastPosition == 0)
+	initialLoadComplete bool // True after reaching EOF on first load
+	initialLoadMu       sync.Mutex
 }
 
 // NewSourceProcessor creates a new source processor
@@ -69,23 +73,28 @@ func NewSourceProcessor(
 		workerPoolSize = 4
 	}
 
+	// Check if this is an initial load (first time reading this file)
+	isInitialLoad := (source.LastPosition == 0)
+
 	return &SourceProcessor{
-		source:         source,
-		parser:         parser,
-		reader:         reader,
-		httpRepo:       httpRepo,
-		sourceRepo:     sourceRepo,
-		geoIP:          geoIP,
-		logger:         logger,
-		batchSize:      batchSize,       // Configurable via BATCH_SIZE env var
-		workerPoolSize: workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
-		batchTimeout:   2 * time.Second, // Or flush after 2 seconds (faster processing)
-		pollInterval:   1 * time.Second, // Check for new logs every second
-		ctx:            ctx,
-		cancel:         cancel,
-		totalProcessed: 0,
-		totalErrors:    0,
-		startTime:      time.Now(),
+		source:              source,
+		parser:              parser,
+		reader:              reader,
+		httpRepo:            httpRepo,
+		sourceRepo:          sourceRepo,
+		geoIP:               geoIP,
+		logger:              logger,
+		batchSize:           batchSize,       // Configurable via BATCH_SIZE env var
+		workerPoolSize:      workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
+		batchTimeout:        2 * time.Second, // Or flush after 2 seconds (faster processing)
+		pollInterval:        1 * time.Second, // Check for new logs every second
+		ctx:                 ctx,
+		cancel:              cancel,
+		totalProcessed:      0,
+		totalErrors:         0,
+		startTime:           time.Now(),
+		isInitialLoad:       isInitialLoad,
+		initialLoadComplete: false,
 	}
 }
 
@@ -218,6 +227,21 @@ func (sp *SourceProcessor) processLoop() {
 			}
 
 			if len(lines) == 0 {
+				// No new lines - reached EOF
+				// If this is the initial load and we haven't marked it complete yet, do so now
+				sp.initialLoadMu.Lock()
+				if sp.isInitialLoad && !sp.initialLoadComplete {
+					sp.initialLoadComplete = true
+					sp.initialLoadMu.Unlock()
+
+					// Disable first-load mode in repository
+					sp.httpRepo.DisableFirstLoadMode()
+					sp.logger.Info("Initial file load completed - reached end of file",
+						sp.logger.Args("source", sp.source.Name))
+				} else {
+					sp.initialLoadMu.Unlock()
+				}
+
 				continue // No new lines
 			}
 

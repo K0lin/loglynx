@@ -3,6 +3,7 @@ package repositories
 import (
 	"loglynx/internal/database/models"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -19,19 +20,62 @@ type HTTPRequestRepository interface {
 	FindByTimeRange(start, end time.Time, limit int) ([]*models.HTTPRequest, error)
 	Count() (int64, error)
 	CountBySourceName(sourceName string) (int64, error)
+	// First-load optimization control
+	DisableFirstLoadMode()
 }
 
 type httpRequestRepo struct {
-	db     *gorm.DB
-	logger *pterm.Logger
+	db              *gorm.DB
+	logger          *pterm.Logger
+	isFirstLoad     bool       // Global flag: true when database is empty at startup
+	firstLoadMu     sync.Mutex // Protects isFirstLoad flag
+	firstLoadOnce   sync.Once  // Ensures first-load check happens only once
 }
 
 // NewHTTPRequestRepository creates a new HTTP request repository
 func NewHTTPRequestRepository(db *gorm.DB, logger *pterm.Logger) HTTPRequestRepository {
-	return &httpRequestRepo{
-		db:     db,
-		logger: logger,
+	repo := &httpRequestRepo{
+		db:          db,
+		logger:      logger,
+		isFirstLoad: false, // Will be checked on first CreateBatch call
 	}
+	return repo
+}
+
+// checkFirstLoad checks if database is empty (only once, at startup)
+// This is thread-safe and executes only on the first call
+func (r *httpRequestRepo) checkFirstLoad() {
+	r.firstLoadOnce.Do(func() {
+		var count int64
+		r.db.Model(&models.HTTPRequest{}).Count(&count)
+
+		r.firstLoadMu.Lock()
+		r.isFirstLoad = (count == 0)
+		r.firstLoadMu.Unlock()
+
+		if r.isFirstLoad {
+			r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
+		}
+	})
+}
+
+// DisableFirstLoadMode disables first-load optimization
+// Called after the initial file load is complete
+func (r *httpRequestRepo) DisableFirstLoadMode() {
+	r.firstLoadMu.Lock()
+	defer r.firstLoadMu.Unlock()
+
+	if r.isFirstLoad {
+		r.logger.Info("First load completed - deduplication checks now enabled")
+		r.isFirstLoad = false
+	}
+}
+
+// getFirstLoadStatus returns current first-load status (thread-safe)
+func (r *httpRequestRepo) getFirstLoadStatus() bool {
+	r.firstLoadMu.Lock()
+	defer r.firstLoadMu.Unlock()
+	return r.isFirstLoad
 }
 
 // Create inserts a single HTTP request
@@ -53,22 +97,14 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 		return nil
 	}
 
-	// Check if database is empty (first load optimization)
-	// IMPORTANT: Check ONCE at the beginning, not per sub-batch
-	// During first load of large files, subsequent sub-batches would incorrectly see records
-	var count int64
-	r.db.Model(&models.HTTPRequest{}).Count(&count)
-	isFirstLoad := (count == 0)
-
-	if isFirstLoad {
-		r.logger.Debug("First load detected, skipping deduplication checks for all batches",
-			r.logger.Args("total_records", len(requests)))
-	}
+	// Check first-load status (thread-safe, happens only once globally)
+	r.checkFirstLoad()
+	isFirstLoad := r.getFirstLoadStatus()
 
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
 	// HTTPRequest has 48 columns (as of schema optimization update), so max safe batch size is ~680 records
 	const MaxSQLiteVariables = 32766
-	const ColumnsPerRecord = 48 // Actual number of columns in HTTPRequest model
+	const ColumnsPerRecord = 48                                      // Actual number of columns in HTTPRequest model
 	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // ~682 records
 
 	// If batch is small enough, insert directly
@@ -194,7 +230,7 @@ func (r *httpRequestRepo) FindAll(limit int, offset int, serviceName string, ser
 
 	// Apply service filter if provided
 	query = r.applyServiceFilter(query, serviceName, serviceType)
-	
+
 	// Apply exclude own IP if specified
 	if clientIP != "" {
 		if len(excludeServices) == 0 {
