@@ -361,6 +361,21 @@ const LogLynxAPI = {
     },
 
     /**
+     * Get system statistics (uptime, memory, database info, etc.)
+     */
+    async getSystemStats() {
+        return this.get('/system/stats');
+    },
+
+    /**
+     * Get system records timeline
+     * @param {number} days - Number of days (default 30, max 365)
+     */
+    async getSystemTimeline(days = 30) {
+        return this.get('/system/timeline', { days });
+    },
+
+    /**
      * Get recent requests
      * @param {number} limit - Number of results (1-1000)
      * @param {number} offset - Pagination offset

@@ -19,6 +19,10 @@ type CleanupService struct {
 	vacuumEnabled   bool
 	stopChan        chan struct{}
 	running         bool
+	// Stats tracking
+	lastRunTime     time.Time
+	recordsDeleted  int64
+	cleanupDuration time.Duration
 }
 
 // CleanupStats holds statistics about cleanup operations
@@ -149,6 +153,11 @@ func (s *CleanupService) runCleanup() {
 
 	cleanupDuration := time.Since(startTime)
 
+	// Update stats
+	s.lastRunTime = startTime
+	s.recordsDeleted = totalDeleted
+	s.cleanupDuration = cleanupDuration
+
 	s.logger.Info("Cleanup completed",
 		s.logger.Args(
 			"records_deleted", totalDeleted,
@@ -227,10 +236,20 @@ func (s *CleanupService) runVacuum() {
 
 // GetStats returns cleanup statistics
 func (s *CleanupService) GetStats() *CleanupStats {
-	// This would be enhanced to track actual statistics
+	// Calculate next scheduled run
+	now := time.Now()
+	targetTime := s.parseCleanupTime(now)
+
+	// If target time has passed today, schedule for tomorrow
+	if now.After(targetTime) {
+		targetTime = targetTime.Add(24 * time.Hour)
+	}
+
 	return &CleanupStats{
-		LastRunTime:      time.Now().Add(-24 * time.Hour), // Placeholder
-		NextScheduledRun: s.parseCleanupTime(time.Now().Add(24 * time.Hour)),
+		LastRunTime:      s.lastRunTime,
+		RecordsDeleted:   s.recordsDeleted,
+		CleanupDuration:  s.cleanupDuration,
+		NextScheduledRun: targetTime,
 	}
 }
 

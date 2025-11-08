@@ -213,12 +213,20 @@ func main() {
 	logger.Info("Initializing web server...")
 	dashboardHandler := handlers.NewDashboardHandler(statsRepo, httpRepo, logger)
 	realtimeHandler := handlers.NewRealtimeHandler(metricsCollector, logger)
+	systemHandler := handlers.NewSystemHandler(
+		statsRepo,
+		httpRepo,
+		cleanupService,
+		logger,
+		cfg.Database.Path,
+		cfg.Database.RetentionDays,
+	)
 	webServer := api.NewServer(&api.Config{
 		Host:             cfg.Server.Host,
 		Port:             cfg.Server.Port,
 		Production:       cfg.Server.Production,
 		DashboardEnabled: cfg.Server.DashboardEnabled,
-	}, dashboardHandler, realtimeHandler, logger)
+	}, dashboardHandler, realtimeHandler, systemHandler, logger)
 
 	// Start web server in goroutine
 	go func() {

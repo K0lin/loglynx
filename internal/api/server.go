@@ -29,7 +29,7 @@ type Config struct {
 }
 
 // NewServer creates a new HTTP server
-func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, logger *pterm.Logger) *Server {
+func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, logger *pterm.Logger) *Server {
 	// Set Gin mode
 	if cfg.Production {
 		gin.SetMode(gin.ReleaseMode)
@@ -95,6 +95,10 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 
 		router.GET("/geographic", func(c *gin.Context) {
 			serveTemplatePage(c, "geographic", "Geographic Analytics", "fas fa-map-marked-alt")
+		})
+
+		router.GET("/system", func(c *gin.Context) {
+			serveTemplatePage(c, "system", "System Statistics", "fas fa-server")
 		})
 
 		// IP Analytics page
@@ -183,6 +187,10 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		api.GET("/ip/:ip/performance/response-time", dashboardHandler.GetIPResponseTimeStats)
 		api.GET("/ip/:ip/recent-requests", dashboardHandler.GetIPRecentRequests)
 		api.GET("/ip/search", dashboardHandler.SearchIPs)
+
+		// System Statistics
+		api.GET("/system/stats", systemHandler.GetSystemStats)
+		api.GET("/system/timeline", systemHandler.GetRecordsTimeline)
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

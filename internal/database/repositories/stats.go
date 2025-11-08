@@ -60,6 +60,11 @@ type StatsRepository interface {
 	GetIPResponseTimeStats(ip string) (*ResponseTimeStats, error)
 	GetIPRecentRequests(ip string, limit int) ([]*models.HTTPRequest, error)
 	SearchIPs(query string, limit int) ([]*IPSearchResult, error)
+
+	// System statistics
+	CountRecordsOlderThan(cutoffDate time.Time) (int64, error)
+	GetRecordTimeRange() (oldest time.Time, newest time.Time, err error)
+	GetRecordsTimeline(days int) ([]*TimelineData, error)
 }
 
 type statsRepo struct {
@@ -1738,4 +1743,101 @@ func (r *statsRepo) SearchIPs(query string, limit int) ([]*IPSearchResult, error
 
 	r.logger.Trace("IP search completed", r.logger.Args("query", query, "results", len(results)))
 	return results, nil
+}
+
+// ============================================
+// System Statistics Methods
+// ============================================
+
+// CountRecordsOlderThan counts records older than the specified cutoff date
+func (r *statsRepo) CountRecordsOlderThan(cutoffDate time.Time) (int64, error) {
+	var count int64
+
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultQueryTimeout)
+	defer cancel()
+
+	err := r.db.WithContext(ctx).Model(&models.HTTPRequest{}).
+		Where("timestamp < ?", cutoffDate).
+		Count(&count).Error
+
+	if err != nil {
+		r.logger.WithCaller().Error("Failed to count records older than cutoff", r.logger.Args("error", err, "cutoff", cutoffDate))
+		return 0, err
+	}
+
+	r.logger.Trace("Counted records older than cutoff", r.logger.Args("count", count, "cutoff", cutoffDate))
+	return count, nil
+}
+
+// GetRecordTimeRange returns the oldest and newest record timestamps
+func (r *statsRepo) GetRecordTimeRange() (oldest time.Time, newest time.Time, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultQueryTimeout)
+	defer cancel()
+
+	var result struct {
+		Oldest string
+		Newest string
+	}
+
+	err = r.db.WithContext(ctx).Model(&models.HTTPRequest{}).
+		Select("MIN(timestamp) as oldest, MAX(timestamp) as newest").
+		Scan(&result).Error
+
+	if err != nil {
+		r.logger.WithCaller().Error("Failed to get record time range", r.logger.Args("error", err))
+		return time.Time{}, time.Time{}, err
+	}
+
+	// Parse the timestamp strings into time.Time
+	if result.Oldest != "" {
+		oldest, err = time.Parse(time.RFC3339, result.Oldest)
+		if err != nil {
+			// Try alternative parsing if RFC3339 fails
+			oldest, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", result.Oldest)
+			if err != nil {
+				r.logger.WithCaller().Warn("Failed to parse oldest timestamp", r.logger.Args("value", result.Oldest, "error", err))
+				oldest = time.Time{}
+			}
+		}
+	}
+
+	if result.Newest != "" {
+		newest, err = time.Parse(time.RFC3339, result.Newest)
+		if err != nil {
+			// Try alternative parsing if RFC3339 fails
+			newest, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", result.Newest)
+			if err != nil {
+				r.logger.WithCaller().Warn("Failed to parse newest timestamp", r.logger.Args("value", result.Newest, "error", err))
+				newest = time.Time{}
+			}
+		}
+	}
+
+	r.logger.Trace("Got record time range", r.logger.Args("oldest", oldest, "newest", newest))
+	return oldest, newest, nil
+}
+
+// GetRecordsTimeline returns records count grouped by day for system statistics
+func (r *statsRepo) GetRecordsTimeline(days int) ([]*TimelineData, error) {
+	var timeline []*TimelineData
+	since := time.Now().AddDate(0, 0, -days)
+
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultQueryTimeout)
+	defer cancel()
+
+	// Group by day for system stats
+	err := r.db.WithContext(ctx).Model(&models.HTTPRequest{}).
+		Select("strftime('%Y-%m-%d', timestamp) as hour, COUNT(*) as requests").
+		Where("timestamp > ?", since).
+		Group("hour").
+		Order("hour").
+		Scan(&timeline).Error
+
+	if err != nil {
+		r.logger.WithCaller().Error("Failed to get records timeline", r.logger.Args("error", err, "days", days))
+		return nil, err
+	}
+
+	r.logger.Trace("Generated records timeline", r.logger.Args("days", days, "data_points", len(timeline)))
+	return timeline, nil
 }
