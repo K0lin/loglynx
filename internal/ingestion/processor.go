@@ -252,6 +252,9 @@ func (sp *SourceProcessor) processLoop() {
 
 		case <-ticker.C:
 			// Poll for new log lines
+			sp.logger.Trace("⏰ Ticker fired - polling for new lines",
+				sp.logger.Args("source", sp.source.Name, "current_batch_size", len(batch)))
+
 			lines, newPos, newInode, newLastLine, err := sp.reader.ReadBatch(sp.batchSize - len(batch))
 			if err != nil {
 				sp.logger.WithCaller().Error("Failed to read from log file",
@@ -276,16 +279,58 @@ func (sp *SourceProcessor) processLoop() {
 				continue // No new lines
 			}
 
-			sp.logger.Trace("Read new log lines",
-				sp.logger.Args("source", sp.source.Name, "count", len(lines)))
+			sp.logger.Info("📥 Read new log lines from file",
+				sp.logger.Args(
+					"source", sp.source.Name,
+					"count", len(lines),
+					"newPos", newPos,
+					"newInode", newInode,
+				))
 
 			// Store the position for later update after flush
 			lastReadPos = newPos
 			lastReadInode = newInode
 			lastReadLine = newLastLine
 
+			sp.logger.Info("💾 Stored position for later update",
+				sp.logger.Args(
+					"source", sp.source.Name,
+					"lastReadPos", lastReadPos,
+					"lastUpdatedPos", lastUpdatedPos,
+					"needs_update", lastReadPos != lastUpdatedPos,
+				))
+
 			// Parse lines in parallel
 			parsedRequests := sp.parseAndEnrichParallel(lines)
+
+			// DEBUG: Check if parsed batch has duplicate hashes before adding to main batch
+			if len(parsedRequests) > 0 {
+				hashCounts := make(map[string]int)
+				for _, req := range parsedRequests {
+					if req != nil && req.RequestHash != "" {
+						hashCounts[req.RequestHash]++
+					}
+				}
+
+				duplicateFound := false
+				for hash, count := range hashCounts {
+					if count > 1 {
+						duplicateFound = true
+						sp.logger.Warn("⚠️ DUPLICATE HASH IN PARSED BATCH (BEFORE ADDING TO MAIN BATCH)",
+							sp.logger.Args(
+								"hash", hash[:16]+"...",
+								"count", count,
+								"batch_size", len(parsedRequests),
+							))
+					}
+				}
+
+				if !duplicateFound && len(parsedRequests) > 1 {
+					sp.logger.Trace("✅ No duplicate hashes in parsed batch",
+						sp.logger.Args("batch_size", len(parsedRequests), "unique_hashes", len(hashCounts)))
+				}
+			}
+
 			batch = append(batch, parsedRequests...)
 
 			// Flush if batch is full AND update position only after successful flush
@@ -315,11 +360,18 @@ func (sp *SourceProcessor) processLoop() {
 
 // updatePosition updates the file position in the database after a successful flush
 func (sp *SourceProcessor) updatePosition(position int64, inode int64, lastLine string) {
+	sp.logger.Info("📍 Updating position in database and reader",
+		sp.logger.Args(
+			"source", sp.source.Name,
+			"position", position,
+			"inode", inode,
+		))
+
 	if err := sp.sourceRepo.UpdateTracking(sp.source.Name, position, inode, lastLine); err != nil {
 		sp.logger.WithCaller().Error("Failed to update source tracking",
 			sp.logger.Args("source", sp.source.Name, "error", err))
 	} else {
-		sp.logger.Trace("Updated source tracking",
+		sp.logger.Info("✅ Position updated in database successfully",
 			sp.logger.Args("source", sp.source.Name, "position", position, "inode", inode))
 		sp.reader.UpdatePosition(position, inode, lastLine)
 	}
@@ -528,10 +580,11 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 	hash := sha256.Sum256([]byte(hashInput))
 	dbModel.RequestHash = fmt.Sprintf("%x", hash)
 
-	// Debug logging for first few requests to understand hash generation
-	if sp.totalProcessed < 5 {
-		sp.logger.Debug("🔐 Hash generation details",
+	// Debug logging for first 10 requests to understand hash generation
+	if sp.totalProcessed < 10 {
+		sp.logger.Info("🔐 Hash generation details",
 			sp.logger.Args(
+				"record_number", sp.totalProcessed+1,
 				"source", sp.source.Name,
 				"timestamp", dbModel.Timestamp.Format("2006-01-02 15:04:05"),
 				"timestamp_unix", dbModel.Timestamp.Unix(),
@@ -539,12 +592,13 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 				"method", dbModel.Method,
 				"host", dbModel.Host,
 				"path", dbModel.Path,
+				"query", dbModel.QueryString,
 				"status", dbModel.StatusCode,
 				"duration", dbModel.Duration,
 				"start_utc", dbModel.StartUTC,
 				"requests_total", dbModel.RequestsTotal,
 				"hash_input", hashInput,
-				"hash", dbModel.RequestHash[:16]+"...",
+				"full_hash", dbModel.RequestHash,
 			))
 	}
 
