@@ -225,7 +225,7 @@ func (sp *SourceProcessor) processLoop() {
 			if len(batch) > 0 {
 				sp.logger.Trace("Batch timeout reached, flushing",
 					sp.logger.Args("source", sp.source.Name, "count", len(batch)))
-				
+
 				// Flush batch and only update position if successful
 				if err := sp.flushBatchWithResult(batch); err == nil {
 					// Update position only after successful flush
@@ -284,7 +284,7 @@ func (sp *SourceProcessor) processLoop() {
 			if len(batch) >= sp.batchSize {
 				sp.logger.Trace("Batch full, flushing",
 					sp.logger.Args("source", sp.source.Name, "count", len(batch)))
-				
+
 				// Flush batch and only update position if successful
 				if err := sp.flushBatchWithResult(batch); err == nil {
 					batch = []*models.HTTPRequest{} // Clear batch only on success
@@ -452,7 +452,7 @@ func (sp *SourceProcessor) flushBatchWithResult(batch []*models.HTTPRequest) err
 			"rate_per_sec", int(rate),
 			"elapsed", elapsed.Round(time.Second).String(),
 		))
-	
+
 	return nil // Success
 }
 
