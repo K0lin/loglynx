@@ -111,13 +111,6 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 		return nil, 0, 0, "", err
 	}
 
-	r.logger.Info("🔍 Starting ReadBatch",
-		r.logger.Args(
-			"path", r.filePath,
-			"lastPosition", r.lastPosition,
-			"maxLines", maxLines,
-		))
-
 	// The scanner will automatically handle line boundaries correctly from any position
 	// by reading until it finds a complete line (ending with \n)
 
@@ -141,14 +134,10 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 		// Add line to batch
 		lines = append(lines, line)
 
-		// Log first few lines for debugging (increased to see more data)
-		if len(lines) <= 10 {
-			r.logger.Info("📄 Read line from file",
-				r.logger.Args(
-					"line_number", len(lines),
-					"line_length", len(line),
-					"line_full", line, // Log the FULL line to see if duplicates
-				))
+		// Log first few lines for debugging
+		if len(lines) <= 3 {
+			r.logger.Trace("Read line from file",
+				r.logger.Args("line_number", len(lines), "line_preview", getTail(line, 100)))
 		}
 	}
 
@@ -195,14 +184,6 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 				"last_line_preview", lastLineForCheck,
 			))
 
-		r.logger.Info("✅ ReadBatch completed - returning new position",
-			r.logger.Args(
-				"lines_read", len(lines),
-				"old_position", r.lastPosition,
-				"new_position", newPos,
-				"will_update_internal_position", false, // Position updated by processor calling UpdatePosition()
-			))
-
 		return lines, newPos, r.lastInode, lastLineForCheck, nil
 	}
 
@@ -217,19 +198,15 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 func (r *IncrementalReader) UpdatePosition(position int64, inode int64, lastLine string) {
 	// This function is now less critical as ReadBatch returns the correct state,
 	// but we keep it for explicit state management by the caller if needed.
-
-	r.logger.Info("🔄 UpdatePosition called by processor",
-		r.logger.Args(
-			"path", r.filePath,
-			"old_position", r.lastPosition,
-			"new_position", position,
-			"position_delta", position-r.lastPosition,
-			"inode", inode,
-		))
-
 	r.lastPosition = position
 	r.lastInode = inode
 	r.lastLineContent = lastLine
+	r.logger.Trace("Updated reader position by caller",
+		r.logger.Args(
+			"path", r.filePath,
+			"position", position,
+			"inode", inode,
+		))
 }
 
 // Reset resets the reader to the beginning of the file
