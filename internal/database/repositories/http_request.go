@@ -212,7 +212,41 @@ func (r *httpRequestRepo) optimizeDatabase() error {
 	return nil
 }
 
-// getFirstLoadStatus returns current first-load status (thread-safe)
+// deduplicateInMemory removes duplicate requests from the batch based on RequestHash
+// This is used during first load to avoid expensive database constraint checks
+func (r *httpRequestRepo) deduplicateInMemory(requests []*models.HTTPRequest) []*models.HTTPRequest {
+	if len(requests) == 0 {
+		return requests
+	}
+
+	seen := make(map[string]bool, len(requests))
+	unique := make([]*models.HTTPRequest, 0, len(requests))
+	duplicates := 0
+
+	for _, req := range requests {
+		if req.RequestHash == "" {
+			// No hash, keep it (will fail at DB level if truly duplicate)
+			unique = append(unique, req)
+			continue
+		}
+
+		if !seen[req.RequestHash] {
+			seen[req.RequestHash] = true
+			unique = append(unique, req)
+		} else {
+			duplicates++
+		}
+	}
+
+	if duplicates > 0 {
+		r.logger.Debug("Removed in-memory duplicates during first load",
+			r.logger.Args("total", len(requests), "unique", len(unique), "duplicates", duplicates))
+	}
+
+	return unique
+}
+
+// getFirstLoadStatus returns the current first-load status (thread-safe)
 func (r *httpRequestRepo) getFirstLoadStatus() bool {
 	r.firstLoadMu.Lock()
 	defer r.firstLoadMu.Unlock()
@@ -284,6 +318,16 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 
 // insertSubBatch performs the actual batch insert within SQLite variable limits
 func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirstLoad bool) error {
+	// CRITICAL OPTIMIZATION: During first load, deduplicate in memory to avoid database constraint checks
+	// This dramatically improves performance for large initial imports
+	if isFirstLoad {
+		requests = r.deduplicateInMemory(requests)
+		if len(requests) == 0 {
+			r.logger.Debug("All requests in batch were duplicates (in-memory check)")
+			return nil
+		}
+	}
+
 	// Start transaction
 	tx := r.db.Begin()
 	if tx.Error != nil {
@@ -292,10 +336,6 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 	}
 
 	// Insert batch with duplicate handling
-	// Try batch insert first - if it fails due to duplicates, insert individually
-	// IMPORTANT: Even during first load, the file itself may contain duplicate records
-	//TODO() check if inside the requests array there are a duplicates of hashes and remove one of them before inserting
-
 	err := tx.Create(&requests).Error
 
 	if err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "request_hash")) {

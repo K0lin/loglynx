@@ -212,9 +212,10 @@ func (sp *SourceProcessor) processLoop() {
 			return
 
 		case <-positionUpdateTicker.C:
-			// Periodically update position even if batch is not flushed yet
-			// This ensures the progress bar updates smoothly
-			if lastReadPos > 0 && lastReadPos != lastUpdatedPos {
+			// CRITICAL FIX: Only update position if batch is empty (already flushed)
+			// Never update position for unflushed data - this prevents data loss
+			// if the process crashes before the batch is written to database
+			if len(batch) == 0 && lastReadPos > 0 && lastReadPos != lastUpdatedPos {
 				sp.updatePosition(lastReadPos, lastReadInode, lastReadLine)
 				lastUpdatedPos = lastReadPos
 			}
@@ -224,12 +225,19 @@ func (sp *SourceProcessor) processLoop() {
 			if len(batch) > 0 {
 				sp.logger.Trace("Batch timeout reached, flushing",
 					sp.logger.Args("source", sp.source.Name, "count", len(batch)))
-				sp.flushBatch(batch)
-				batch = []*models.HTTPRequest{}
-				// Update position after timeout flush
-				if lastReadPos > 0 {
-					sp.updatePosition(lastReadPos, lastReadInode, lastReadLine)
-					lastUpdatedPos = lastReadPos
+				
+				// Flush batch and only update position if successful
+				if err := sp.flushBatchWithResult(batch); err == nil {
+					// Update position only after successful flush
+					if lastReadPos > 0 {
+						sp.updatePosition(lastReadPos, lastReadInode, lastReadLine)
+						lastUpdatedPos = lastReadPos
+					}
+					batch = []*models.HTTPRequest{} // Clear batch only on success
+				} else {
+					sp.logger.Error("Batch flush failed, will retry on next cycle",
+						sp.logger.Args("source", sp.source.Name, "batch_size", len(batch), "error", err))
+					// Keep batch for retry, don't update position
 				}
 			}
 			flushTimer.Reset(sp.batchTimeout)
@@ -251,8 +259,6 @@ func (sp *SourceProcessor) processLoop() {
 					sp.initialLoadComplete = true
 					sp.initialLoadMu.Unlock()
 
-					// Disable first-load mode in repository
-					sp.httpRepo.DisableFirstLoadMode()
 					sp.logger.Info("Initial file load completed - reached end of file",
 						sp.logger.Args("source", sp.source.Name))
 				} else {
@@ -278,13 +284,20 @@ func (sp *SourceProcessor) processLoop() {
 			if len(batch) >= sp.batchSize {
 				sp.logger.Trace("Batch full, flushing",
 					sp.logger.Args("source", sp.source.Name, "count", len(batch)))
-				sp.flushBatch(batch)
-				batch = []*models.HTTPRequest{}
-				flushTimer.Reset(sp.batchTimeout)
+				
+				// Flush batch and only update position if successful
+				if err := sp.flushBatchWithResult(batch); err == nil {
+					batch = []*models.HTTPRequest{} // Clear batch only on success
+					flushTimer.Reset(sp.batchTimeout)
 
-				// Update source tracking AFTER successful flush
-				sp.updatePosition(lastReadPos, lastReadInode, lastReadLine)
-				lastUpdatedPos = lastReadPos
+					// Update source tracking AFTER successful flush
+					sp.updatePosition(lastReadPos, lastReadInode, lastReadLine)
+					lastUpdatedPos = lastReadPos
+				} else {
+					sp.logger.Error("Batch flush failed, will retry on next cycle",
+						sp.logger.Args("source", sp.source.Name, "batch_size", len(batch), "error", err))
+					// Keep batch for retry, don't update position
+				}
 			}
 			// Note: Position is updated periodically by positionUpdateTicker
 			// even if batch is not full yet (for progress tracking)
@@ -393,10 +406,15 @@ func (sp *SourceProcessor) parseAndEnrichParallel(lines []string) []*models.HTTP
 	return parsedRequests
 }
 
-// flushBatch inserts the batch into the database
+// flushBatch inserts the batch into the database (legacy method for backward compatibility)
 func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
+	_ = sp.flushBatchWithResult(batch) // Ignore error for legacy callers
+}
+
+// flushBatchWithResult inserts the batch into the database and returns error
+func (sp *SourceProcessor) flushBatchWithResult(batch []*models.HTTPRequest) error {
 	if len(batch) == 0 {
-		return
+		return nil
 	}
 
 	startTime := time.Now()
@@ -412,7 +430,7 @@ func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
 		sp.statsMu.Lock()
 		sp.totalErrors += int64(len(batch))
 		sp.statsMu.Unlock()
-		return
+		return err // Return error to caller
 	}
 
 	// Update stats
@@ -434,6 +452,8 @@ func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
 			"rate_per_sec", int(rate),
 			"elapsed", elapsed.Round(time.Second).String(),
 		))
+	
+	return nil // Success
 }
 
 // convertToDBModel converts a parser event to a database model using reflection
