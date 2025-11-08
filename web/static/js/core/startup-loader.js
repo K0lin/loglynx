@@ -4,7 +4,7 @@
  */
 
 const LogLynxStartupLoader = {
-    MIN_PROCESSING_PERCENTAGE: 95,
+    MIN_PROCESSING_PERCENTAGE: 99,
     CHECK_INTERVAL: 1000, // Check every 1 second
     CHECK_INTERVAL_ERROR: 3000, // Slower polling when errors occur (3 seconds)
     MAX_CONSECUTIVE_ERRORS: 5, // Max errors before showing warning
