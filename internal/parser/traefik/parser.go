@@ -277,7 +277,7 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 	referer := matches[8]           // Referer
 	userAgent := matches[9]         // User agent
 	requestsTotalStr := matches[10] // Total requests at router level
-	routerName := matches[11]       // Traefik router name
+	backendName := matches[11]      // Traefik backend (also known as router) name
 	backendURL := matches[12]       // Backend URL
 	durationStr := matches[13]      // Request duration in ms
 
@@ -337,8 +337,8 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 	if userAgent == "-" {
 		userAgent = ""
 	}
-	if routerName == "-" {
-		routerName = ""
+	if backendName == "-" {
+		backendName = ""
 	}
 	if backendURL == "-" {
 		backendURL = ""
@@ -381,9 +381,9 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 		Referer:   referer,
 
 		// Traefik-specific
-		BackendName:         "", // ServiceName not in CLF
+		BackendName:         backendName, // ServiceName not in CLF
 		BackendURL:          backendURL,
-		RouterName:          routerName,
+		RouterName:          "",
 		UpstreamContentType: "", // Not available in CLF
 
 		// TLS info
