@@ -1229,6 +1229,7 @@ const LogLynxUtils = {
     /**
      * Format host/backend display with intelligent fallbacks
      * Priority: Host → BackendName (formatted) → BackendURL (hostname) → fallback
+     * Automatically appends :port if host contains a port number
      */
     formatHostDisplay(row, fallback = '-') {
         // Get display preference from sessionStorage (default: auto)
@@ -1238,43 +1239,63 @@ const LogLynxUtils = {
         const backendURL = row.BackendURL || row.backend_url;
         const host = row.Host || row.host;
 
+        let displayValue = '';
+
         // If specific preference is set, try to use only that field
         if (displayPreference !== 'auto') {
             if (displayPreference === 'backend_name' && backendName && backendName !== '') {
-                return this.extractBackendName(backendName);
+                displayValue = this.extractBackendName(backendName);
             } else if (displayPreference === 'backend_url' && backendURL && backendURL !== '') {
                 try {
                     const url = new URL(backendURL);
-                    return url.hostname || backendURL;
+                    displayValue = url.hostname || backendURL;
                 } catch (e) {
-                    return this.extractBackendName(backendURL);
+                    displayValue = this.extractBackendName(backendURL);
                 }
             } else if (displayPreference === 'host' && host && host !== '') {
-                return this.extractBackendName(host);
+                displayValue = host; // Keep original host (may include port)
             }
             // If preferred field is not available, fall through to auto mode
         }
 
         // Auto mode: Priority 1: BackendName → 2: BackendURL → 3: Host
-        if (backendName && backendName !== '') {
-            return this.extractBackendName(backendName);
-        }
-
-        if (backendURL && backendURL !== '') {
-            try {
-                const url = new URL(backendURL);
-                return url.hostname || backendURL;
-            } catch (e) {
-                return this.extractBackendName(backendURL);
+        if (!displayValue) {
+            if (backendName && backendName !== '') {
+                displayValue = this.extractBackendName(backendName);
+            } else if (backendURL && backendURL !== '') {
+                try {
+                    const url = new URL(backendURL);
+                    displayValue = url.hostname || backendURL;
+                } catch (e) {
+                    displayValue = this.extractBackendName(backendURL);
+                }
+            } else if (host && host !== '') {
+                displayValue = host; // Keep original host (may include port)
             }
         }
 
-        if (host && host !== '') {
-            return this.extractBackendName(host);
+        // If we still don't have a value, return fallback
+        if (!displayValue) {
+            return fallback;
         }
 
-        // Fallback
-        return fallback;
+        // Check if the original host field contains a port (format: hostname:port)
+        // If host contains :port and our display value doesn't, add it
+        if (host && host.includes(':')) {
+            const hostParts = host.split(':');
+            // Verify the last part is a valid port number
+            const portPart = hostParts[hostParts.length - 1];
+            if (/^\d+$/.test(portPart)) {
+                const port = parseInt(portPart);
+                // Add port if it's not a standard port (80/443) and not already in display value
+                if (port !== 80 && port !== 443 && !displayValue.includes(':')) {
+                    // Extract hostname from display value (in case it has @ or other suffix)
+                    displayValue = displayValue + ':' + port;
+                }
+            }
+        }
+
+        return displayValue;
     }
 };
 
