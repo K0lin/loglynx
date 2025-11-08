@@ -203,11 +203,10 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 	// If we read any lines, we update our tracking info.
 	if len(lines) > 0 {
 		lastLineRead := lines[len(lines)-1]
-
-		// Use the current file position after reading as the new position
-		// We don't subtract the line length because we want to move forward, not re-read
-		newLastPosition := newPos
-
+		// The new position is the end of the read batch. To re-read the last line for the
+		// continuity check next time, we subtract its length from the current position.
+		// This is a robust way to handle the seek->scan->check cycle.
+		newLastPosition := newPos - int64(len(lastLineRead)+1) // +1 for the newline character
 		if newLastPosition < 0 {
 			newLastPosition = 0
 		}
@@ -291,7 +290,6 @@ func (r *IncrementalReader) FindStartPositionByDate(cutoffDate time.Time, parser
 	low := int64(0)
 	high := fileSize
 	bestPosition := int64(0)
-	foundRecentEnough := false // Track if we found any records after cutoff
 
 	r.logger.Debug("Searching for start position by date",
 		r.logger.Args("cutoff_date", cutoffDate.Format("2006-01-02 15:04:05"), "file_size", fileSize))
@@ -355,21 +353,12 @@ func (r *IncrementalReader) FindStartPositionByDate(cutoffDate time.Time, parser
 		if lineTimestamp.Before(cutoffDate) {
 			// This line is too old, search in upper half
 			low = mid + 1
-			// Don't update bestPosition when line is too old
+			bestPosition = mid
 		} else {
 			// This line is recent enough, search in lower half
 			high = mid
 			bestPosition = mid
-			foundRecentEnough = true
 		}
-	}
-
-	// If we never found a "recent enough" record, all records are before cutoff
-	// In this case, return file size (EOF) to skip the entire file
-	if !foundRecentEnough {
-		r.logger.Info("All records appear to be before cutoff date, skipping entire file",
-			r.logger.Args("position", fileSize, "cutoff_date", cutoffDate.Format("2006-01-02")))
-		return fileSize, nil
 	}
 
 	r.logger.Info("Found starting position for initial import",

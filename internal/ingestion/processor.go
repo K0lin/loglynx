@@ -42,8 +42,6 @@ type SourceProcessor struct {
 	isInitialLoad       bool // True if this is the first time reading this file (lastPosition == 0)
 	initialLoadComplete bool // True after reaching EOF on first load
 	initialLoadMu       sync.Mutex
-	// Date filtering for initial import
-	importCutoffDate *time.Time // If set, records before this date are skipped during initial load
 }
 
 // NewSourceProcessor creates a new source processor
@@ -119,17 +117,29 @@ func (sp *SourceProcessor) ApplyInitialImportLimit(importDays int) error {
 	// Calculate cutoff date
 	cutoffDate := time.Now().AddDate(0, 0, -importDays)
 
-	sp.logger.Info("Applying initial import limit - records before this date will be filtered",
+	sp.logger.Info("Applying initial import limit",
 		sp.logger.Args("source", sp.source.Name, "import_days", importDays, "cutoff_date", cutoffDate.Format("2006-01-02")))
 
-	// Store cutoff date for filtering during processing
-	// We don't use binary search anymore because log files may not be chronologically sorted
-	sp.importCutoffDate = &cutoffDate
+	// Find starting position based on cutoff date
+	startPos, err := sp.reader.FindStartPositionByDate(cutoffDate, sp.parser)
+	if err != nil {
+		sp.logger.WithCaller().Error("Failed to find start position by date",
+			sp.logger.Args("source", sp.source.Name, "error", err))
+		return err
+	}
 
-	// Note: We still start reading from position 0, but filter records by date during processing
-	// This handles cases where log files have out-of-order timestamps
-	sp.logger.Debug("Will filter records by date during processing (log file may not be chronologically sorted)",
-		sp.logger.Args("source", sp.source.Name, "cutoff_date", cutoffDate.Format("2006-01-02")))
+	// Update reader position
+	sp.reader.UpdatePosition(startPos, 0, "")
+
+	// Update source tracking in database
+	if err := sp.sourceRepo.UpdateTracking(sp.source.Name, startPos, 0, ""); err != nil {
+		sp.logger.WithCaller().Error("Failed to update source position",
+			sp.logger.Args("source", sp.source.Name, "error", err))
+		return err
+	}
+
+	sp.logger.Info("Initial import limit applied successfully",
+		sp.logger.Args("source", sp.source.Name, "start_position", startPos))
 
 	return nil
 }
@@ -317,11 +327,6 @@ func (sp *SourceProcessor) parseAndEnrichParallel(lines []string) []*models.HTTP
 				// Convert to database model
 				dbRequest := sp.convertToDBModel(event)
 
-				// Skip if filtered out (e.g., date before cutoff during initial import)
-				if dbRequest == nil {
-					continue
-				}
-
 				// Enrich with GeoIP data
 				if sp.geoIP != nil {
 					if err := sp.geoIP.Enrich(dbRequest); err != nil {
@@ -451,15 +456,6 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 		}
 	}
 
-	// Apply date filtering for initial import (if enabled)
-	if sp.importCutoffDate != nil && sp.isInitialLoad {
-		if dbModel.Timestamp.Before(*sp.importCutoffDate) {
-			sp.logger.Trace("Skipping record before cutoff date during initial import",
-				sp.logger.Args("source", sp.source.Name, "timestamp", dbModel.Timestamp.Format("2006-01-02 15:04:05"), "cutoff", sp.importCutoffDate.Format("2006-01-02 15:04:05")))
-			return nil // Skip this record
-		}
-	}
-
 	// Generate hash for deduplication
 	// Hash is based on: timestamp + client IP + method + host + path + query string + status code + duration + startUTC + requestsTotal
 	// Duration and StartUTC provide nanosecond precision for better deduplication accuracy
@@ -483,7 +479,7 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 	dbModel.RequestHash = fmt.Sprintf("%x", hash)
 
 	sp.logger.Trace("Converted event to DB model",
-		sp.logger.Args("source", sp.source.Name, "timestamp", dbModel.Timestamp, "hash", dbModel.RequestHash[:16], "requests_total", dbModel.RequestsTotal, "hash_input", hashInput))
+		sp.logger.Args("source", sp.source.Name, "timestamp", dbModel.Timestamp, "hash", dbModel.RequestHash[:16]))
 
 	return dbModel
 }
