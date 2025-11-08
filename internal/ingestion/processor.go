@@ -520,8 +520,25 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 	hash := sha256.Sum256([]byte(hashInput))
 	dbModel.RequestHash = fmt.Sprintf("%x", hash)
 
-	sp.logger.Trace("Converted event to DB model",
-		sp.logger.Args("source", sp.source.Name, "timestamp", dbModel.Timestamp, "hash", dbModel.RequestHash[:16], "requests_total", dbModel.RequestsTotal, "hash_input", hashInput))
+	// Debug logging for first few requests to understand hash generation
+	if sp.totalProcessed < 5 {
+		sp.logger.Debug("🔐 Hash generation details",
+			sp.logger.Args(
+				"source", sp.source.Name,
+				"timestamp", dbModel.Timestamp.Format("2006-01-02 15:04:05"),
+				"timestamp_unix", dbModel.Timestamp.Unix(),
+				"client_ip", dbModel.ClientIP,
+				"method", dbModel.Method,
+				"host", dbModel.Host,
+				"path", dbModel.Path,
+				"status", dbModel.StatusCode,
+				"duration", dbModel.Duration,
+				"start_utc", dbModel.StartUTC,
+				"requests_total", dbModel.RequestsTotal,
+				"hash_input", hashInput,
+				"hash", dbModel.RequestHash[:16]+"...",
+			))
+	}
 
 	return dbModel
 }

@@ -54,7 +54,11 @@ func (r *httpRequestRepo) checkFirstLoad() {
 		r.firstLoadMu.Unlock()
 
 		if r.isFirstLoad {
-			r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
+			r.logger.Info("🚀 FIRST LOAD MODE ENABLED - In-memory deduplication will be used, database constraint checks skipped",
+				r.logger.Args("record_count", count))
+		} else {
+			r.logger.Info("📦 NORMAL MODE - Database has existing records, full duplicate checking enabled",
+				r.logger.Args("record_count", count))
 		}
 	})
 }
@@ -219,13 +223,20 @@ func (r *httpRequestRepo) deduplicateInMemory(requests []*models.HTTPRequest) []
 		return requests
 	}
 
+	r.logger.Trace("🔍 Starting in-memory deduplication",
+		r.logger.Args("input_size", len(requests)))
+
 	seen := make(map[string]bool, len(requests))
 	unique := make([]*models.HTTPRequest, 0, len(requests))
 	duplicates := 0
+	emptyHashes := 0
 
-	for _, req := range requests {
+	for i, req := range requests {
 		if req.RequestHash == "" {
 			// No hash, keep it (will fail at DB level if truly duplicate)
+			emptyHashes++
+			r.logger.Trace("⚠️ Request has empty hash",
+				r.logger.Args("index", i, "timestamp", req.Timestamp, "client_ip", req.ClientIP, "path", req.Path))
 			unique = append(unique, req)
 			continue
 		}
@@ -233,14 +244,25 @@ func (r *httpRequestRepo) deduplicateInMemory(requests []*models.HTTPRequest) []
 		if !seen[req.RequestHash] {
 			seen[req.RequestHash] = true
 			unique = append(unique, req)
+			if i < 5 { // Log first 5 unique hashes
+				r.logger.Trace("✅ New unique hash",
+					r.logger.Args("index", i, "hash", req.RequestHash[:16], "timestamp", req.Timestamp, "client_ip", req.ClientIP))
+			}
 		} else {
 			duplicates++
+			if duplicates <= 5 { // Log first 5 duplicates
+				r.logger.Trace("🔄 Duplicate hash detected",
+					r.logger.Args("index", i, "hash", req.RequestHash[:16], "timestamp", req.Timestamp, "client_ip", req.ClientIP))
+			}
 		}
 	}
 
 	if duplicates > 0 {
-		r.logger.Debug("Removed in-memory duplicates during first load",
-			r.logger.Args("total", len(requests), "unique", len(unique), "duplicates", duplicates))
+		r.logger.Info("🧹 Removed in-memory duplicates during first load",
+			r.logger.Args("total", len(requests), "unique", len(unique), "duplicates", duplicates, "empty_hashes", emptyHashes))
+	} else {
+		r.logger.Trace("✨ No duplicates found in batch",
+			r.logger.Args("total", len(requests), "empty_hashes", emptyHashes))
 	}
 
 	return unique
@@ -265,7 +287,7 @@ func (r *httpRequestRepo) Create(request *models.HTTPRequest) error {
 
 // CreateBatch inserts multiple HTTP requests in a single transaction
 // OPTIMIZED: Automatically splits large batches to avoid SQLite variable limit (32766)
-// OPTIMIZED: Skips deduplication checks on first load (when database is empty)
+// OPTIMIZED: Uses in-memory deduplication during first load for maximum performance
 func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	if len(requests) == 0 {
 		r.logger.Debug("Empty batch, skipping insert")
@@ -275,6 +297,9 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	// Check first-load status (thread-safe, happens only once globally)
 	r.checkFirstLoad()
 	isFirstLoad := r.getFirstLoadStatus()
+
+	r.logger.Trace("📥 CreateBatch called",
+		r.logger.Args("batch_size", len(requests), "first_load_mode", isFirstLoad, "source", requests[0].SourceName))
 
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
 	// HTTPRequest has 49 columns (including requests_total field), so max safe batch size is ~668 records
@@ -318,6 +343,11 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 
 // insertSubBatch performs the actual batch insert within SQLite variable limits
 func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirstLoad bool) error {
+	originalSize := len(requests)
+
+	r.logger.Trace("💾 insertSubBatch starting",
+		r.logger.Args("batch_size", originalSize, "first_load_mode", isFirstLoad))
+
 	// CRITICAL OPTIMIZATION: During first load, deduplicate in memory to avoid database constraint checks
 	// This dramatically improves performance for large initial imports
 	if isFirstLoad {
@@ -326,6 +356,8 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 			r.logger.Debug("All requests in batch were duplicates (in-memory check)")
 			return nil
 		}
+		r.logger.Trace("📦 After in-memory dedup",
+			r.logger.Args("original_size", originalSize, "deduplicated_size", len(requests)))
 	}
 
 	// Start transaction
@@ -335,10 +367,15 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 		return tx.Error
 	}
 
+	r.logger.Trace("🔄 Attempting batch insert",
+		r.logger.Args("batch_size", len(requests), "first_load_mode", isFirstLoad))
+
 	// Insert batch with duplicate handling
 	err := tx.Create(&requests).Error
 
 	if err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "request_hash")) {
+		r.logger.Warn("❌ Batch insert failed with UNIQUE constraint error",
+			r.logger.Args("batch_size", len(requests), "first_load_mode", isFirstLoad, "error", err.Error()))
 		// Batch insert failed due to duplicates
 		// Rollback the failed transaction and start a new one
 		tx.Rollback()
@@ -361,10 +398,14 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 
 		inserted := 0
 		duplicates := 0
-		for _, req := range requests {
+		for i, req := range requests {
 			if insertErr := tx.Create(req).Error; insertErr != nil {
 				if strings.Contains(insertErr.Error(), "UNIQUE constraint failed") || strings.Contains(insertErr.Error(), "request_hash") {
 					duplicates++
+					if duplicates <= 3 { // Log first 3 DB-level duplicates
+						r.logger.Debug("🔄 DB-level duplicate detected",
+							r.logger.Args("index", i, "hash", req.RequestHash[:16], "timestamp", req.Timestamp, "client_ip", req.ClientIP, "error", insertErr.Error()))
+					}
 					// Skip this duplicate - don't log as error
 					continue
 				}
@@ -399,6 +440,9 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 		r.logger.WithCaller().Error("Failed to commit transaction", r.logger.Args("error", err))
 		return err
 	}
+
+	r.logger.Trace("✅ insertSubBatch completed successfully",
+		r.logger.Args("batch_size", len(requests), "first_load_mode", isFirstLoad))
 
 	return nil
 }
