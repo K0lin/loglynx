@@ -195,12 +195,18 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 				"last_line_preview", lastLineForCheck,
 			))
 
-		r.logger.Info("✅ ReadBatch completed - returning new position",
+		// CRITICAL FIX: Update internal position IMMEDIATELY after reading
+		// The processor will also call UpdatePosition() after flush, but we need to move
+		// the position NOW so that if ReadBatch() is called again before flush,
+		// we don't re-read the same lines
+		r.lastPosition = newPos
+		r.lastLineContent = lastLineForCheck
+
+		r.logger.Info("✅ ReadBatch completed - internal position updated",
 			r.logger.Args(
 				"lines_read", len(lines),
-				"old_position", r.lastPosition,
 				"new_position", newPos,
-				"will_update_internal_position", false, // Position updated by processor calling UpdatePosition()
+				"position_updated_internally", true,
 			))
 
 		return lines, newPos, r.lastInode, lastLineForCheck, nil
@@ -215,8 +221,20 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 
 // UpdatePosition is called by the processor to confirm the position after a successful batch write.
 func (r *IncrementalReader) UpdatePosition(position int64, inode int64, lastLine string) {
-	// This function is now less critical as ReadBatch returns the correct state,
-	// but we keep it for explicit state management by the caller if needed.
+	// CRITICAL: Only update if the new position is greater than current
+	// The reader already updates its position after each ReadBatch(),
+	// so this should only move forward, never backward
+	if position < r.lastPosition {
+		r.logger.Warn("⚠️ UpdatePosition called with OLDER position - IGNORING to prevent re-reading",
+			r.logger.Args(
+				"path", r.filePath,
+				"current_position", r.lastPosition,
+				"requested_position", position,
+				"position_delta", position-r.lastPosition,
+				"action", "IGNORED",
+			))
+		return // Don't move backward!
+	}
 
 	r.logger.Info("🔄 UpdatePosition called by processor",
 		r.logger.Args(
