@@ -42,6 +42,7 @@ type HTTPRequest struct {
 	StartUTC               string  `gorm:"type:varchar(35)"`                 // Start timestamp with nanosecond precision (RFC3339Nano format)
 	UpstreamResponseTimeMs float64 `gorm:"check:upstream_response_time_ms >= 0"` // Time spent waiting for upstream/backend
 	RetryAttempts          int     `gorm:"check:retry_attempts >= 0"`        // Number of retry attempts (Traefik) - index created by OptimizeDatabase
+	RequestsTotal          int     `gorm:"check:requests_total >= 0"`        // Total number of requests at router level (Traefik CLF field)
 
 	// Headers
 	UserAgent string `gorm:"type:varchar(512)"` // Most user agents are <512 chars

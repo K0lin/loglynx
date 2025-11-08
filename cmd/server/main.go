@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -25,6 +26,10 @@ import (
 )
 
 func main() {
+	// Configure Go runtime to use all available CPU cores
+	// This enables goroutines to run in parallel on all cores
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	// Initialize logger with INFO level for production as a sensible default
 	// We'll reconfigure the level after loading the configuration (LOG_LEVEL)
 	logger := pterm.DefaultLogger.WithLevel(pterm.LogLevelInfo)
@@ -32,7 +37,8 @@ func main() {
 	// Print banner
 	banner.Print()
 
-	logger.Info("Initializing LogLynx - Fast Log Analytics...")
+	logger.Info("Initializing LogLynx - Fast Log Analytics...",
+		logger.Args("cpu_cores", runtime.NumCPU(), "gomaxprocs", runtime.GOMAXPROCS(0)))
 
 	// Load configuration from .env file and environment variables
 	cfg, err := config.Load()

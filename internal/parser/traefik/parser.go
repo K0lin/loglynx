@@ -36,6 +36,7 @@ type Parser struct {
 const traefikCLFPattern = `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTTP/[0-9.]+" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)" (\d+) "([^"]*)" "([^"]*)" (\d+)ms`
 
 // Generic CLF pattern (without Traefik-specific fields)
+//TODO() enhance to cover more generic CLF variants
 // Format: <client> - <userid> [<datetime>] "<method> <request> HTTP/<version>" <status> <size> "<referrer>" "<user_agent>"
 const genericCLFPattern = `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTTP/[0-9.]+" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)"`
 
@@ -192,6 +193,7 @@ func (p *Parser) parseJSON(line string) (*HTTPRequestEvent, error) {
 		Duration:      int64(getDuration(raw, "Duration")), // Nanoseconds
 		StartUTC:      getString(raw, "StartUTC"),          // Timestamp with nanosecond precision
 		RetryAttempts: getInt(raw, "RetryAttempts"),
+		RequestsTotal: getInt(raw, "RequestsTotal"), // Total requests at router level (defaults to 0 if not present)
 
 		// Headers
 		UserAgent: getString(raw, "request_User-Agent"),
@@ -275,7 +277,7 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 	sizeStr := matches[7]       // Response size
 	referer := matches[8]       // Referer
 	userAgent := matches[9]     // User agent
-	// matches[10] is requestsTotal (not used)
+	requestsTotalStr := matches[10] // Total requests at router level
 	routerName := matches[11]   // Traefik router name
 	backendURL := matches[12]   // Backend URL
 	durationStr := matches[13]  // Request duration in ms
@@ -309,6 +311,12 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 
 	// Convert milliseconds to nanoseconds for Duration field (consistent with JSON format)
 	durationNs := int64(durationMs * 1000000) // ms to ns
+
+	// Parse requestsTotal (total number of requests at router level)
+	requestsTotal, _ := strconv.Atoi(requestsTotalStr)
+	if requestsTotal < 0 {
+		requestsTotal = 0 // Ensure non-negative
+	}
 
 	// For CLF logs, we construct a StartUTC from timestamp since it's not in the log
 	// This gives us second-level precision (CLF only has second precision)
@@ -364,9 +372,10 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 		ResponseContentType: "", // Not available in CLF
 
 		// Detailed timing (for hash calculation precision)
-		Duration:      durationNs, // Converted from ms to ns
-		StartUTC:      startUTC,   // Constructed from CLF timestamp
-		RetryAttempts: 0,          // Not available in CLF
+		Duration:      durationNs,     // Converted from ms to ns
+		StartUTC:      startUTC,       // Constructed from CLF timestamp
+		RetryAttempts: 0,              // Not available in CLF
+		RequestsTotal: requestsTotal,  // Total requests at router level
 
 		// Headers
 		UserAgent: userAgent,

@@ -34,6 +34,7 @@ type HTTPRequestEvent struct {
 	StartUTC       string  // Start timestamp with nanosecond precision (Traefik's StartUTC field)
 	UpstreamResponseTimeMs float64
 	RetryAttempts  int     // Number of retry attempts
+	RequestsTotal  int     // Total number of requests at router level (Traefik CLF field)
 
 	// Headers
 	UserAgent      string

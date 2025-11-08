@@ -25,11 +25,11 @@ type HTTPRequestRepository interface {
 }
 
 type httpRequestRepo struct {
-	db              *gorm.DB
-	logger          *pterm.Logger
-	isFirstLoad     bool       // Global flag: true when database is empty at startup
-	firstLoadMu     sync.Mutex // Protects isFirstLoad flag
-	firstLoadOnce   sync.Once  // Ensures first-load check happens only once
+	db            *gorm.DB
+	logger        *pterm.Logger
+	isFirstLoad   bool       // Global flag: true when database is empty at startup
+	firstLoadMu   sync.Mutex // Protects isFirstLoad flag
+	firstLoadOnce sync.Once  // Ensures first-load check happens only once
 }
 
 // NewHTTPRequestRepository creates a new HTTP request repository
@@ -243,10 +243,10 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	isFirstLoad := r.getFirstLoadStatus()
 
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
-	// HTTPRequest has 48 columns (as of schema optimization update), so max safe batch size is ~680 records
+	// HTTPRequest has 49 columns (including requests_total field), so max safe batch size is ~668 records
 	const MaxSQLiteVariables = 32766
-	const ColumnsPerRecord = 48                                      // Actual number of columns in HTTPRequest model
-	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // ~682 records
+	const ColumnsPerRecord = 49                                      // Actual number of columns in HTTPRequest model
+	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // ~668 records
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
@@ -294,7 +294,10 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 	// Insert batch with duplicate handling
 	// Try batch insert first - if it fails due to duplicates, insert individually
 	// IMPORTANT: Even during first load, the file itself may contain duplicate records
+	//TODO() check if inside the requests array there are a duplicates of hashes and remove one of them before inserting
+
 	err := tx.Create(&requests).Error
+
 	if err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "request_hash")) {
 		// Batch insert failed due to duplicates
 		// Rollback the failed transaction and start a new one
@@ -302,10 +305,10 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 
 		// Log differently based on first load status
 		if isFirstLoad {
-			r.logger.Debug("Batch insert hit duplicates during first load (file contains duplicate records), inserting individually",
+			r.logger.Warn("Batch insert hit duplicates during first load (file contains duplicate records), inserting individually",
 				r.logger.Args("count", len(requests)))
 		} else {
-			r.logger.Debug("Batch insert hit duplicates, inserting individually",
+			r.logger.Warn("Batch insert hit duplicates, inserting individually",
 				r.logger.Args("count", len(requests)))
 		}
 
