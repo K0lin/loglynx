@@ -251,8 +251,21 @@ func (r *httpRequestRepo) deduplicateInMemory(requests []*models.HTTPRequest) []
 		} else {
 			duplicates++
 			if duplicates <= 5 { // Log first 5 duplicates
-				r.logger.Trace("🔄 Duplicate hash detected",
-					r.logger.Args("index", i, "hash", req.RequestHash[:16], "timestamp", req.Timestamp, "client_ip", req.ClientIP))
+				r.logger.Warn("🔄 IN-MEMORY DUPLICATE DETECTED",
+					r.logger.Args(
+						"duplicate_number", duplicates,
+						"index", i,
+						"hash", req.RequestHash[:16]+"...",
+						"timestamp", req.Timestamp.Format("2006-01-02 15:04:05"),
+						"client_ip", req.ClientIP,
+						"method", req.Method,
+						"host", req.Host,
+						"path", req.Path,
+						"status_code", req.StatusCode,
+						"duration", req.Duration,
+						"start_utc", req.StartUTC,
+						"requests_total", req.RequestsTotal,
+					))
 			}
 		}
 	}
@@ -403,8 +416,23 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 				if strings.Contains(insertErr.Error(), "UNIQUE constraint failed") || strings.Contains(insertErr.Error(), "request_hash") {
 					duplicates++
 					if duplicates <= 3 { // Log first 3 DB-level duplicates
-						r.logger.Debug("🔄 DB-level duplicate detected",
-							r.logger.Args("index", i, "hash", req.RequestHash[:16], "timestamp", req.Timestamp, "client_ip", req.ClientIP, "error", insertErr.Error()))
+						r.logger.Warn("🔄 DATABASE-LEVEL DUPLICATE DETECTED (should not happen in first load mode!)",
+							r.logger.Args(
+								"duplicate_number", duplicates,
+								"index", i,
+								"hash", req.RequestHash[:16]+"...",
+								"full_hash", req.RequestHash,
+								"timestamp", req.Timestamp.Format("2006-01-02 15:04:05"),
+								"client_ip", req.ClientIP,
+								"method", req.Method,
+								"host", req.Host,
+								"path", req.Path,
+								"status_code", req.StatusCode,
+								"duration", req.Duration,
+								"start_utc", req.StartUTC,
+								"requests_total", req.RequestsTotal,
+								"error", insertErr.Error(),
+							))
 					}
 					// Skip this duplicate - don't log as error
 					continue
