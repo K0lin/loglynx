@@ -61,14 +61,155 @@ func (r *httpRequestRepo) checkFirstLoad() {
 
 // DisableFirstLoadMode disables first-load optimization
 // Called after the initial file load is complete
+// Also triggers deferred index creation if this was the first load
 func (r *httpRequestRepo) DisableFirstLoadMode() {
 	r.firstLoadMu.Lock()
-	defer r.firstLoadMu.Unlock()
-
+	wasFirstLoad := r.isFirstLoad
 	if r.isFirstLoad {
-		r.logger.Info("First load completed - deduplication checks now enabled")
 		r.isFirstLoad = false
 	}
+	r.firstLoadMu.Unlock()
+
+	if wasFirstLoad {
+		r.logger.Info("First load completed - deduplication checks now enabled")
+
+		// Create indexes in background (don't block log processing)
+		go r.createDeferredIndexes()
+	}
+}
+
+// createDeferredIndexes creates performance indexes after initial data load
+func (r *httpRequestRepo) createDeferredIndexes() {
+	r.logger.Info("🔨 Creating performance indexes in background (this may take a few minutes)...")
+
+	startTime := time.Now()
+
+	// Import optimize package function
+	// Note: This requires OptimizeDatabase to be accessible
+	// For now, we'll implement a simplified version here
+	if err := r.optimizeDatabase(); err != nil {
+		r.logger.Error("Failed to create performance indexes",
+			r.logger.Args("error", err, "elapsed", time.Since(startTime)))
+		return
+	}
+
+	elapsed := time.Since(startTime)
+	r.logger.Info("✅ Performance indexes created successfully",
+		r.logger.Args("elapsed_seconds", elapsed.Seconds()))
+}
+
+// optimizeDatabase creates all performance indexes
+// This is a copy of OptimizeDatabase function to avoid circular dependencies
+func (r *httpRequestRepo) optimizeDatabase() error {
+	indexes := []string{
+		// ===== BASIC SINGLE-COLUMN INDEXES =====
+		// These were removed from GORM tags to defer creation until after first load
+
+		`CREATE INDEX IF NOT EXISTS idx_source_name ON http_requests(source_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_timestamp ON http_requests(timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_partition_key ON http_requests(partition_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_client_ip ON http_requests(client_ip)`,
+		`CREATE INDEX IF NOT EXISTS idx_host ON http_requests(host)`,
+		`CREATE INDEX IF NOT EXISTS idx_status ON http_requests(status_code)`,
+		`CREATE INDEX IF NOT EXISTS idx_response_time ON http_requests(response_time_ms) WHERE response_time_ms > 0`,
+		`CREATE INDEX IF NOT EXISTS idx_retry_attempts ON http_requests(retry_attempts) WHERE retry_attempts > 0`,
+		`CREATE INDEX IF NOT EXISTS idx_browser ON http_requests(browser)`,
+		`CREATE INDEX IF NOT EXISTS idx_os ON http_requests(os)`,
+		`CREATE INDEX IF NOT EXISTS idx_device_type ON http_requests(device_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_router_name ON http_requests(router_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_request_id ON http_requests(request_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_trace_id ON http_requests(trace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_geo_country ON http_requests(geo_country)`,
+		`CREATE INDEX IF NOT EXISTS idx_created_at ON http_requests(created_at DESC)`,
+
+		// ===== COMPOSITE INDEXES (for common query patterns) =====
+
+		// Time + Status (error analysis over time)
+		`CREATE INDEX IF NOT EXISTS idx_time_status
+		 ON http_requests(timestamp DESC, status_code)`,
+
+		// Time + Host (per-service time-range queries)
+		`CREATE INDEX IF NOT EXISTS idx_time_host
+		 ON http_requests(timestamp DESC, host)`,
+
+		// ClientIP + Time (IP activity timeline)
+		`CREATE INDEX IF NOT EXISTS idx_ip_time
+		 ON http_requests(client_ip, timestamp DESC)`,
+
+		// Status + Host (service error rates)
+		`CREATE INDEX IF NOT EXISTS idx_status_host
+		 ON http_requests(status_code, host)`,
+
+		// Composite index for timestamp + response_time for optimized percentile queries
+		`CREATE INDEX IF NOT EXISTS idx_timestamp_response_time
+		 ON http_requests(timestamp DESC, response_time_ms)
+		 WHERE response_time_ms > 0`,
+
+		// Composite index for summary queries (timestamp, status_code, response_time_ms)
+		`CREATE INDEX IF NOT EXISTS idx_summary_query
+		 ON http_requests(timestamp DESC, status_code, response_time_ms)`,
+
+		// ===== PARTIAL INDEXES (for specific queries) =====
+
+		// Errors only (40x and 50x status codes)
+		`CREATE INDEX IF NOT EXISTS idx_errors_only
+		 ON http_requests(timestamp DESC, status_code, path, method, client_ip)
+		 WHERE status_code >= 400`,
+
+		// Slow requests only (>1 second)
+		`CREATE INDEX IF NOT EXISTS idx_slow_requests
+		 ON http_requests(timestamp DESC, response_time_ms, path, host, method)
+		 WHERE response_time_ms > 1000`,
+
+		// Server errors only (50x)
+		`CREATE INDEX IF NOT EXISTS idx_server_errors
+		 ON http_requests(timestamp DESC, status_code, path, backend_name)
+		 WHERE status_code >= 500`,
+
+		// Requests with retries
+		`CREATE INDEX IF NOT EXISTS idx_retried_requests
+		 ON http_requests(timestamp DESC, retry_attempts, backend_name, status_code)
+		 WHERE retry_attempts > 0`,
+
+		// ===== COVERING INDEXES (include data columns) =====
+
+		// Dashboard covering index (includes most displayed columns)
+		`CREATE INDEX IF NOT EXISTS idx_dashboard_covering
+		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, method, path)`,
+
+		// Error analysis covering index
+		`CREATE INDEX IF NOT EXISTS idx_error_analysis
+		 ON http_requests(timestamp DESC, status_code, path, method, client_ip, response_time_ms, backend_name)
+		 WHERE status_code >= 400`,
+
+		// ===== CLEANUP INDEX =====
+		// Index for cleanup queries (timestamp for deletion)
+		`CREATE INDEX IF NOT EXISTS idx_timestamp_cleanup
+		 ON http_requests(timestamp)`,
+	}
+
+	indexCount := 0
+	for i, indexSQL := range indexes {
+		r.logger.Debug("Creating index",
+			r.logger.Args("progress", i+1, "total", len(indexes)))
+
+		if err := r.db.Exec(indexSQL).Error; err != nil {
+			r.logger.Warn("Failed to create index", r.logger.Args("error", err))
+			return err
+		}
+		indexCount++
+	}
+
+	r.logger.Debug("Performance indexes created", r.logger.Args("count", indexCount))
+
+	// Analyze tables for query optimizer
+	if err := r.db.Exec("ANALYZE").Error; err != nil {
+		r.logger.Warn("Failed to analyze database", r.logger.Args("error", err))
+	} else {
+		r.logger.Trace("Database statistics analyzed")
+	}
+
+	return nil
 }
 
 // getFirstLoadStatus returns current first-load status (thread-safe)

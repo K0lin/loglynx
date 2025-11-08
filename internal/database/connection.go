@@ -193,10 +193,22 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 		// Fatal() terminates the program, so no code after this will execute
 	}
 
-	// Apply database optimizations (indexes, etc.)
-	if err := OptimizeDatabase(db, logger); err != nil {
-		logger.Warn("Database optimization had warnings", logger.Args("error", err))
-		// Don't fail on optimization errors, just warn
+	// Check if database is empty (first load)
+	// We need to import models for this check
+	var count int64
+	db.Table("http_requests").Count(&count)
+	isDatabaseEmpty := (count == 0)
+
+	if isDatabaseEmpty {
+		logger.Info("🚀 Empty database detected - deferring index creation until after first data load for optimal performance")
+		logger.Info("   Indexes will be created automatically when initial data load completes")
+	} else {
+		// Database has data - create/verify indexes now
+		logger.Debug("Existing data found - verifying database indexes")
+		if err := OptimizeDatabase(db, logger); err != nil {
+			logger.Warn("Database optimization had warnings", logger.Args("error", err))
+			// Don't fail on optimization errors, just warn
+		}
 	}
 
 	// Run discovery engine in background to speed up startup
