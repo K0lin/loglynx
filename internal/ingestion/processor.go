@@ -67,10 +67,10 @@ func NewSourceProcessor(
 
 	// Apply defaults if not configured
 	if batchSize <= 0 {
-		batchSize = 1000
+		batchSize = 5000 // Increased from 1000 for better performance
 	}
 	if workerPoolSize <= 0 {
-		workerPoolSize = 4
+		workerPoolSize = 8 // Increased from 4 for better CPU utilization
 	}
 
 	// Check if this is an initial load (first time reading this file)
@@ -252,10 +252,17 @@ func (sp *SourceProcessor) processLoop() {
 
 		case <-ticker.C:
 			// Poll for new log lines
-			sp.logger.Trace("⏰ Ticker fired - polling for new lines",
-				sp.logger.Args("source", sp.source.Name, "current_batch_size", len(batch)))
+			// PERFORMANCE FIX: Skip reading if batch is nearly full (80%+)
+			// This prevents batch overflow and ensures efficient processing
+			if len(batch) >= int(float64(sp.batchSize)*0.8) {
+				// Batch is 80%+ full, skip reading and let it flush first
+				sp.logger.Trace("Batch nearly full, skipping read",
+					sp.logger.Args("current_size", len(batch), "max_size", sp.batchSize))
+				continue
+			}
 
-			lines, newPos, newInode, newLastLine, err := sp.reader.ReadBatch(sp.batchSize - len(batch))
+			// Always read a full batch for efficiency
+			lines, newPos, newInode, newLastLine, err := sp.reader.ReadBatch(sp.batchSize)
 			if err != nil {
 				sp.logger.WithCaller().Error("Failed to read from log file",
 					sp.logger.Args("source", sp.source.Name, "error", err))
@@ -279,26 +286,10 @@ func (sp *SourceProcessor) processLoop() {
 				continue // No new lines
 			}
 
-			sp.logger.Info("📥 Read new log lines from file",
-				sp.logger.Args(
-					"source", sp.source.Name,
-					"count", len(lines),
-					"newPos", newPos,
-					"newInode", newInode,
-				))
-
 			// Store the position for later update after flush
 			lastReadPos = newPos
 			lastReadInode = newInode
 			lastReadLine = newLastLine
-
-			sp.logger.Info("💾 Stored position for later update",
-				sp.logger.Args(
-					"source", sp.source.Name,
-					"lastReadPos", lastReadPos,
-					"lastUpdatedPos", lastUpdatedPos,
-					"needs_update", lastReadPos != lastUpdatedPos,
-				))
 
 			// Parse lines in parallel
 			parsedRequests := sp.parseAndEnrichParallel(lines)
@@ -360,19 +351,10 @@ func (sp *SourceProcessor) processLoop() {
 
 // updatePosition updates the file position in the database after a successful flush
 func (sp *SourceProcessor) updatePosition(position int64, inode int64, lastLine string) {
-	sp.logger.Info("📍 Updating position in database and reader",
-		sp.logger.Args(
-			"source", sp.source.Name,
-			"position", position,
-			"inode", inode,
-		))
-
 	if err := sp.sourceRepo.UpdateTracking(sp.source.Name, position, inode, lastLine); err != nil {
 		sp.logger.WithCaller().Error("Failed to update source tracking",
 			sp.logger.Args("source", sp.source.Name, "error", err))
 	} else {
-		sp.logger.Info("✅ Position updated in database successfully",
-			sp.logger.Args("source", sp.source.Name, "position", position, "inode", inode))
 		sp.reader.UpdatePosition(position, inode, lastLine)
 	}
 }
@@ -580,9 +562,9 @@ func (sp *SourceProcessor) convertToDBModel(event interface{}) *models.HTTPReque
 	hash := sha256.Sum256([]byte(hashInput))
 	dbModel.RequestHash = fmt.Sprintf("%x", hash)
 
-	// Debug logging for first 10 requests to understand hash generation
-	if sp.totalProcessed < 10 {
-		sp.logger.Info("🔐 Hash generation details",
+	// Debug logging for first 5 requests only (reduced from 10)
+	if sp.totalProcessed < 5 {
+		sp.logger.Debug("🔐 Hash generation details",
 			sp.logger.Args(
 				"record_number", sp.totalProcessed+1,
 				"source", sp.source.Name,

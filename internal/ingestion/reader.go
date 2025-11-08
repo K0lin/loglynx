@@ -111,13 +111,6 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 		return nil, 0, 0, "", err
 	}
 
-	r.logger.Info("🔍 Starting ReadBatch",
-		r.logger.Args(
-			"path", r.filePath,
-			"lastPosition", r.lastPosition,
-			"maxLines", maxLines,
-		))
-
 	// The scanner will automatically handle line boundaries correctly from any position
 	// by reading until it finds a complete line (ending with \n)
 
@@ -141,13 +134,12 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 		// Add line to batch
 		lines = append(lines, line)
 
-		// Log first few lines for debugging (increased to see more data)
-		if len(lines) <= 10 {
-			r.logger.Info("📄 Read line from file",
+		// Log first 3 lines only (reduced from 10 for performance)
+		if len(lines) <= 3 {
+			r.logger.Debug("📄 Read line from file",
 				r.logger.Args(
 					"line_number", len(lines),
 					"line_length", len(line),
-					"line_full", line, // Log the FULL line to see if duplicates
 				))
 		}
 	}
@@ -202,13 +194,6 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 		r.lastPosition = newPos
 		r.lastLineContent = lastLineForCheck
 
-		r.logger.Info("✅ ReadBatch completed - internal position updated",
-			r.logger.Args(
-				"lines_read", len(lines),
-				"new_position", newPos,
-				"position_updated_internally", true,
-			))
-
 		return lines, newPos, r.lastInode, lastLineForCheck, nil
 	}
 
@@ -225,25 +210,13 @@ func (r *IncrementalReader) UpdatePosition(position int64, inode int64, lastLine
 	// The reader already updates its position after each ReadBatch(),
 	// so this should only move forward, never backward
 	if position < r.lastPosition {
-		r.logger.Warn("⚠️ UpdatePosition called with OLDER position - IGNORING to prevent re-reading",
+		r.logger.Warn("⚠️ UpdatePosition called with OLDER position - IGNORING",
 			r.logger.Args(
-				"path", r.filePath,
 				"current_position", r.lastPosition,
 				"requested_position", position,
-				"position_delta", position-r.lastPosition,
-				"action", "IGNORED",
 			))
 		return // Don't move backward!
 	}
-
-	r.logger.Info("🔄 UpdatePosition called by processor",
-		r.logger.Args(
-			"path", r.filePath,
-			"old_position", r.lastPosition,
-			"new_position", position,
-			"position_delta", position-r.lastPosition,
-			"inode", inode,
-		))
 
 	r.lastPosition = position
 	r.lastInode = inode
