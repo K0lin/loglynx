@@ -400,14 +400,33 @@ const LogLynxCharts = {
                     day: 'numeric'
                 });
             });
-        } else {
-            // Weekly/monthly labels
+        } else if (hours <= 720) {
+            // Daily labels for 30-day range
             return dataPoints.map(d => {
                 const date = new Date(d.hour);
                 return date.toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric'
                 });
+            });
+        } else {
+            // Weekly labels for longer periods (format: "2023-W52")
+            return dataPoints.map(d => {
+                // Check if d.hour is in week format (YYYY-WNN)
+                if (typeof d.hour === 'string' && d.hour.match(/^\d{4}-W\d{1,2}$/)) {
+                    const [year, weekStr] = d.hour.split('-W');
+                    return `Week ${weekStr}, ${year}`;
+                }
+                // Fallback to date parsing
+                const date = new Date(d.hour);
+                if (!isNaN(date.getTime())) {
+                    return date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                }
+                // If all else fails, return the raw value
+                return d.hour;
             });
         }
     },

@@ -27,8 +27,8 @@ const (
 
 // Parser implements the LogParser interface for Traefik logs
 type Parser struct {
-	logger    *pterm.Logger
-	clfRegex  *regexp.Regexp
+	logger   *pterm.Logger
+	clfRegex *regexp.Regexp
 }
 
 // CLF regex pattern for Traefik Common Log Format
@@ -36,7 +36,6 @@ type Parser struct {
 const traefikCLFPattern = `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTTP/[0-9.]+" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)" (\d+) "([^"]*)" "([^"]*)" (\d+)ms`
 
 // Generic CLF pattern (without Traefik-specific fields)
-//TODO() enhance to cover more generic CLF variants
 // Format: <client> - <userid> [<datetime>] "<method> <request> HTTP/<version>" <status> <size> "<referrer>" "<user_agent>"
 const genericCLFPattern = `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTTP/[0-9.]+" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)"`
 
@@ -46,8 +45,8 @@ func NewParser(logger *pterm.Logger) *Parser {
 	clfRegex := regexp.MustCompile(traefikCLFPattern)
 
 	return &Parser{
-		logger:    logger,
-		clfRegex:  clfRegex,
+		logger:   logger,
+		clfRegex: clfRegex,
 	}
 }
 
@@ -268,19 +267,19 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 	}
 
 	// Extract fields from regex capture groups
-	clientHost := matches[1]    // Client IP (possibly with port)
+	clientHost := matches[1] // Client IP (possibly with port)
 	// matches[2] is userid (usually "-")
-	timestampStr := matches[3]  // Timestamp
-	method := matches[4]        // HTTP method
-	requestPath := matches[5]   // Request path
-	statusStr := matches[6]     // Status code
-	sizeStr := matches[7]       // Response size
-	referer := matches[8]       // Referer
-	userAgent := matches[9]     // User agent
+	timestampStr := matches[3]      // Timestamp
+	method := matches[4]            // HTTP method
+	requestPath := matches[5]       // Request path
+	statusStr := matches[6]         // Status code
+	sizeStr := matches[7]           // Response size
+	referer := matches[8]           // Referer
+	userAgent := matches[9]         // User agent
 	requestsTotalStr := matches[10] // Total requests at router level
-	routerName := matches[11]   // Traefik router name
-	backendURL := matches[12]   // Backend URL
-	durationStr := matches[13]  // Request duration in ms
+	routerName := matches[11]       // Traefik router name
+	backendURL := matches[12]       // Backend URL
+	durationStr := matches[13]      // Request duration in ms
 
 	// Parse timestamp (CLF format: "02/Jan/2006:15:04:05 -0700")
 	timestamp, err := time.Parse("02/Jan/2006:15:04:05 -0700", timestampStr)
@@ -359,11 +358,11 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 
 		// Request info
 		Method:        strings.ToUpper(method),
-		Protocol:      "",   // Not available in CLF
-		Host:          "",   // Not available in CLF
+		Protocol:      "", // Not available in CLF
+		Host:          "", // Not available in CLF
 		Path:          path,
 		QueryString:   queryString,
-		RequestScheme: "",   // Not available in CLF
+		RequestScheme: "", // Not available in CLF
 
 		// Response info
 		StatusCode:          statusCode,
@@ -372,17 +371,17 @@ func (p *Parser) parseTraefikCLF(matches []string) (*HTTPRequestEvent, error) {
 		ResponseContentType: "", // Not available in CLF
 
 		// Detailed timing (for hash calculation precision)
-		Duration:      durationNs,     // Converted from ms to ns
-		StartUTC:      startUTC,       // Constructed from CLF timestamp
-		RetryAttempts: 0,              // Not available in CLF
-		RequestsTotal: requestsTotal,  // Total requests at router level
+		Duration:      durationNs,    // Converted from ms to ns
+		StartUTC:      startUTC,      // Constructed from CLF timestamp
+		RetryAttempts: 0,             // Not available in CLF
+		RequestsTotal: requestsTotal, // Total requests at router level
 
 		// Headers
 		UserAgent: userAgent,
 		Referer:   referer,
 
 		// Traefik-specific
-		BackendName:         "",         // ServiceName not in CLF
+		BackendName:         "", // ServiceName not in CLF
 		BackendURL:          backendURL,
 		RouterName:          routerName,
 		UpstreamContentType: "", // Not available in CLF
@@ -422,14 +421,14 @@ func (p *Parser) parseGenericCLF(matches []string) (*HTTPRequestEvent, error) {
 	}
 
 	// Extract fields from regex capture groups
-	clientHost := matches[1]    // Client IP
-	timestampStr := matches[3]  // Timestamp
-	method := matches[4]        // HTTP method
-	requestPath := matches[5]   // Request path
-	statusStr := matches[6]     // Status code
-	sizeStr := matches[7]       // Response size
-	referer := matches[8]       // Referer
-	userAgent := matches[9]     // User agent
+	clientHost := matches[1]   // Client IP
+	timestampStr := matches[3] // Timestamp
+	method := matches[4]       // HTTP method
+	requestPath := matches[5]  // Request path
+	statusStr := matches[6]    // Status code
+	sizeStr := matches[7]      // Response size
+	referer := matches[8]      // Referer
+	userAgent := matches[9]    // User agent
 
 	// Parse timestamp
 	timestamp, err := time.Parse("02/Jan/2006:15:04:05 -0700", timestampStr)
