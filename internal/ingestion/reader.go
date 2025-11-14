@@ -203,13 +203,8 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 	// If we read any lines, we update our tracking info.
 	if len(lines) > 0 {
 		lastLineRead := lines[len(lines)-1]
-		// The new position is the end of the read batch. To re-read the last line for the
-		// continuity check next time, we subtract its length from the current position.
-		// This is a robust way to handle the seek->scan->check cycle.
-		newLastPosition := newPos - int64(len(lastLineRead)+1) // +1 for the newline character
-		if newLastPosition < 0 {
-			newLastPosition = 0
-		}
+
+		newLastPosition := newPos
 
 		// Get last line for next continuity check
 		lastLineForCheck := getTail(lastLineRead, 500)

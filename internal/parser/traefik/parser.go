@@ -27,8 +27,9 @@ const (
 
 // Parser implements the LogParser interface for Traefik logs
 type Parser struct {
-	logger   *pterm.Logger
-	clfRegex *regexp.Regexp
+	logger         *pterm.Logger
+	clfRegex       *regexp.Regexp
+	genericCLFRegex *regexp.Regexp  // Pre-compiled generic CLF regex for performance
 }
 
 // CLF regex pattern for Traefik Common Log Format
@@ -41,12 +42,15 @@ const genericCLFPattern = `^(\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+)? HTT
 
 // NewParser creates a new Traefik parser instance
 func NewParser(logger *pterm.Logger) *Parser {
-	// Compile regex patterns (try Traefik CLF first, fall back to generic CLF)
+	// Pre-compile regex patterns (try Traefik CLF first, fall back to generic CLF)
+	// OPTIMIZATION: Compile once at initialization instead of on every line
 	clfRegex := regexp.MustCompile(traefikCLFPattern)
+	genericCLFRegex := regexp.MustCompile(genericCLFPattern)
 
 	return &Parser{
-		logger:   logger,
-		clfRegex: clfRegex,
+		logger:          logger,
+		clfRegex:        clfRegex,
+		genericCLFRegex: genericCLFRegex,
 	}
 }
 
@@ -87,13 +91,13 @@ func (p *Parser) detectFormat(line string) LogFormat {
 	}
 
 	// Try CLF format (both Traefik and generic)
+	// OPTIMIZATION: Use pre-compiled regex instead of compiling on every call
 	if p.clfRegex.MatchString(line) {
 		return FormatCLF
 	}
 
-	// Try generic CLF pattern as fallback
-	genericRegex := regexp.MustCompile(genericCLFPattern)
-	if genericRegex.MatchString(line) {
+	// Try generic CLF pattern as fallback (pre-compiled)
+	if p.genericCLFRegex.MatchString(line) {
 		return FormatCLF
 	}
 

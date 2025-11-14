@@ -86,8 +86,8 @@ func NewSourceProcessor(
 		logger:              logger,
 		batchSize:           batchSize,       // Configurable via BATCH_SIZE env var
 		workerPoolSize:      workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
-		batchTimeout:        2 * time.Second, // Or flush after 2 seconds (faster processing)
-		pollInterval:        1 * time.Second, // Check for new logs every second
+		batchTimeout:        30 * time.Second, // OPTIMIZED: Longer timeout for larger batches (was 2s)
+		pollInterval:        100 * time.Millisecond, // OPTIMIZED: Poll more frequently during initial load (was 1s)
 		ctx:                 ctx,
 		cancel:              cancel,
 		totalProcessed:      0,
@@ -228,18 +228,32 @@ func (sp *SourceProcessor) processLoop() {
 
 			if len(lines) == 0 {
 				// No new lines - reached EOF
-				// If this is the initial load and we haven't marked it complete yet, do so now
+				// BUGFIX: Check if we need to mark initial load as complete AND flush pending batch
 				sp.initialLoadMu.Lock()
-				if sp.isInitialLoad && !sp.initialLoadComplete {
+				needsCompletion := sp.isInitialLoad && !sp.initialLoadComplete
+				sp.initialLoadMu.Unlock()
+
+				if needsCompletion {
+					// Flush any pending batch BEFORE marking load complete
+					if len(batch) > 0 {
+						sp.logger.Debug("Flushing final batch before marking initial load complete",
+							sp.logger.Args("source", sp.source.Name, "count", len(batch)))
+						sp.flushBatch(batch)
+						batch = []*models.HTTPRequest{}
+						if lastReadPos > 0 {
+							sp.updatePosition(lastReadPos, lastReadInode, lastReadLine)
+							lastUpdatedPos = lastReadPos
+						}
+					}
+
+					// NOW we can safely disable first-load mode
+					sp.initialLoadMu.Lock()
 					sp.initialLoadComplete = true
 					sp.initialLoadMu.Unlock()
 
-					// Disable first-load mode in repository
 					sp.httpRepo.DisableFirstLoadMode()
 					sp.logger.Info("Initial file load completed - reached end of file",
 						sp.logger.Args("source", sp.source.Name))
-				} else {
-					sp.initialLoadMu.Unlock()
 				}
 
 				continue // No new lines
@@ -248,14 +262,13 @@ func (sp *SourceProcessor) processLoop() {
 			sp.logger.Trace("Read new log lines",
 				sp.logger.Args("source", sp.source.Name, "count", len(lines)))
 
-			// Store the position for later update after flush
-			lastReadPos = newPos
-			lastReadInode = newInode
-			lastReadLine = newLastLine
-
 			// Parse lines in parallel
 			parsedRequests := sp.parseAndEnrichParallel(lines)
 			batch = append(batch, parsedRequests...)
+
+			lastReadPos = newPos
+			lastReadInode = newInode
+			lastReadLine = newLastLine
 
 			// Flush if batch is full AND update position only after successful flush
 			if len(batch) >= sp.batchSize {

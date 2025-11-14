@@ -11,13 +11,13 @@ RUN go mod download
 # Copy rest of the sources
 COPY . .
 
-# Build the server binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+# Build the server binary (CGO enabled for sqlite/geoip native deps)
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
     go build -ldflags "-s -w" -o /out/loglynx ./cmd/server
 
 
-# Final image: small, secure runtime
-FROM gcr.io/distroless/static-debian11
+# Final image: small, secure runtime that still ships glibc for CGO
+FROM gcr.io/distroless/base-debian12
 
 # Create application directory and set as working dir so relative paths like
 # `web/templates/**/*.html` and `geoip/*` resolve inside the container.
@@ -29,6 +29,9 @@ COPY --from=builder /out/loglynx /usr/local/bin/loglynx
 # Copy web assets (templates + static) so Gin can load templates from
 # the expected relative path `web/templates/**/*.html`.
 COPY --from=builder /src/web ./web
+
+# Copy GeoIP databases so enrichment works without extra mounts
+COPY --from=builder /src/geoip ./geoip
 
 # Optional: create directories for volumes
 VOLUME ["/data", "/app/geoip", "/traefik/logs"]

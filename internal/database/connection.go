@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/pterm/pterm"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -113,12 +113,11 @@ func (l *SlowQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() 
 func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	// Optimized DSN with:
 	// - WAL mode for concurrent reads/writes
-	// - page_size=4096 for optimal performance (default is 1024)
 	// - NORMAL synchronous for balance between safety and speed
-	// - cache_size=64MB (64000 KB) for better query performance
+	// - cache_size=-64000 (negative means KB, 64MB) for better query performance
 	// - busy_timeout=5000ms (5 seconds) to prevent SQLITE_BUSY errors
-	// - txlock=immediate to prevent lock escalation deadlocks
-	dsn := cfg.Path + "?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=64000&_page_size=4096&_busy_timeout=5000&_txlock=immediate"
+	// Note: mattn/go-sqlite3 uses different parameter names than glebarez
+	dsn := cfg.Path + "?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=-64000&_busy_timeout=5000"
 	_, err := os.Stat(cfg.Path)
 
 	if errors.Is(err, os.ErrPermission) {
@@ -248,54 +247,5 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	}
 
 	logger.Info("Database connection established successfully.")
-	return db, nil
-}
-
-// NewReadOnlyConnection creates a read-only database connection pool for analytics queries
-// This prevents long-running SELECT queries from blocking write operations
-func NewReadOnlyConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
-	// Read-only DSN with:
-	// - mode=ro for read-only access
-	// - query_only=1 to enforce read-only at SQLite level
-	// - Shared cache_size for better performance
-	// - No busy_timeout needed (reads don't block reads)
-	dsn := cfg.Path + "?mode=ro&_query_only=1&_cache_shared=true&_cache_size=64000"
-
-	_, err := os.Stat(cfg.Path)
-	if errors.Is(err, os.ErrPermission) {
-		logger.WithCaller().Fatal("Permission denied to access database file (read-only).", logger.Args("error", err))
-	}
-
-	if os.IsNotExist(err) {
-		logger.WithCaller().Fatal("Database file does not exist (read-only connection).", logger.Args("path", cfg.Path))
-	}
-
-	logger.Debug("Initializing read-only database connection for analytics queries.")
-
-	// Create slow query logger (log queries taking >100ms)
-	slowQueryLogger := NewSlowQueryLogger(logger, 100*time.Millisecond)
-
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
-		PrepareStmt: true,
-		Logger:      slowQueryLogger,
-	})
-
-	if err != nil {
-		logger.WithCaller().Fatal("Failed to connect to the database (read-only).", logger.Args("error", err))
-	}
-
-	// Get underlying SQL DB for connection pool
-	sqlDB, err := db.DB()
-	if err != nil {
-		logger.WithCaller().Fatal("Failed to get database instance (read-only).", logger.Args("error", err))
-	}
-
-	// Configure connection pool (read-only can have more connections)
-	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns * 2) // 2x connections for reads
-	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns * 2)
-	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLife)
-
-	logger.Info("Read-only database connection established successfully.",
-		logger.Args("max_conns", cfg.MaxOpenConns*2))
 	return db, nil
 }
