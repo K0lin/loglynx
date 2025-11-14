@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	"loglynx/internal/api/handlers"
@@ -29,7 +30,7 @@ type Config struct {
 }
 
 // NewServer creates a new HTTP server
-func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, logger *pterm.Logger) *Server {
+func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, profilingHandler *handlers.ProfilingHandler, logger *pterm.Logger) *Server {
 	// Set Gin mode
 	if cfg.Production {
 		gin.SetMode(gin.ReleaseMode)
@@ -100,6 +101,13 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		router.GET("/system", func(c *gin.Context) {
 			serveTemplatePage(c, "system", "System Statistics", "fas fa-server")
 		})
+
+		// Profiling page (only if profiling is enabled)
+		if profilingHandler.IsEnabled() {
+			router.GET("/profiling", func(c *gin.Context) {
+				serveTemplatePage(c, "profiling", "Performance Profiling", "fas fa-chart-line")
+			})
+		}
 
 		// IP Analytics page
 		router.GET("/ip/:ip", func(c *gin.Context) {
@@ -191,6 +199,27 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		// System Statistics
 		api.GET("/system/stats", systemHandler.GetSystemStats)
 		api.GET("/system/timeline", systemHandler.GetRecordsTimeline)
+	}
+
+	// Add pprof profiling endpoints (only in non-production mode or if explicitly enabled)
+	if !cfg.Production || profilingHandler.IsEnabled() {
+		// Standard pprof endpoints
+		router.GET("/debug/pprof/", gin.WrapH(http.DefaultServeMux))
+		router.GET("/debug/pprof/:profile", gin.WrapH(http.DefaultServeMux))
+
+		logger.Info("pprof profiling endpoints enabled at /debug/pprof/")
+	}
+
+	// Advanced profiling API endpoints (only if explicitly enabled)
+	if profilingHandler.IsEnabled() {
+		api.GET("/profiling/cpu/start", profilingHandler.StartCPUProfile)
+		api.GET("/profiling/cpu/status/:session_id", profilingHandler.GetProfileStatus)
+		api.GET("/profiling/cpu/download/:session_id", profilingHandler.DownloadProfile)
+		api.GET("/profiling/heap", profilingHandler.HeapProfile)
+		api.GET("/profiling/goroutine", profilingHandler.GoroutineProfile)
+		api.GET("/profiling/memory", profilingHandler.MemoryStats)
+
+		logger.Info("Advanced profiling API endpoints enabled at /api/v1/profiling/")
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

@@ -78,6 +78,9 @@ type PerformanceConfig struct {
 	GeoIPCacheSize          int
 	BatchSize               int
 	WorkerPoolSize          int
+	ProfilingEnabled        bool          // Enable advanced profiling features
+	MaxProfileDuration      time.Duration // Maximum duration for CPU profiles
+	ProfileCleanupInterval  time.Duration // How often to clean up old profiles
 }
 
 // Load reads configuration from .env file and environment variables
@@ -126,6 +129,9 @@ func Load() (*Config, error) {
 			GeoIPCacheSize:          getEnvAsInt("GEOIP_CACHE_SIZE", 10000),
 			BatchSize:               getEnvAsInt("BATCH_SIZE", 1000),
 			WorkerPoolSize:          getEnvAsInt("WORKER_POOL_SIZE", 4),
+			ProfilingEnabled:        getEnvAsBool("PROFILING_ENABLED", false),
+			MaxProfileDuration:      getEnvAsDuration("MAX_PROFILE_DURATION", 5*time.Minute),
+			ProfileCleanupInterval:  getEnvAsDuration("PROFILE_CLEANUP_INTERVAL", 5*time.Minute),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}

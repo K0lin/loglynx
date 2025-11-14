@@ -221,12 +221,18 @@ func main() {
 		cfg.Database.Path,
 		cfg.Database.RetentionDays,
 	)
+	profilingHandler := handlers.NewProfilingHandler(&handlers.ProfilingConfig{
+		Enabled:           cfg.Performance.ProfilingEnabled,
+		MaxProfileDuration: cfg.Performance.MaxProfileDuration,
+		CleanupInterval:   cfg.Performance.ProfileCleanupInterval,
+	}, logger)
+	
 	webServer := api.NewServer(&api.Config{
 		Host:             cfg.Server.Host,
 		Port:             cfg.Server.Port,
 		Production:       cfg.Server.Production,
 		DashboardEnabled: cfg.Server.DashboardEnabled,
-	}, dashboardHandler, realtimeHandler, systemHandler, logger)
+	}, dashboardHandler, realtimeHandler, systemHandler, profilingHandler, logger)
 
 	// Start web server in goroutine
 	go func() {

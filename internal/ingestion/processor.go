@@ -416,7 +416,7 @@ func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
 	elapsed := time.Since(sp.startTime)
 	rate := float64(totalProcessed) / elapsed.Seconds()
 
-	sp.logger.Debug("Batch processed successfully",
+	sp.logger.Warn("Batch processed successfully",
 		sp.logger.Args(
 			"source", sp.source.Name,
 			"batch_count", len(batch),

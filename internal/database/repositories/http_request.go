@@ -248,8 +248,8 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	// OPTIMIZATION: Increased from 15 to 500 for significantly better throughput
 	// 500 records * 49 columns = 24,500 variables (well under 32,766 limit)
 	const MaxSQLiteVariables = 32766
-	const ColumnsPerRecord = 49    // Actual number of columns in HTTPRequest model
-	const MaxRecordsPerBatch = 650 // Optimized batch size for performance
+	const ColumnsPerRecord = 49                                      // Actual number of columns in HTTPRequest model
+	const MaxRecordsPerBatch = MaxSQLiteVariables / ColumnsPerRecord // Optimized batch size for performance
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
