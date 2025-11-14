@@ -30,12 +30,10 @@ COPY --from=builder /out/loglynx /usr/local/bin/loglynx
 # the expected relative path `web/templates/**/*.html`.
 COPY --from=builder /src/web ./web
 
-# Copy GeoIP databases so enrichment works without extra mounts
-COPY --from=builder /src/geoip ./geoip
-
 # Optional: create directories for volumes
 VOLUME ["/data", "/app/geoip", "/traefik/logs"]
 
 EXPOSE 8080
 
 ENTRYPOINT ["/usr/local/bin/loglynx"]
+
