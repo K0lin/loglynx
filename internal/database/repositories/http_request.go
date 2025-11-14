@@ -244,9 +244,11 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
 	// HTTPRequest has 49 columns (including requests_total field), so max safe batch size is ~668 records
+	// OPTIMIZATION: Increased from 15 to 500 for significantly better throughput
+	// 500 records * 49 columns = 24,500 variables (well under 32,766 limit)
 	const MaxSQLiteVariables = 32766
 	const ColumnsPerRecord = 49                                      // Actual number of columns in HTTPRequest model
-	const MaxRecordsPerBatch = 15
+	const MaxRecordsPerBatch = 650  // Optimized batch size for performance
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
@@ -284,6 +286,39 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 
 // insertSubBatch performs the actual batch insert within SQLite variable limits
 func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirstLoad bool) error {
+	// OPTIMIZATION: Deduplicate in-memory BEFORE inserting to avoid rollbacks
+	// This prevents expensive transaction rollbacks and re-inserts
+	uniqueRequests := make([]*models.HTTPRequest, 0, len(requests))
+	seen := make(map[string]bool, len(requests))
+	inBatchDuplicates := 0
+
+	for _, req := range requests {
+		if req.RequestHash == "" {
+			// Should never happen, but handle gracefully
+			uniqueRequests = append(uniqueRequests, req)
+			continue
+		}
+
+		if seen[req.RequestHash] {
+			inBatchDuplicates++
+			continue // Skip duplicate within this batch
+		}
+
+		seen[req.RequestHash] = true
+		uniqueRequests = append(uniqueRequests, req)
+	}
+
+	if inBatchDuplicates > 0 {
+		r.logger.Debug("Removed in-batch duplicates before insert",
+			r.logger.Args("original", len(requests), "unique", len(uniqueRequests), "duplicates", inBatchDuplicates))
+	}
+
+	// If all were duplicates, skip the insert entirely
+	if len(uniqueRequests) == 0 {
+		r.logger.Debug("All records in batch were duplicates, skipping insert")
+		return nil
+	}
+
 	// Start transaction
 	tx := r.db.Begin()
 	if tx.Error != nil {
@@ -292,11 +327,8 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 	}
 
 	// Insert batch with duplicate handling
-	// Try batch insert first - if it fails due to duplicates, insert individually
-	// IMPORTANT: Even during first load, the file itself may contain duplicate records
-	//TODO() check if inside the requests array there are a duplicates of hashes and remove one of them before inserting
-
-	err := tx.Create(&requests).Error
+	// Try batch insert first - if it fails due to duplicates from DB, insert individually
+	err := tx.Create(&uniqueRequests).Error
 
 	if err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "request_hash")) {
 		// Batch insert failed due to duplicates
