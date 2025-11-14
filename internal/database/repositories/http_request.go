@@ -8,6 +8,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // HTTPRequestRepository handles CRUD operations for HTTP requests
@@ -247,8 +248,8 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 	// OPTIMIZATION: Increased from 15 to 500 for significantly better throughput
 	// 500 records * 49 columns = 24,500 variables (well under 32,766 limit)
 	const MaxSQLiteVariables = 32766
-	const ColumnsPerRecord = 49                                      // Actual number of columns in HTTPRequest model
-	const MaxRecordsPerBatch = 650  // Optimized batch size for performance
+	const ColumnsPerRecord = 49    // Actual number of columns in HTTPRequest model
+	const MaxRecordsPerBatch = 650 // Optimized batch size for performance
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
@@ -326,70 +327,37 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 		return tx.Error
 	}
 
-	// Insert batch with duplicate handling
-	// Try batch insert first - if it fails due to duplicates from DB, insert individually
-	err := tx.Create(&uniqueRequests).Error
-
-	if err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "request_hash")) {
-		// Batch insert failed due to duplicates
-		// Rollback the failed transaction and start a new one
-		tx.Rollback()
-
-		// Log differently based on first load status
-		if isFirstLoad {
-			r.logger.Warn("Batch insert hit duplicates during first load (file contains duplicate records), inserting individually",
-				r.logger.Args("count", len(uniqueRequests)))
-		} else {
-			r.logger.Warn("Batch insert hit duplicates, inserting individually",
-				r.logger.Args("count", len(uniqueRequests)))
-		}
-
-		// Start a new transaction for individual inserts
-		tx = r.db.Begin()
-		if tx.Error != nil {
-			r.logger.WithCaller().Error("Failed to begin new transaction", r.logger.Args("error", tx.Error))
-			return tx.Error
-		}
-
-		inserted := 0
-		duplicates := 0
-		for _, req := range uniqueRequests {
-			if insertErr := tx.Create(req).Error; insertErr != nil {
-				if strings.Contains(insertErr.Error(), "UNIQUE constraint failed") || strings.Contains(insertErr.Error(), "request_hash") {
-					duplicates++
-					// Skip this duplicate - don't log as error
-					continue
-				}
-				// Other error - rollback everything
-				tx.Rollback()
-				r.logger.WithCaller().Error("Failed to insert request",
-					r.logger.Args("error", insertErr))
-				return insertErr
-			}
-			inserted++
-		}
-
-		if duplicates > 0 {
-			if isFirstLoad {
-				r.logger.Debug("Skipped duplicate entries found in source file during first load",
-					r.logger.Args("total", len(requests), "inserted", inserted, "duplicates", duplicates))
-			} else {
-				r.logger.Debug("Skipped duplicate entries",
-					r.logger.Args("total", len(requests), "inserted", inserted, "duplicates", duplicates))
-			}
-		}
-	} else if err != nil {
-		// Some other error (not a duplicate)
+	// Use INSERT OR IGNORE semantics to skip duplicates without per-row retries
+	result := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "request_hash"}},
+		DoNothing: true,
+	}).Create(&uniqueRequests)
+	if result.Error != nil {
 		tx.Rollback()
 		r.logger.WithCaller().Error("Failed to insert batch",
-			r.logger.Args("count", len(requests), "error", err))
-		return err
+			r.logger.Args("count", len(uniqueRequests), "error", result.Error))
+		return result.Error
 	}
 
-	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
 		r.logger.WithCaller().Error("Failed to commit transaction", r.logger.Args("error", err))
 		return err
+	}
+
+	inserted := int(result.RowsAffected)
+	duplicates := len(uniqueRequests) - inserted
+	if duplicates > 0 {
+		logFn := r.logger.Debug
+		message := "Skipped duplicate entries"
+		if isFirstLoad {
+			message = "Skipped duplicate entries from initial file"
+		}
+		logFn(message,
+			r.logger.Args(
+				"batch_size", len(uniqueRequests),
+				"inserted", inserted,
+				"duplicates", duplicates,
+			))
 	}
 
 	return nil
