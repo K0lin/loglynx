@@ -113,20 +113,11 @@ func (l *SlowQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() 
 func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	// Optimized DSN with:
 	// - WAL mode for concurrent reads/writes
-	// - page_size=4096 for optimal performance (default is 1024)
 	// - NORMAL synchronous for balance between safety and speed
-	// - cache_size=64MB (64000 KB) for better query performance
+	// - cache_size=-64000 (negative means KB, 64MB) for better query performance
 	// - busy_timeout=5000ms (5 seconds) to prevent SQLITE_BUSY errors
-	// - txlock=immediate to prevent lock escalation deadlocks
-	dsn := cfg.Path + "" +
-		"?_journal_mode=WAL" +
-		"&_synchronous=NORMAL" +         // Balanced durability/performance
-		"&_cache_size=-64000" +
-		"&_page_size=4096" +
-		"&_busy_timeout=5000" +
-		"&_txlock=immediate" +
-		"&_locking_mode=NORMAL" +
-		"&_mmap_size=268435456"          // Conservative 256MB mmap	
+	// Note: mattn/go-sqlite3 uses different parameter names than glebarez
+	dsn := cfg.Path + "?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=-64000&_busy_timeout=5000"
 	_, err := os.Stat(cfg.Path)
 
 	if errors.Is(err, os.ErrPermission) {

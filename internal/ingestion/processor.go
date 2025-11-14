@@ -262,14 +262,13 @@ func (sp *SourceProcessor) processLoop() {
 			sp.logger.Trace("Read new log lines",
 				sp.logger.Args("source", sp.source.Name, "count", len(lines)))
 
-			// Store the position for later update after flush
-			lastReadPos = newPos
-			lastReadInode = newInode
-			lastReadLine = newLastLine
-
 			// Parse lines in parallel
 			parsedRequests := sp.parseAndEnrichParallel(lines)
 			batch = append(batch, parsedRequests...)
+
+			lastReadPos = newPos
+			lastReadInode = newInode
+			lastReadLine = newLastLine
 
 			// Flush if batch is full AND update position only after successful flush
 			if len(batch) >= sp.batchSize {
