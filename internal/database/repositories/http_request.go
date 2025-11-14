@@ -245,11 +245,9 @@ func (r *httpRequestRepo) CreateBatch(requests []*models.HTTPRequest) error {
 
 	// SQLite has a variable limit (default 32766 for older versions, 999 in some configs)
 	// HTTPRequest has 49 columns (including requests_total field), so max safe batch size is ~668 records
-	// OPTIMIZATION: Increased from 15 to 500 for significantly better throughput
+	// OPTIMIZATION: Increased from 15 to 500+ for significantly better throughput
 	// 500 records * 49 columns = 24,500 variables (well under 32,766 limit)
-	const MaxSQLiteVariables = 32766
-	const ColumnsPerRecord = 49    // Actual number of columns in HTTPRequest model
-	const MaxRecordsPerBatch = 650 // Optimized batch size for performance
+	const MaxRecordsPerBatch = 50 // Slight safety margin under theoretical limit
 
 	// If batch is small enough, insert directly
 	if len(requests) <= MaxRecordsPerBatch {
@@ -320,6 +318,22 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 		return nil
 	}
 
+	if isFirstLoad {
+		inserted, err := r.insertSubBatchRaw(uniqueRequests)
+		if err != nil {
+			r.logger.WithCaller().Error("Failed to insert batch via raw SQL",
+				r.logger.Args("count", len(uniqueRequests), "error", err))
+			return err
+		}
+
+		duplicates := len(uniqueRequests) - inserted
+		if duplicates > 0 {
+			r.logger.Debug("Initial load raw insert skipped duplicates",
+				r.logger.Args("batch_size", len(uniqueRequests), "inserted", inserted, "duplicates", duplicates))
+		}
+		return nil
+	}
+
 	// Start transaction
 	tx := r.db.Begin()
 	if tx.Error != nil {
@@ -361,6 +375,146 @@ func (r *httpRequestRepo) insertSubBatch(requests []*models.HTTPRequest, isFirst
 	}
 
 	return nil
+}
+
+// insertSubBatchRaw performs a high-throughput INSERT for initial load using raw SQL
+func (r *httpRequestRepo) insertSubBatchRaw(requests []*models.HTTPRequest) (int, error) {
+	columns := []string{
+		"source_name",
+		"timestamp",
+		"request_hash",
+		"partition_key",
+		"client_ip",
+		"client_port",
+		"client_user",
+		"method",
+		"protocol",
+		"host",
+		"path",
+		"query_string",
+		"request_length",
+		"request_scheme",
+		"status_code",
+		"response_size",
+		"response_time_ms",
+		"response_content_type",
+		"duration",
+		"start_utc",
+		"upstream_response_time_ms",
+		"retry_attempts",
+		"requests_total",
+		"user_agent",
+		"referer",
+		"browser",
+		"browser_version",
+		"os",
+		"os_version",
+		"device_type",
+		"backend_name",
+		"backend_url",
+		"router_name",
+		"upstream_status",
+		"upstream_content_type",
+		"client_hostname",
+		"tls_version",
+		"tls_cipher",
+		"tls_server_name",
+		"request_id",
+		"trace_id",
+		"geo_country",
+		"geo_city",
+		"geo_lat",
+		"geo_lon",
+		"asn",
+		"asn_org",
+		"proxy_metadata",
+		"created_at",
+	}
+
+	placeholder := "(" + strings.TrimRight(strings.Repeat("?,", len(columns)), ",") + ")"
+	var queryBuilder strings.Builder
+	queryBuilder.WriteString("INSERT INTO http_requests (")
+	queryBuilder.WriteString(strings.Join(columns, ","))
+	queryBuilder.WriteString(") VALUES ")
+
+	args := make([]interface{}, 0, len(columns)*len(requests))
+	now := time.Now()
+	for i, req := range requests {
+		if i > 0 {
+			queryBuilder.WriteString(",")
+		}
+		queryBuilder.WriteString(placeholder)
+
+		if req.Timestamp.IsZero() {
+			req.Timestamp = now
+		}
+		if req.PartitionKey == "" {
+			req.PartitionKey = req.Timestamp.Format("2006-01")
+		}
+		if req.CreatedAt.IsZero() {
+			req.CreatedAt = now
+		}
+
+		args = append(args,
+			req.SourceName,
+			req.Timestamp,
+			req.RequestHash,
+			req.PartitionKey,
+			req.ClientIP,
+			req.ClientPort,
+			req.ClientUser,
+			req.Method,
+			req.Protocol,
+			req.Host,
+			req.Path,
+			req.QueryString,
+			req.RequestLength,
+			req.RequestScheme,
+			req.StatusCode,
+			req.ResponseSize,
+			req.ResponseTimeMs,
+			req.ResponseContentType,
+			req.Duration,
+			req.StartUTC,
+			req.UpstreamResponseTimeMs,
+			req.RetryAttempts,
+			req.RequestsTotal,
+			req.UserAgent,
+			req.Referer,
+			req.Browser,
+			req.BrowserVersion,
+			req.OS,
+			req.OSVersion,
+			req.DeviceType,
+			req.BackendName,
+			req.BackendURL,
+			req.RouterName,
+			req.UpstreamStatus,
+			req.UpstreamContentType,
+			req.ClientHostname,
+			req.TLSVersion,
+			req.TLSCipher,
+			req.TLSServerName,
+			req.RequestID,
+			req.TraceID,
+			req.GeoCountry,
+			req.GeoCity,
+			req.GeoLat,
+			req.GeoLon,
+			req.ASN,
+			req.ASNOrg,
+			req.ProxyMetadata,
+			req.CreatedAt,
+		)
+	}
+
+	queryBuilder.WriteString(" ON CONFLICT(request_hash) DO NOTHING")
+
+	result := r.db.Exec(queryBuilder.String(), args...)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
 }
 
 // FindByID retrieves an HTTP request by ID
