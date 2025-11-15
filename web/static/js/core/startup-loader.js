@@ -97,7 +97,6 @@ const LogLynxStartupLoader = {
      * Show the startup loading screen
      */
     showLoadingScreen() {
-        return;
         // Check if loading screen already exists
         let loadingScreen = document.getElementById('startupLoadingScreen');
         if (loadingScreen) {
