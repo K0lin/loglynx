@@ -378,6 +378,15 @@ function updateTopCountriesBarChart(countriesData) {
     topCountriesBarChart.update();
 }
 
+// Convert ISO 3166-1 alpha-2 country code to flag
+function countryCodeToFlag(code) {
+    if (!code || typeof code !== 'string') return '🌍';
+    const cc = code.trim().toLowerCase();
+    if (cc.length !== 2) return '🌍';
+    // Use flag-icons CDN
+    return `<img src="https://cdn.jsdelivr.net/npm/flag-icons@6.11.0/flags/1x1/${cc}.svg" alt="${cc}" style="height: 1.2em; width: auto; vertical-align: middle; border-radius: 2px;" onerror="this.innerHTML='🌍'; this.style.display='inline';">`;
+}
+
 // Initialize country DataTable
 function initCountryTable(countriesData) {
     if ($.fn.DataTable.isDataTable('#countryTable')) {
@@ -395,7 +404,7 @@ function initCountryTable(countriesData) {
             },
             {
                 data: 'country',
-                render: (d) => `<span style="font-size: 1.5rem;">🌍</span>`
+                render: (d) => countryCodeToFlag(d)
             },
             {
                 data: 'country_name',
