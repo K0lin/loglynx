@@ -185,6 +185,26 @@
     min-width: 0;
 }
 
+.header-version {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid rgba(255, 107, 53, 0.4);
+    border-radius: 999px;
+    background: rgba(255, 107, 53, 0.15);
+    color: var(--loglynx-text-light);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.header-version i {
+    color: var(--loglynx-primary);
+    font-size: 0.85rem;
+}
+
 /* Quick Actions */
 .header-quick-actions {
     display: flex;
@@ -1140,6 +1160,24 @@
     text-align: center;
     color: var(--loglynx-text-muted);
     font-size: var(--font-size-sm);
+}
+
+.app-version-pill {
+    margin-top: var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: rgba(255, 107, 53, 0.12);
+    border: 1px solid rgba(255, 107, 53, 0.3);
+    color: var(--loglynx-text-light);
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.app-version-pill i {
+    color: var(--loglynx-primary-light);
 }
 
 .app-footer a {

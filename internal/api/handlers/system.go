@@ -10,6 +10,7 @@ import (
 
 	"loglynx/internal/database"
 	"loglynx/internal/database/repositories"
+	"loglynx/internal/version"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pterm/pterm"
@@ -29,33 +30,34 @@ type SystemHandler struct {
 // SystemStats holds comprehensive system statistics
 type SystemStats struct {
 	// Process Info
-	Uptime           string  `json:"uptime"`
-	UptimeSeconds    int64   `json:"uptime_seconds"`
-	StartTime        string  `json:"start_time"`
-	GoVersion        string  `json:"go_version"`
-	NumCPU           int     `json:"num_cpu"`
-	NumGoroutines    int     `json:"num_goroutines"`
-	MemoryAllocMB    float64 `json:"memory_alloc_mb"`
-	MemoryTotalMB    float64 `json:"memory_total_mb"`
-	MemorySysMB      float64 `json:"memory_sys_mb"`
-	GCPauseMs        float64 `json:"gc_pause_ms"`
+	AppVersion    string  `json:"app_version"`
+	Uptime        string  `json:"uptime"`
+	UptimeSeconds int64   `json:"uptime_seconds"`
+	StartTime     string  `json:"start_time"`
+	GoVersion     string  `json:"go_version"`
+	NumCPU        int     `json:"num_cpu"`
+	NumGoroutines int     `json:"num_goroutines"`
+	MemoryAllocMB float64 `json:"memory_alloc_mb"`
+	MemoryTotalMB float64 `json:"memory_total_mb"`
+	MemorySysMB   float64 `json:"memory_sys_mb"`
+	GCPauseMs     float64 `json:"gc_pause_ms"`
 
 	// Database Info
-	TotalRecords        int64   `json:"total_records"`
-	RecordsToCleanup    int64   `json:"records_to_cleanup"`
-	DatabaseSizeMB      float64 `json:"database_size_mb"`
-	DatabasePath        string  `json:"database_path"`
+	TotalRecords     int64   `json:"total_records"`
+	RecordsToCleanup int64   `json:"records_to_cleanup"`
+	DatabaseSizeMB   float64 `json:"database_size_mb"`
+	DatabasePath     string  `json:"database_path"`
 
 	// Cleanup Info
-	RetentionDays       int    `json:"retention_days"`
-	NextCleanupTime     string `json:"next_cleanup_time"`
+	RetentionDays        int    `json:"retention_days"`
+	NextCleanupTime      string `json:"next_cleanup_time"`
 	NextCleanupCountdown string `json:"next_cleanup_countdown"`
-	LastCleanupTime     string `json:"last_cleanup_time"`
+	LastCleanupTime      string `json:"last_cleanup_time"`
 
 	// Additional Stats
-	OldestRecordAge     string `json:"oldest_record_age"`
-	NewestRecordAge     string `json:"newest_record_age"`
-	RequestsPerSecond   float64 `json:"requests_per_second"`
+	OldestRecordAge   string  `json:"oldest_record_age"`
+	NewestRecordAge   string  `json:"newest_record_age"`
+	RequestsPerSecond float64 `json:"requests_per_second"`
 }
 
 // NewSystemHandler creates a new system handler
@@ -124,6 +126,7 @@ func (h *SystemHandler) GetRecordsTimeline(c *gin.Context) {
 // collectSystemStats gathers all system statistics
 func (h *SystemHandler) collectSystemStats() (*SystemStats, error) {
 	stats := &SystemStats{
+		AppVersion:    version.Version,
 		StartTime:     h.startTime.Format(time.RFC3339),
 		GoVersion:     runtime.Version(),
 		NumCPU:        runtime.NumCPU(),

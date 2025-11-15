@@ -209,6 +209,11 @@
                 <span>Auto-refresh: 30s</span>
             </div>
         </div>
+
+        <div class="header-version" title="LogLynx Version">
+            <a href="https://github.com/K0lin/loglynx" target="_blank"><i class="fa-brands fa-github"></i>
+            <span>v{{.AppVersion}}</span></a>
+        </div>
     </div>
 </header>
 {{end}}
@@ -216,7 +221,15 @@
 {{define "footer"}}
 <footer class="app-footer">
     <p>&copy; 2025 LogLynx - Advanced Log Analytics Platform</p>
+    <div class="app-version-pill">
+        <a href="https://github.com/K0lin/loglynx" target="_blank"><i class="fas fa-code-branch"></i>
+        <span>Version {{.AppVersion}}</span></a>
+    </div>
 </footer>
+
+<script>
+    window.LogLynxVersion = {{printf "%q" .AppVersion}};
+</script>
 
 <!-- Global IP Search Modal -->
 <div class="modal fade" id="ipSearchModal" tabindex="-1" aria-labelledby="ipSearchModalLabel" aria-hidden="true">

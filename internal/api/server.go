@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"loglynx/internal/api/handlers"
+	"loglynx/internal/version"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pterm/pterm"
@@ -49,6 +50,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "healthy",
 			"timestamp": time.Now(),
+			"version":   version.Version,
 		})
 	})
 
@@ -105,11 +107,12 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		router.GET("/ip/:ip", func(c *gin.Context) {
 			ip := c.Param("ip")
 			c.HTML(http.StatusOK, "ip-detail.html", gin.H{
-				"Title":     "IP Analytics - " + ip,
-				"PageName":  "ip-detail",
-				"PageTitle": "IP Analytics",
-				"PageIcon":  "fas fa-network-wired",
-				"IPAddress": ip,
+				"Title":      "IP Analytics - " + ip,
+				"PageName":   "ip-detail",
+				"PageTitle":  "IP Analytics",
+				"PageIcon":   "fas fa-network-wired",
+				"AppVersion": version.Version,
+				"IPAddress":  ip,
 			})
 		})
 
@@ -122,6 +125,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 				"message": "LogLynx API Server - Dashboard UI is disabled",
 				"api":     "/api/v1",
 				"health":  "/health",
+				"version": version.Version,
 			})
 		})
 	}
@@ -129,6 +133,10 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	// API routes
 	api := router.Group("/api/v1")
 	{
+		api.GET("/version", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"version": version.Version})
+		})
+
 		// Summary stats
 		api.GET("/stats/summary", dashboardHandler.GetSummary)
 
@@ -211,10 +219,11 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 // serveTemplatePage renders a dashboard page with the base layout
 func serveTemplatePage(c *gin.Context, pageName, pageTitle, pageIcon string) {
 	c.HTML(http.StatusOK, pageName+".html", gin.H{
-		"Title":     pageTitle,
-		"PageName":  pageName,
-		"PageTitle": pageTitle,
-		"PageIcon":  pageIcon,
+		"Title":      pageTitle,
+		"PageName":   pageName,
+		"PageTitle":  pageTitle,
+		"PageIcon":   pageIcon,
+		"AppVersion": version.Version,
 	})
 }
 
