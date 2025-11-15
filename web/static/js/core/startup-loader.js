@@ -68,23 +68,33 @@ const LogLynxStartupLoader = {
             const result = await LogLynxAPI.getLogProcessingStats();
             console.log('[StartupLoader] Processing stats:', result);
 
-            if (result.success && result.data) {
-                const stats = result.data;
+            if (result.success) {
+                // Handle null data (no log sources) as empty array
+                const stats = result.data || [];
 
                 // If no log sources configured, check if database is empty
                 if (stats.length === 0) {
                     const summaryResult = await LogLynxAPI.getSummary();
                     console.log('[StartupLoader] No log sources, checking summary:', summaryResult);
 
-                    if (summaryResult.success && summaryResult.data && summaryResult.data.total_requests === 0) {
-                        console.log('[StartupLoader] Database is empty, showing setup screen');
-                        this.showEmptyDatabaseScreen();
-                        return; // Don't mark as ready
-                    }
+                    if (summaryResult.success && summaryResult.data) {
+                        console.log('[StartupLoader] Summary total_requests:', summaryResult.data.total_requests);
 
-                    console.log('[StartupLoader] No log sources but has data, allowing immediate access');
-                    this.isReady = true;
-                    return;
+                        if (summaryResult.data.total_requests === 0) {
+                            console.log('[StartupLoader] Database is empty (0 requests), showing setup screen');
+                            this.showEmptyDatabaseScreen();
+                            return; // Don't mark as ready
+                        }
+
+                        console.log('[StartupLoader] No log sources but has data, allowing immediate access');
+                        this.isReady = true;
+                        return;
+                    } else {
+                        // API call failed, assume empty database and show setup screen
+                        console.log('[StartupLoader] Failed to get summary, assuming empty database');
+                        this.showEmptyDatabaseScreen();
+                        return;
+                    }
                 }
                 
                 // Calculate average percentage
@@ -885,8 +895,9 @@ const LogLynxStartupLoader = {
         try {
             const result = await LogLynxAPI.getLogProcessingStats();
 
-            if (result.success && result.data) {
-                const stats = result.data;
+            if (result.success) {
+                // Handle null data (no log sources) as empty array
+                const stats = result.data || [];
 
                 // Reset error counter on success
                 if (this.consecutiveErrors > 0) {
