@@ -309,6 +309,7 @@ const LogLynxUtils = {
         const searchInput = document.getElementById('serviceSearchInput');
         const clearBtn = document.getElementById('clearServiceSelection');
         const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
+        const serviceOptionsContainer = document.getElementById('serviceOptions');
 
         if (!toggleBtn || !dropdown || !filterTypeSelect) return;
 
@@ -387,9 +388,11 @@ const LogLynxUtils = {
             allTrafficCheckbox.addEventListener('change', (e) => {
                 if (e.target.checked) {
                     // Uncheck all other checkboxes
-                    document.querySelectorAll('.service-option input[type="checkbox"]').forEach(cb => {
-                        if (cb !== allTrafficCheckbox) cb.checked = false;
-                    });
+                    if (serviceOptionsContainer) {
+                        serviceOptionsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                            if (cb !== allTrafficCheckbox) cb.checked = false;
+                        });
+                    }
                     LogLynxAPI.setServiceFilters([]);
                     sessionStorage.removeItem('selectedServices');
                     this.updateServiceFilterLabel();
@@ -402,21 +405,27 @@ const LogLynxUtils = {
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
-                document.querySelectorAll('.service-option').forEach(option => {
-                    if (option.querySelector('input').value === '') return; // Skip "All Traffic"
-                    const text = option.textContent.toLowerCase();
-                    option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
-                });
+                if (serviceOptionsContainer) {
+                    serviceOptionsContainer.querySelectorAll('.service-option').forEach(option => {
+                        if (option.querySelector('input').value === '') return; // Skip "All Traffic"
+                        const text = option.textContent.toLowerCase();
+                        option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
+                    });
+                }
             });
         }
 
         // Handle clear button
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
-                document.querySelectorAll('.service-option input[type="checkbox"]').forEach(cb => {
-                    cb.checked = false;
-                });
-                allTrafficCheckbox.checked = true;
+                if (serviceOptionsContainer) {
+                    serviceOptionsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                        cb.checked = false;
+                    });
+                }
+                if (allTrafficCheckbox) {
+                    allTrafficCheckbox.checked = true;
+                }
                 LogLynxAPI.setServiceFilters([]);
                 sessionStorage.removeItem('selectedServices');
                 this.updateServiceFilterLabel();
@@ -530,7 +539,10 @@ const LogLynxUtils = {
      */
     handleServiceCheckboxChange() {
         const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
-        const checkboxes = document.querySelectorAll('.service-option input[type="checkbox"]:not(#allTrafficCheckbox)');
+        const serviceOptionsContainer = document.getElementById('serviceOptions');
+        if (!serviceOptionsContainer) return;
+
+        const checkboxes = serviceOptionsContainer.querySelectorAll('input[type="checkbox"]:not(#allTrafficCheckbox)');
 
         // Get all checked services (excluding empty values)
         const selectedServices = [];
