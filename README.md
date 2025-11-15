@@ -88,7 +88,7 @@ This is the deployment of Docker Compose, which will also contain services such 
 #other service related to pangolin
 
 loglynx:
-    image: k0lin/loglynx:dev
+    image: k0lin/loglynx:latest
     container_name: loglynx
     restart: unless-stopped
     ports:
@@ -266,6 +266,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Made with ❤️ for the community**
+
 
 
 
