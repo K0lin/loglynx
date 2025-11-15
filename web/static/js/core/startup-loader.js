@@ -324,7 +324,7 @@ const LogLynxStartupLoader = {
         loadingScreen.innerHTML = `
             <div style="text-align: center; max-width: 700px; padding: 20px;">
                 <div style="margin-bottom: 30px;">
-                    <i class="fas fa-database" style="font-size: 64px; color: #F46319; animation: pulse 2s infinite;"></i>
+                    <i class="fas fa-bolt" style="font-size: 64px; color: #F46319; animation: pulse 2s infinite;"></i>
                 </div>
 
                 <h1 style="font-size: 36px; margin-bottom: 10px; color: #FFFFFF;">
