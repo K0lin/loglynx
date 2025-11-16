@@ -399,16 +399,6 @@ function initUserAgentTable(userAgentsData) {
     });
 }
 
-// Convert ISO 3166-1 alpha-2 country code to flag
-function countryCodeToFlag(code, countryName) {
-    if (!code || typeof code !== 'string') return '🌍';
-    const cc = code.trim().toLowerCase();
-    if (cc.length !== 2) return '🌍';
-    // Use flag-icons CDN with SRI hash for security verification
-    const altText = countryName || code;
-    return `<img src="https://cdn.jsdelivr.net/npm/flag-icons@6.11.0/flags/1x1/${cc}.svg" alt="${altText} flag" integrity="sha384-jZQtToMoUhpAyM67XkSvDfhJQOcAOIVzWVWJuKb6zDJnLZ1zVTgL7FWx03VvB6MNa" crossorigin="anonymous" style="height: 1.2em; width: auto; vertical-align: middle; border-radius: 2px;" onerror="this.outerHTML='🌍';">`;
-}
-
 // Update geographic visitors table
 function updateGeoVisitorsTable(data) {
     let html = '';

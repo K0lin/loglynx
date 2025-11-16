@@ -304,33 +304,6 @@ function updateTopCountriesBarChart(countriesData) {
     topCountriesBarChart.update();
 }
 
-// Convert ISO 3166-1 alpha-2 country code to flag
-function countryCodeToFlag(code, countryName) {
-    if (!code || typeof code !== 'string') return '🌍';
-    const cc = code.trim().toLowerCase();
-    if (cc.length !== 2) return '🌍';
-    // Use flag-icons CDN with SRI hash for security verification
-    const altText = countryName || code;
-    return `<img src="https://cdn.jsdelivr.net/npm/flag-icons@6.11.0/flags/1x1/${cc}.svg" alt="${altText} flag" integrity="sha384-jZQtToMoUhpAyM67XkSvDfhJQOcAOIVzWVWJuKb6zDJnLZ1zVTgL7FWx03VvB6MNa" crossorigin="anonymous" style="height: 1.2em; width: auto; vertical-align: middle; border-radius: 2px;" onerror="this.outerHTML='🌍';">`;
-}
-
-// Convert ISO 3166-1 alpha-2 country code to English country name using the country-list CDN helper
-function countryCodeToName(code) {
-    if (!code || typeof code !== 'string') return 'Unknown';
-    const cc = code.trim().toUpperCase();
-    if (cc.length !== 2) return 'Unknown';
-
-    const resolver = window.countryList && typeof window.countryList.getName === 'function'
-        ? window.countryList.getName(cc)
-        : null;
-
-    if (resolver && typeof resolver === 'string') {
-        return resolver;
-    }
-
-    return cc;
-}
-
 // Initialize country DataTable
 function initCountryTable(countriesData) {
     if ($.fn.DataTable.isDataTable('#countryTable')) {
@@ -352,7 +325,7 @@ function initCountryTable(countriesData) {
             },
             {
                 data: 'country_name',
-                render: (d, type, row) => `<strong>${d || countryToContinentMap[row.country]?.name || 'Unknown'}</strong>` + `<br><small class='text-muted'>${countryToContinentMap[row.country]?.continent || 'Unknown'}</small>` 
+                render: (d, type, row) => `<strong>${d || countryToContinentMap[row.country]?.name || 'Unknown'}</strong>` + `<small class='text-muted'>, ${countryToContinentMap[row.country]?.continent || 'Unknown'}</small>` 
             },
             {
                 data: 'country',
