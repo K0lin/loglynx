@@ -287,7 +287,7 @@ func (r *IncrementalReader) FindStartPositionByDate(cutoffDate time.Time, parser
 	bestPosition := int64(0)
 
 	r.logger.Debug("Searching for start position by date",
-		r.logger.Args("cutoff_date", cutoffDate.Format("2006-01-02 15:04:05"), "file_size", fileSize))
+		r.logger.Args("cutoff_date", cutoffDate.Format(time.RFC3339), "file_size", fileSize))
 
 	// Binary search with max 20 iterations
 	for i := 0; i < 20 && low < high; i++ {
@@ -342,22 +342,96 @@ func (r *IncrementalReader) FindStartPositionByDate(cutoffDate time.Time, parser
 		}
 
 		r.logger.Trace("Binary search iteration",
-			r.logger.Args("position", mid, "timestamp", lineTimestamp.Format("2006-01-02 15:04:05"), "target", cutoffDate.Format("2006-01-02 15:04:05")))
+			r.logger.Args("position", mid, "timestamp", lineTimestamp.Format(time.RFC3339), "target", cutoffDate.Format(time.RFC3339)))
 
 		// Compare timestamp
 		if lineTimestamp.Before(cutoffDate) {
 			// This line is too old, search in upper half
 			low = mid + 1
-			bestPosition = mid
+			// Don't save this position - it's before the cutoff date
 		} else {
-			// This line is recent enough, search in lower half
+			// This line is recent enough (>= cutoffDate), search in lower half
+			// to find the FIRST occurrence of this timestamp (important for CLF format
+			// where multiple lines can have the same timestamp at second precision)
 			high = mid
 			bestPosition = mid
 		}
 	}
 
-	r.logger.Info("Found starting position for initial import",
-		r.logger.Args("position", bestPosition, "cutoff_date", cutoffDate.Format("2006-01-02")))
+	// Refine bestPosition to ensure we start at a line boundary and don't miss any lines
+	// with the same timestamp (important for CLF format with second precision)
+	if bestPosition > 0 {
+		// Seek backwards to find the start of the line at bestPosition
+		// This ensures we don't miss the first line if binary search landed in the middle
+		const lookbackSize = 4096 // Read up to 4KB backwards to find line start
+
+		lookbackStart := bestPosition - lookbackSize
+		if lookbackStart < 0 {
+			lookbackStart = 0
+		}
+
+		file.Seek(lookbackStart, io.SeekStart)
+		scanner := bufio.NewScanner(file)
+
+		var refinedPosition int64 = lookbackStart
+		var lastLineStart int64 = lookbackStart
+
+		// Scan through lines until we reach or pass bestPosition
+		for scanner.Scan() {
+			currentPos, _ := file.Seek(0, io.SeekCurrent)
+
+			// If we haven't reached bestPosition yet, save this line start
+			if currentPos <= bestPosition {
+				lastLineStart = refinedPosition
+				refinedPosition = currentPos
+			} else {
+				// We've passed bestPosition, use the last line start we found
+				break
+			}
+
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			// Check if this line meets the cutoff date
+			if parser.CanParse(line) {
+				event, err := parser.Parse(line)
+				if err == nil {
+					lineTimestamp := extractTimestamp(event)
+					if !lineTimestamp.IsZero() && !lineTimestamp.Before(cutoffDate) {
+						// Found a valid line >= cutoffDate, use this position
+						bestPosition = lastLineStart
+
+						daysDiff := time.Since(lineTimestamp).Hours() / 24
+						expectedDays := time.Since(cutoffDate).Hours() / 24
+
+						r.logger.Info("Initial import will start from position",
+							r.logger.Args(
+								"position", bestPosition,
+								"cutoff_date", cutoffDate.Format(time.RFC3339),
+								"found_date", lineTimestamp.Format(time.RFC3339),
+								"days_of_history", int(daysDiff),
+							))
+
+						// Warn if we're only importing very recent data (less than half of expected)
+						if daysDiff < expectedDays/2 {
+							r.logger.Warn("Initial import position seems too recent - may not import full history",
+								r.logger.Args(
+									"expected_days", int(expectedDays),
+									"actual_days", int(daysDiff),
+									"hint", "Check if log file contains enough historical data",
+								))
+						}
+						break
+					}
+				}
+			}
+		}
+	} else {
+		r.logger.Info("Starting initial import from beginning of file",
+			r.logger.Args("cutoff_date", cutoffDate.Format(time.RFC3339)))
+	}
 
 	return bestPosition, nil
 }
