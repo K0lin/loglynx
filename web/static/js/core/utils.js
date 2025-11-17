@@ -618,25 +618,43 @@ const LogLynxUtils = {
     },
 
     /**
-     * Initialize refresh controls
+     * Initialize refresh controls with RefreshManager integration
      */
     initRefreshControls(loadDataCallback, defaultInterval = 30) {
+        // Initialize RefreshManager for this page
+        RefreshManager.init();
+
+        // Load settings from RefreshManager
+        const settings = RefreshManager.getCurrentSettings();
+
         let refreshTimer = null;
         let lastRefreshTimer = null;
         let isAutoRefreshEnabled = false;
-        let refreshInterval = defaultInterval * 1000;
+        let refreshInterval = settings.interval * 1000; // Use saved interval
         let lastRefreshTime = null;
 
         const intervalSelect = document.getElementById('refreshInterval');
         const playBtn = document.getElementById('playRefresh');
         const pauseBtn = document.getElementById('pauseRefresh');
+        const pinBtn = document.getElementById('pinPageRefresh');
+        const unpinBtn = document.getElementById('unpinPageRefresh');
         const statusSpan = document.getElementById('refreshStatus');
+        const statusTextSpan = document.getElementById('refreshStatusText');
+        const modeBadge = document.getElementById('refreshModeBadge');
         const customInput = document.getElementById('refreshCustomInput');
         const customValueInput = document.getElementById('customRefreshValue');
         const applyCustomBtn = document.getElementById('applyCustomRefresh');
 
+        // Compact button elements
+        const refreshIcon = document.getElementById('refreshIcon');
+        const compactStatus = document.getElementById('refreshCompactStatus');
+        const compactBadge = document.getElementById('refreshCompactBadge');
+        const compactLast = document.getElementById('refreshCompactLast');
+        const modeAlert = document.getElementById('refreshModeAlert');
+        const modeText = document.getElementById('refreshModeText');
+
         const updateLastRefreshDisplay = () => {
-            if (!statusSpan || !lastRefreshTime) return;
+            if (!lastRefreshTime) return;
 
             const now = Date.now();
             const secondsAgo = Math.floor((now - lastRefreshTime) / 1000);
@@ -646,27 +664,38 @@ const LogLynxUtils = {
                 timeText = `${secondsAgo}s ago`;
             } else if (secondsAgo < 3600) {
                 const minutes = Math.floor(secondsAgo / 60);
-                timeText = `${minutes}m ago`;
+                const seconds = secondsAgo % 60;
+                timeText = `${minutes}m ${seconds}s ago`;
             } else {
                 const hours = Math.floor(secondsAgo / 3600);
-                timeText = `${hours}h ago`;
+                const minutes = Math.floor((secondsAgo % 3600) / 60);
+                timeText = `${hours}h ${minutes}m ago`;
             }
 
-            const lastRefreshElement = statusSpan.querySelector('.last-refresh');
-            if (lastRefreshElement) {
-                lastRefreshElement.textContent = `Last: ${timeText}`;
+            // Update modal status
+            if (statusSpan) {
+                const lastRefreshElement = statusSpan.querySelector('.last-refresh');
+                if (lastRefreshElement) {
+                    lastRefreshElement.textContent = `Last: ${timeText}`;
+                }
+            }
+
+            // Update compact button
+            if (compactLast) {
+                compactLast.textContent = `Last: ${timeText}`;
             }
         };
 
         const updateStatus = () => {
-            if (!statusSpan) return;
-
             let intervalText;
             if (intervalSelect) {
                 const selectedValue = intervalSelect.value;
                 if (selectedValue === 'custom' && customValueInput && customValueInput.value) {
                     const customSeconds = parseInt(customValueInput.value);
                     intervalText = customSeconds < 60 ? `${customSeconds}s` : `${Math.floor(customSeconds / 60)}m`;
+                } else if (selectedValue.startsWith('custom-')) {
+                    // Custom value already applied
+                    intervalText = intervalSelect.options[intervalSelect.selectedIndex].text;
                 } else {
                     intervalText = intervalSelect.options[intervalSelect.selectedIndex].text;
                 }
@@ -674,23 +703,124 @@ const LogLynxUtils = {
                 intervalText = '30s';
             }
 
-            const icon = isAutoRefreshEnabled ?
-                '<i class="fas fa-sync-alt fa-spin"></i>' :
-                '<i class="fas fa-pause"></i>';
-            const text = isAutoRefreshEnabled ?
-                `Auto-refresh: ${intervalText}` :
-                `Paused: ${intervalText}`;
+            // Update modal status
+            if (statusSpan) {
+                const icon = isAutoRefreshEnabled ?
+                    '<i class="fas fa-sync-alt fa-spin"></i>' :
+                    '<i class="fas fa-pause"></i>';
+                const text = isAutoRefreshEnabled ?
+                    `Auto-refresh: ${intervalText}` :
+                    `Paused: ${intervalText}`;
 
-            const lastRefreshText = lastRefreshTime ? 
-                `<span class="last-refresh" style="margin-left: 10px; color: #999; font-size: 0.9em;">Last: ${Math.floor((Date.now() - lastRefreshTime) / 1000)}s ago</span>` : 
-                '';
+                const lastRefreshText = lastRefreshTime ?
+                    `<span class="last-refresh" style="margin-left: 10px; color: #999; font-size: 0.9em;">Last: ${Math.floor((Date.now() - lastRefreshTime) / 1000)}s ago</span>` :
+                    '';
 
-            statusSpan.innerHTML = `${icon} <span>${text}</span>${lastRefreshText}`;
+                statusSpan.innerHTML = `${icon} <span>${text}</span>${lastRefreshText}`;
+            }
+
+            if (statusTextSpan) {
+                statusTextSpan.textContent = isAutoRefreshEnabled ? `Auto-refresh: ${intervalText}` : `Paused: ${intervalText}`;
+            }
+
+            // Update compact button
+            if (compactStatus) {
+                compactStatus.textContent = intervalText;
+            }
+
+            if (refreshIcon) {
+                if (isAutoRefreshEnabled) {
+                    refreshIcon.classList.add('fa-spin');
+                } else {
+                    refreshIcon.classList.remove('fa-spin');
+                }
+            }
         };
 
         const updateButtons = () => {
-            if (playBtn) playBtn.disabled = isAutoRefreshEnabled;
-            if (pauseBtn) pauseBtn.disabled = !isAutoRefreshEnabled;
+            if (playBtn) {
+                playBtn.disabled = isAutoRefreshEnabled;
+                if (isAutoRefreshEnabled) {
+                    playBtn.classList.add('active');
+                } else {
+                    playBtn.classList.remove('active');
+                }
+            }
+            if (pauseBtn) {
+                pauseBtn.disabled = !isAutoRefreshEnabled;
+                if (!isAutoRefreshEnabled) {
+                    pauseBtn.classList.add('active');
+                } else {
+                    pauseBtn.classList.remove('active');
+                }
+            }
+        };
+
+        const updateModeBadge = () => {
+            const settings = RefreshManager.getCurrentSettings();
+            const isPageSpecific = settings.isPageSpecific;
+
+            // Update modal badge
+            if (modeBadge) {
+                if (isPageSpecific) {
+                    modeBadge.innerHTML = '<i class="fas fa-thumbtack"></i> Page-Specific';
+                    modeBadge.style.display = 'inline-block';
+                    modeBadge.className = 'badge bg-warning text-dark';
+                } else {
+                    modeBadge.innerHTML = '<i class="fas fa-globe"></i> Global';
+                    modeBadge.style.display = 'inline-block';
+                    modeBadge.className = 'badge bg-secondary';
+                }
+            }
+
+            // Update compact badge
+            if (compactBadge) {
+                if (isPageSpecific) {
+                    compactBadge.textContent = 'PAGE';
+                    compactBadge.style.display = 'inline-block';
+                } else {
+                    compactBadge.style.display = 'none';
+                }
+            }
+
+            // Update modal alert
+            if (modeAlert) {
+                const iconEl = modeAlert.querySelector('.status-icon i');
+                const titleEl = modeAlert.querySelector('.status-title');
+                const subtitleEl = modeAlert.querySelector('.status-subtitle');
+
+                if (isPageSpecific) {
+                    modeAlert.style.background = 'rgba(255, 193, 7, 0.1)';
+                    modeAlert.style.borderColor = 'rgba(255, 193, 7, 0.3)';
+                    if (iconEl) {
+                        iconEl.className = 'fas fa-thumbtack';
+                        iconEl.style.color = '#ffc107';
+                    }
+                    if (titleEl) titleEl.textContent = 'Page-Specific Settings';
+                    if (subtitleEl) subtitleEl.textContent = `Custom settings for ${settings.pageId || 'this page'} only`;
+                } else {
+                    modeAlert.style.background = 'rgba(13, 110, 253, 0.1)';
+                    modeAlert.style.borderColor = 'rgba(13, 110, 253, 0.3)';
+                    if (iconEl) {
+                        iconEl.className = 'fas fa-globe';
+                        iconEl.style.color = '#0d6efd';
+                    }
+                    if (titleEl) titleEl.textContent = 'Global Settings';
+                    if (subtitleEl) subtitleEl.textContent = 'These settings apply to all pages';
+                }
+            }
+        };
+
+        const updatePinButtons = () => {
+            const hasOverride = RefreshManager.hasPageOverride();
+            if (pinBtn) pinBtn.style.display = hasOverride ? 'none' : 'inline-block';
+            if (unpinBtn) unpinBtn.style.display = hasOverride ? 'inline-block' : 'none';
+
+            // Show/hide explanations
+            const pinExplanation = document.getElementById('pinExplanation');
+            const unpinExplanation = document.getElementById('unpinExplanation');
+            if (pinExplanation) pinExplanation.style.display = hasOverride ? 'none' : 'flex';
+            if (unpinExplanation) unpinExplanation.style.display = hasOverride ? 'flex' : 'none';
         };
 
         const wrappedLoadCallback = async () => {
@@ -750,7 +880,12 @@ const LogLynxUtils = {
                         customInput.style.display = 'none';
                     }
                     refreshInterval = parseInt(selectedValue) * 1000;
+
+                    // Save to RefreshManager
+                    RefreshManager.updateCurrent(parseInt(selectedValue), isAutoRefreshEnabled);
+
                     updateStatus();
+                    updateModeBadge();
                     if (isAutoRefreshEnabled) {
                         stopRefresh();
                         wrappedLoadCallback(); // Immediate refresh on interval change
@@ -793,8 +928,12 @@ const LogLynxUtils = {
                     if (customInput) {
                         customInput.style.display = 'none';
                     }
-                    
+
+                    // Save to RefreshManager
+                    RefreshManager.updateCurrent(customValue, isAutoRefreshEnabled);
+
                     updateStatus();
+                    updateModeBadge();
                     if (isAutoRefreshEnabled) {
                         stopRefresh();
                         wrappedLoadCallback(); // Immediate refresh on interval change
@@ -820,27 +959,100 @@ const LogLynxUtils = {
             playBtn.addEventListener('click', () => {
                 wrappedLoadCallback(); // Immediate refresh when starting
                 startRefresh();
+                // Save auto-start preference
+                RefreshManager.updateCurrent(refreshInterval / 1000, true);
             });
         }
 
         if (pauseBtn) {
-            pauseBtn.addEventListener('click', stopRefresh);
+            pauseBtn.addEventListener('click', () => {
+                stopRefresh();
+                // Save auto-start preference
+                RefreshManager.updateCurrent(refreshInterval / 1000, false);
+            });
+        }
+
+        // Pin/Unpin buttons
+        if (pinBtn) {
+            pinBtn.addEventListener('click', () => {
+                // Enable page-specific override with current settings
+                const currentIntervalSeconds = refreshInterval / 1000;
+                RefreshManager.enablePageOverride(currentIntervalSeconds, isAutoRefreshEnabled);
+                updateModeBadge();
+                updatePinButtons();
+                console.log('[RefreshControls] Page override enabled');
+            });
+        }
+
+        if (unpinBtn) {
+            unpinBtn.addEventListener('click', () => {
+                // Disable page override and reload global settings
+                RefreshManager.disablePageOverride();
+                const globalSettings = RefreshManager.getCurrentSettings();
+
+                // Apply global settings
+                refreshInterval = globalSettings.interval * 1000;
+
+                // Update UI
+                if (intervalSelect) {
+                    // Find matching option or use closest
+                    const options = Array.from(intervalSelect.options);
+                    const matchingOption = options.find(opt => parseInt(opt.value) === globalSettings.interval);
+                    if (matchingOption) {
+                        intervalSelect.value = matchingOption.value;
+                    }
+                }
+
+                // Restart with new interval if was running
+                if (isAutoRefreshEnabled) {
+                    stopRefresh();
+                    startRefresh();
+                }
+
+                updateStatus();
+                updateModeBadge();
+                updatePinButtons();
+                console.log('[RefreshControls] Page override disabled, using global settings');
+            });
+        }
+
+        // Initialize Bootstrap tooltips when modal opens
+        const refreshModal = document.getElementById('refreshSettingsModal');
+        if (refreshModal) {
+            refreshModal.addEventListener('shown.bs.modal', () => {
+                // Initialize tooltips
+                const tooltipTriggerList = refreshModal.querySelectorAll('[data-bs-toggle="tooltip"]');
+                [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+            });
         }
 
         // Initialize UI state
         updateStatus();
         updateButtons();
+        updateModeBadge();
+        updatePinButtons();
 
-        // Start auto-refresh by default with initial load
+        // Set interval select to match current settings
+        if (intervalSelect) {
+            const currentIntervalSeconds = settings.interval;
+            const options = Array.from(intervalSelect.options);
+            const matchingOption = options.find(opt => parseInt(opt.value) === currentIntervalSeconds);
+            if (matchingOption) {
+                intervalSelect.value = matchingOption.value;
+            }
+        }
+
+        // Start auto-refresh based on saved preference
         wrappedLoadCallback(); // Initial load
-        // Set last refresh time so countdown starts immediately
         lastRefreshTime = Date.now();
-        // Start auto-refresh timer (will fire after the interval, not immediately)
-        isAutoRefreshEnabled = true;
-        refreshTimer = setInterval(wrappedLoadCallback, refreshInterval);
-        lastRefreshTimer = setInterval(updateLastRefreshDisplay, 1000);
-        updateStatus();
-        updateButtons();
+
+        if (settings.autoStart) {
+            isAutoRefreshEnabled = true;
+            refreshTimer = setInterval(wrappedLoadCallback, refreshInterval);
+            lastRefreshTimer = setInterval(updateLastRefreshDisplay, 1000);
+            updateStatus();
+            updateButtons();
+        }
 
         // Return control functions
         return {

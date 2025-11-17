@@ -189,40 +189,21 @@
             </div>
         </div>
 
-        <!-- Refresh Controls -->
+        <!-- Refresh Controls - Compact Button -->
         <div class="header-refresh-controls">
-            <div class="refresh-group">
-                <div class="refresh-timer">
-                    <i class="fas fa-clock"></i>
-                    <select id="refreshInterval" class="form-control-compact" aria-label="Refresh Interval">
-                        <option value="5">5s</option>
-                        <option value="10">10s</option>
-                        <option value="15">15s</option>
-                        <option value="30" selected>30s</option>
-                        <option value="60">1m</option>
-                        <option value="300">5m</option>
-                        <option value="custom">Custom...</option>
-                    </select>
+            <button id="refreshSettingsBtn" class="refresh-settings-btn" data-bs-toggle="modal" data-bs-target="#refreshSettingsModal" title="Click to configure refresh settings">
+                <div class="refresh-btn-main">
+                    <i class="fas fa-sync-alt" id="refreshIcon"></i>
+                    <div class="refresh-btn-info">
+                        <div class="refresh-btn-interval">
+                            <span id="refreshCompactStatus">30s</span>
+                            <span id="refreshCompactBadge" class="refresh-compact-badge" style="display: none;"></span>
+                        </div>
+                        <div class="refresh-btn-last" id="refreshCompactLast">Last: just now</div>
+                    </div>
                 </div>
-                <div class="refresh-custom" id="refreshCustomInput" style="display: none;">
-                    <input type="number" id="customRefreshValue" class="form-control-compact" min="1" max="3600" placeholder="Seconds" aria-label="Custom Refresh Interval in Seconds" style="width: 70px;">
-                    <button id="applyCustomRefresh" class="header-icon-btn" title="Apply Custom Interval" aria-label="Apply Custom Interval">
-                        <i class="fas fa-check"></i>
-                    </button>
-                </div>
-                <div class="refresh-buttons">
-                    <button id="playRefresh" class="header-icon-btn" title="Start Auto-refresh" aria-label="Start Auto-refresh">
-                        <i class="fas fa-play"></i>
-                    </button>
-                    <button id="pauseRefresh" class="header-icon-btn" title="Pause Auto-refresh" aria-label="Pause Auto-refresh">
-                        <i class="fas fa-pause"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="refreshStatus" class="refresh-status">
-                <i class="fas fa-sync-alt fa-spin"></i>
-                <span>Auto-refresh: 30s</span>
-            </div>
+                <i class="fas fa-cog refresh-btn-settings-icon"></i>
+            </button>
         </div>
 
         <div class="header-version" title="LogLynx Version" data-app-version="{{.AppVersion}}">
@@ -280,6 +261,133 @@
         </div>
     </div>
 </div>
+
+<!-- Refresh Settings Modal -->
+<div class="modal fade" id="refreshSettingsModal" tabindex="-1" aria-labelledby="refreshSettingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content refresh-modal">
+            <div class="modal-header">
+                <div class="modal-title-wrapper">
+                    <h5 class="modal-title" id="refreshSettingsModalLabel">
+                        <i class="fas fa-sync-alt"></i> Auto-Refresh Settings
+                    </h5>
+                    <span id="refreshModeBadge" class="mode-badge"></span>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Status Banner -->
+                <div class="refresh-status-banner" id="refreshModeAlert">
+                    <div class="status-icon">
+                        <i class="fas fa-globe"></i>
+                    </div>
+                    <div class="status-content">
+                        <div class="status-title" id="refreshModeText">Global Settings</div>
+                        <div class="status-subtitle">These settings apply to all pages</div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <!-- Left Column: Main Controls -->
+                    <div class="col-md-7">
+                        <!-- Refresh Interval -->
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <i class="fas fa-clock"></i>
+                                <span>Refresh Interval</span>
+                            </div>
+                            <select id="refreshInterval" class="form-select form-select-lg" aria-label="Refresh Interval">
+                                <option value="5">Every 5 seconds</option>
+                                <option value="10">Every 10 seconds</option>
+                                <option value="15">Every 15 seconds</option>
+                                <option value="30" selected>Every 30 seconds</option>
+                                <option value="60">Every 1 minute</option>
+                                <option value="300">Every 5 minutes</option>
+                                <option value="custom">Custom interval...</option>
+                            </select>
+                        </div>
+
+                        <!-- Custom Interval Input -->
+                        <div class="setting-card" id="refreshCustomInput" style="display: none;">
+                            <div class="setting-header">
+                                <i class="fas fa-edit"></i>
+                                <span>Custom Interval (seconds)</span>
+                            </div>
+                            <div class="input-group input-group-lg">
+                                <input type="number" id="customRefreshValue" class="form-control" min="1" max="3600" placeholder="1-3600">
+                                <button id="applyCustomRefresh" class="btn btn-primary" type="button">
+                                    <i class="fas fa-check"></i> Apply
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Auto-Refresh Toggle -->
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <i class="fas fa-power-off"></i>
+                                <span>Auto-Refresh Control</span>
+                            </div>
+                            <div class="refresh-toggle-group">
+                                <button id="playRefresh" class="refresh-toggle-btn active" type="button">
+                                    <i class="fas fa-play"></i>
+                                    <span>Running</span>
+                                </button>
+                                <button id="pauseRefresh" class="refresh-toggle-btn" type="button">
+                                    <i class="fas fa-pause"></i>
+                                    <span>Paused</span>
+                                </button>
+                            </div>
+                            <div id="refreshStatus" class="refresh-status-text">
+                                <span id="refreshStatusText"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Page Override -->
+                    <div class="col-md-5">
+                        <div class="setting-card page-override-card">
+                            <div class="setting-header">
+                                <i class="fas fa-thumbtack"></i>
+                                <span>Page Override</span>
+                            </div>
+
+                            <!-- Pin Explanation -->
+                            <div class="override-explanation pin-explanation" id="pinExplanation">
+                                <div class="explanation-icon">
+                                    <i class="fas fa-thumbtack"></i>
+                                </div>
+                                <div class="explanation-content">
+                                    <div class="explanation-title">Pin for This Page</div>
+                                    <p>Lock current settings for this page only. Pinned settings are temporary and reset when you navigate away.</p>
+                                </div>
+                            </div>
+
+                            <!-- Unpin Explanation -->
+                            <div class="override-explanation unpin-explanation" id="unpinExplanation" style="display: none;">
+                                <div class="explanation-icon">
+                                    <i class="fas fa-globe"></i>
+                                </div>
+                                <div class="explanation-content">
+                                    <div class="explanation-title">Use Global Settings</div>
+                                    <p>Remove pin and use global settings that apply to all pages. Changes will be saved globally.</p>
+                                </div>
+                            </div>
+
+                            <button id="pinPageRefresh" class="btn-override pin" type="button" style="display: none;">
+                                <i class="fas fa-thumbtack"></i>
+                                <span>Pin for This Page</span>
+                            </button>
+                            <button id="unpinPageRefresh" class="btn-override unpin" type="button" style="display: none;">
+                                <i class="fas fa-globe"></i>
+                                <span>Use Global Settings</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {{end}}
 
 {{define "scripts-common"}}
@@ -310,6 +418,7 @@
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <!-- Core JavaScript -->
+<script src="/static/js/core/refresh-manager.js"></script>
 <script src="/static/js/core/api.js"></script>
 <script src="/static/js/core/charts.js"></script>
 <script src="/static/js/core/utils.js"></script>

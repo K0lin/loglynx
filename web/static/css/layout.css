@@ -812,13 +812,434 @@
 .header-refresh-controls {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(26, 26, 29, 0.6);
-    border: 1px solid rgba(255, 107, 53, 0.2);
-    border-radius: 6px;
-    padding: 6px 10px;
 }
 
+/* Compact Refresh Settings Button */
+.refresh-settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(26, 26, 29, 0.8), rgba(26, 26, 29, 0.6));
+    border: 1px solid rgba(255, 107, 53, 0.3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    color: #FFFFFF;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.refresh-settings-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 107, 53, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.refresh-settings-btn:hover::before {
+    left: 100%;
+}
+
+.refresh-settings-btn:hover {
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.15), rgba(255, 107, 53, 0.1));
+    border-color: rgba(255, 107, 53, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.refresh-btn-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.refresh-btn-main > i {
+    font-size: 20px;
+    color: var(--loglynx-primary);
+    transition: transform 0.3s ease;
+}
+
+.refresh-btn-main > i.fa-spin {
+    color: var(--loglynx-success);
+}
+
+.refresh-settings-btn:hover .refresh-btn-main > i:not(.fa-spin) {
+    transform: rotate(45deg);
+}
+
+.refresh-btn-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.refresh-btn-interval {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: #FFFFFF;
+}
+
+.refresh-btn-last {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 400;
+}
+
+.refresh-compact-badge {
+    font-size: 9px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: rgba(255, 193, 7, 0.3);
+    color: #ffc107;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.refresh-btn-settings-icon {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.4);
+    transition: all 0.3s ease;
+}
+
+.refresh-settings-btn:hover .refresh-btn-settings-icon {
+    color: var(--loglynx-primary);
+    transform: rotate(90deg);
+}
+
+/* Refresh Settings Modal Styles */
+.refresh-modal {
+    background: linear-gradient(135deg, #1a1a1d 0%, #0d0d0f 100%);
+    border: 1px solid rgba(255, 107, 53, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    color: #FFFFFF;
+}
+
+.refresh-modal .modal-header {
+    border-bottom: 1px solid rgba(255, 107, 53, 0.2);
+    padding: 1.5rem;
+    background: rgba(255, 107, 53, 0.05);
+}
+
+.refresh-modal .modal-title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.refresh-modal .modal-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.refresh-modal .modal-title i {
+    color: var(--loglynx-primary);
+}
+
+.refresh-modal .mode-badge {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.refresh-modal .modal-body {
+    padding: 1.5rem;
+}
+
+/* Status Banner */
+.refresh-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    background: rgba(13, 110, 253, 0.1);
+    border: 1px solid rgba(13, 110, 253, 0.3);
+    transition: all 0.3s ease;
+}
+
+.status-icon {
+    font-size: 32px;
+    color: #0d6efd;
+}
+
+.status-content {
+    flex: 1;
+}
+
+.status-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #FFFFFF;
+    margin-bottom: 4px;
+}
+
+.status-subtitle {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Setting Cards */
+.setting-card {
+    background: rgba(26, 26, 29, 0.6);
+    border: 1px solid rgba(255, 107, 53, 0.2);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.setting-card:hover {
+    border-color: rgba(255, 107, 53, 0.4);
+    transform: translateY(-2px);
+}
+
+.setting-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.setting-header i {
+    color: var(--loglynx-primary);
+    font-size: 16px;
+}
+
+/* Form Controls */
+.refresh-modal .form-select,
+.refresh-modal .form-control {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 107, 53, 0.2);
+    color: #FFFFFF;
+    padding: 12px 16px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.refresh-modal .form-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23FF6B35' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px 12px;
+    padding-right: 40px;
+}
+
+.refresh-modal .form-select:hover {
+    background-color: rgba(255, 107, 53, 0.05);
+    border-color: rgba(255, 107, 53, 0.4);
+}
+
+.refresh-modal .form-select:focus,
+.refresh-modal .form-control:focus {
+    background-color: rgba(0, 0, 0, 0.4);
+    border-color: var(--loglynx-primary);
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+    color: #FFFFFF;
+    outline: none;
+}
+
+.refresh-modal .form-select option {
+    background: #1a1a1d;
+    color: #FFFFFF;
+}
+
+.refresh-modal .form-control::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.refresh-modal .input-group .form-control {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.refresh-modal .input-group .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    padding: 12px 20px;
+}
+
+/* Refresh Toggle Group */
+.refresh-toggle-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.refresh-toggle-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.refresh-toggle-btn i {
+    font-size: 24px;
+}
+
+.refresh-toggle-btn span {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.refresh-toggle-btn:hover {
+    border-color: rgba(255, 107, 53, 0.4);
+    background: rgba(255, 107, 53, 0.1);
+}
+
+.refresh-toggle-btn.active {
+    border-color: var(--loglynx-success);
+    background: rgba(40, 167, 69, 0.15);
+    color: var(--loglynx-success);
+}
+
+.refresh-toggle-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.refresh-status-text {
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+}
+
+/* Page Override Card */
+.page-override-card {
+    height: 100%;
+    background: rgba(255, 193, 7, 0.05);
+    border-color: rgba(255, 193, 7, 0.3);
+}
+
+.override-explanation {
+    display: flex;
+    gap: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pin-explanation {
+    border-left: 3px solid #ffc107;
+}
+
+.unpin-explanation {
+    border-left: 3px solid #6c757d;
+}
+
+.explanation-icon {
+    font-size: 28px;
+    min-width: 40px;
+    display: flex;
+    align-items: flex-start;
+    padding-top: 2px;
+}
+
+.pin-explanation .explanation-icon {
+    color: #ffc107;
+}
+
+.unpin-explanation .explanation-icon {
+    color: #6c757d;
+}
+
+.explanation-content {
+    flex: 1;
+}
+
+.explanation-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #FFFFFF;
+    margin-bottom: 6px;
+}
+
+.explanation-content p {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.btn-override {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 8px;
+    border: 2px solid;
+    transition: all 0.3s ease;
+}
+
+.btn-override.pin {
+    background: rgba(255, 193, 7, 0.1);
+    border-color: #ffc107;
+    color: #ffc107;
+}
+
+.btn-override.pin:hover {
+    background: rgba(255, 193, 7, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+}
+
+.btn-override.unpin {
+    background: rgba(108, 117, 125, 0.1);
+    border-color: #6c757d;
+    color: #adb5bd;
+}
+
+.btn-override.unpin:hover {
+    background: rgba(108, 117, 125, 0.2);
+    transform: translateY(-2px);
+}
+
+/* Legacy styles for modal content */
 .refresh-group {
     display: flex;
     align-items: center;
