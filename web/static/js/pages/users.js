@@ -416,9 +416,9 @@ function updateGeoVisitorsTable(data) {
                 <tr>
                     <td>${index + 1}</td>
                     <td>
-                        <i class="fas fa-flag"></i>
+                        ${countryCodeToFlag(item.country, item.country)}
                         <strong>${item.country || 'Unknown'}</strong>
-                        ${item.country_name ? `<br><small class="text-muted">${item.country_name}</small>` : ''}
+                        ${item.country_name ? `<br><small class="text-muted">${item.country_name}</small>` : `<br><small class="text-muted">${countryToContinentMap[item.country].name + ", " + countryToContinentMap[item.country].continent|| 'Unknown'}</small>`}
                     </td>
                     <td>${LogLynxUtils.formatNumber(item.unique_visitors || 0)}</td>
                     <td>${LogLynxUtils.formatNumber(item.hits)}</td>

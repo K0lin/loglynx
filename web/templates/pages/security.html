@@ -192,6 +192,7 @@
 
     {{template "scripts-common" .}}
 
+    <script src="/static/js/core/country-data.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             LogLynxUtils.setActiveNavItem('security');
@@ -226,7 +227,7 @@
                         render: (data, type, row) => {
                             if (!data) return 'Unknown';
                             const countryName = row.country_name || data;
-                            return `<i class="flag-icon flag-icon-${data.toLowerCase()}"></i> ${countryName}`;
+                            return `${countryCodeToFlag(data, data)} ${countryName}`;
                         }
                     },
                     { 

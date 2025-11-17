@@ -352,10 +352,10 @@ function updateTopCountriesTable(data) {
             html += `
                 <tr>
                     <td>${index + 1}</td>
-                    <td>
-                        <i class="fas fa-flag"></i>
+                     <td>
+                        ${countryCodeToFlag(item.country, item.country)}
                         <strong>${item.country || 'Unknown'}</strong>
-                        ${item.country_name ? `<br><small class="text-muted">${item.country_name}</small>` : ''}
+                        ${item.country_name ? `<br><small class="text-muted">${item.country_name}</small>` : ` <small class="text-muted">${countryToContinentMap[item.country]?.name || 'Unknown'}, ${countryToContinentMap[item.country]?.continent || 'Unknown'}</small>`}
                     </td>
                     <td>${LogLynxUtils.formatNumber(item.hits)}</td>
                     <td>${LogLynxUtils.formatNumber(item.unique_visitors || 0)}</td>
@@ -388,8 +388,8 @@ function updateTopIPsTable(data) {
                 <tr>
                     <td>${index + 1}</td>
                     <td><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></td>
-                    <td>${item.country || '-'}</td>
-                    <td>${item.city || '-'}</td>
+                    <td>${countryCodeToFlag(item.country, item.country) || '<i class="fa fa-flag"></i>'} ${countryToContinentMap[item.country]?.name || 'Unknown'}</td>
+                    <td>${item.city || 'Unknown'}</td>
                     <td>${LogLynxUtils.formatNumber(item.hits)}</td>
                     <td>${LogLynxCharts.formatBytes(item.bandwidth || 0)}</td>
                 </tr>

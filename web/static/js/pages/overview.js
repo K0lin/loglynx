@@ -261,7 +261,7 @@ function updateTopCountriesTable(data) {
         data.forEach(item => {
             html += `
                 <tr>
-                    <td><i class="fas fa-flag"></i> ${item.country || 'Unknown'}</td>
+                    <td>${countryCodeToFlag(item.country, item.country)} ${item.country || 'Unknown'}<small class='text-muted'> ${countryToContinentMap[item.country]?.name || 'Unknown'}, ${countryToContinentMap[item.country]?.continent || 'Unknown'}</small></td>
                     <td>${LogLynxUtils.formatNumber(item.hits)}</td>
                     <td>${item.unique_visitors || 0}</td>
                 </tr>

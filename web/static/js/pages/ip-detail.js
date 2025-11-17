@@ -149,9 +149,9 @@ function updateIPKPIs(stats) {
     // Location
     if (stats.geo_city && stats.geo_country) {
         $('#ipLocation').text(stats.geo_city);
-        $('#ipCountry').text(stats.geo_country);
+        $('#ipCountry').text(countryToContinentMap[stats.geo_country]?.name || stats.geo_country);
     } else if (stats.geo_country) {
-        $('#ipLocation').text(stats.geo_country);
+        $('#ipLocation').text(countryToContinentMap[stats.geo_country]?.name || stats.geo_country);
         $('#ipCountry').text('Country');
     } else {
         $('#ipLocation').text('Unknown');
@@ -253,8 +253,7 @@ function initIPMap(stats) {
     const popupContent = `
         <div style="min-width: 200px;">
             <strong style="font-size: 1.1em;">${currentIPAddress}</strong><br>
-            <strong>City:</strong> ${stats.geo_city || 'Unknown'}<br>
-            <strong>Country:</strong> ${stats.geo_country || 'Unknown'}<br>
+            <strong>Location:</strong> ${stats.geo_city || 'Unknown'}, ${countryToContinentMap[stats.geo_country]?.name || stats.geo_country || 'Unknown'} (${countryToContinentMap[stats.geo_country]?.continent || 'Unknown'})<br>
             <strong>Coordinates:</strong> ${stats.geo_lat.toFixed(4)}, ${stats.geo_lon.toFixed(4)}<br>
             ${stats.asn ? `<strong>ASN:</strong> AS${stats.asn}<br>` : ''}
             ${stats.asn_org ? `<strong>Org:</strong> ${stats.asn_org}<br>` : ''}
