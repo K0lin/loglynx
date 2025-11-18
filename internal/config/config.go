@@ -124,7 +124,7 @@ func Load() (*Config, error) {
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
 		},
 		Performance: PerformanceConfig{
-			RealtimeMetricsInterval: getEnvAsDuration("METRICS_INTERVAL", 5*time.Second),
+			RealtimeMetricsInterval: getEnvAsDuration("METRICS_INTERVAL", 1*time.Second),
 			GeoIPCacheSize:          getEnvAsInt("GEOIP_CACHE_SIZE", 10000),
 			BatchSize:               getEnvAsInt("BATCH_SIZE", 1000),
 			WorkerPoolSize:          getEnvAsInt("WORKER_POOL_SIZE", 4),

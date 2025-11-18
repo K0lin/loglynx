@@ -25,11 +25,12 @@ let sseMetrics = {
     messageIntervals: []
 };
 
-// Live chart data (keep last 30 data points = 1 minute at 2sec intervals)
-const maxDataPoints = 30;
+// Live chart data (keep last 60 data points = 1 minute at 1sec intervals)
+const maxDataPoints = 60;
 let liveChartLabels = [];
 let liveRequestRateData = [];
 let liveAvgResponseData = [];
+let lastMetricsTimestamp = null;
 
 // Initialize live chart (dual Y-axis)
 function initLiveChart() {
@@ -231,6 +232,21 @@ window.getSSEMetrics = getSSEMetrics;
 
 // Update real-time metrics
 function updateRealtimeMetrics(metrics) {
+    // Validate metrics timestamp to detect stale data
+    const now = new Date();
+    let metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : now;
+
+    // Check if metrics are stale (older than 3 seconds)
+    const metricsAge = (now - metricsTimestamp) / 1000; // in seconds
+    const isStale = metricsAge > 3;
+
+    // If same timestamp as before and stale, skip update to avoid showing old data
+    if (lastMetricsTimestamp && metricsTimestamp.getTime() === lastMetricsTimestamp.getTime() && isStale) {
+        console.debug('Skipping stale metrics update', {age: metricsAge, timestamp: metricsTimestamp});
+        return;
+    }
+    lastMetricsTimestamp = metricsTimestamp;
+
     // Update KPI cards
     $('#liveRequestRate').text(metrics.request_rate.toFixed(2));
     $('#liveErrorRate').text(metrics.error_rate.toFixed(2));
@@ -242,7 +258,6 @@ function updateRealtimeMetrics(metrics) {
     $('#live5xx').text(metrics.status_5xx || 0);
 
     // Update live chart
-    const now = new Date();
     const timeLabel = now.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -254,7 +269,7 @@ function updateRealtimeMetrics(metrics) {
     liveRequestRateData.push(metrics.request_rate);
     liveAvgResponseData.push(metrics.avg_response_time);
 
-    // Keep only last 30 points
+    // Keep only last 60 points (1 minute at 1sec intervals)
     if (liveChartLabels.length > maxDataPoints) {
         liveChartLabels.shift();
         liveRequestRateData.shift();
@@ -271,8 +286,12 @@ function updateRealtimeMetrics(metrics) {
     // Update per-service metrics
     updatePerServiceMetrics();
 
-    // Add visual feedback
-    $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
+    // Add visual feedback (with stale indicator if data is old)
+    if (isStale) {
+        $('.live-indicator').css('opacity', '0.5'); // Dimmed for stale data
+    } else {
+        $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
+    }
 }
 
 // Update per-service metrics

@@ -159,7 +159,7 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no")
 
 	// Create a ticker for sending updates
-	ticker := time.NewTicker(2 * time.Second) // Send updates every 2 seconds
+	ticker := time.NewTicker(1 * time.Second) // Send updates every 1 second for real-time responsiveness
 	defer ticker.Stop()
 
 	// Channel to detect client disconnect

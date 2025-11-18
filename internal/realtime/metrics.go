@@ -32,6 +32,7 @@ type MetricsCollector struct {
 	last4xxCount      int64
 	last5xxCount      int64
 	lastUpdate        time.Time
+	lastRequestTime   time.Time // timestamp of last request seen
 
 	// Lifecycle management
 	stopChan chan struct{}
@@ -94,28 +95,30 @@ func (m *MetricsCollector) Stop() {
 func (m *MetricsCollector) collectMetrics() {
 	now := time.Now()
 
-	// Use a 10-second sliding window for more accurate real-time rates
-	// This gives us actual current activity, not averaged over 1 minute
-	tenSecondsAgo := now.Add(-10 * time.Second)
+	// Use a 2-second sliding window for immediate real-time responsiveness
+	// This ensures the chart shows zero quickly when traffic stops
+	twoSecondsAgo := now.Add(-2 * time.Second)
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
-	// Query for rate calculation (last 10 seconds for real-time accuracy)
+	// Query for rate calculation (last 2 seconds for real-time accuracy)
 	type RateResult struct {
-		TotalCount int64 `gorm:"column:total_count"`
-		ErrorCount int64 `gorm:"column:error_count"`
+		TotalCount    int64     `gorm:"column:total_count"`
+		ErrorCount    int64     `gorm:"column:error_count"`
+		LastTimestamp time.Time `gorm:"column:last_timestamp"`
 	}
 
 	var rateResult RateResult
 	err := m.db.WithContext(ctx).Table("http_requests").
 		Select(`
 			COUNT(*) as total_count,
-			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
+			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count,
+			MAX(timestamp) as last_timestamp
 		`).
-		Where("timestamp > ?", tenSecondsAgo).
+		Where("timestamp > ?", twoSecondsAgo).
 		Scan(&rateResult).Error
 
 	if err != nil {
@@ -147,9 +150,27 @@ func (m *MetricsCollector) collectMetrics() {
 		return
 	}
 
-	// Calculate rates per second based on 10-second window
-	requestRate := float64(rateResult.TotalCount) / 10.0
-	errorRate := float64(rateResult.ErrorCount) / 10.0
+	// Calculate rates per second based on 2-second window
+	requestRate := float64(rateResult.TotalCount) / 2.0
+	errorRate := float64(rateResult.ErrorCount) / 2.0
+
+	// Track last request time for proactive zero detection
+	var lastRequestTime time.Time
+	if !rateResult.LastTimestamp.IsZero() {
+		lastRequestTime = rateResult.LastTimestamp
+	} else {
+		// No requests in window - use previous lastRequestTime
+		m.mu.RLock()
+		lastRequestTime = m.lastRequestTime
+		m.mu.RUnlock()
+	}
+
+	// If no recent requests (>2 seconds old), force rates to zero immediately
+	timeSinceLastRequest := now.Sub(lastRequestTime)
+	if timeSinceLastRequest > 2*time.Second {
+		requestRate = 0.0
+		errorRate = 0.0
+	}
 
 	// Update metrics with lock
 	m.mu.Lock()
@@ -160,6 +181,7 @@ func (m *MetricsCollector) collectMetrics() {
 	m.last4xxCount = result.Status4xx
 	m.last5xxCount = result.Status5xx
 	m.lastUpdate = now
+	m.lastRequestTime = lastRequestTime
 	m.mu.Unlock()
 
 	m.logger.Trace("Collected real-time metrics",
@@ -280,8 +302,8 @@ func (m *MetricsCollector) applyFilters(query *gorm.DB, host string, serviceFilt
 func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []ServiceFilter, excludeIPFilter *ExcludeIPFilter) *RealtimeMetrics {
 	now := time.Now()
 
-	// Use 10-second window for rates, 1 minute for status distribution
-	tenSecondsAgo := now.Add(-10 * time.Second)
+	// Use 2-second window for rates, 1 minute for status distribution
+	twoSecondsAgo := now.Add(-2 * time.Second)
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	// If no filters specified, return global metrics
@@ -293,19 +315,21 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
-	// Query 1: Get rates from last 10 seconds
+	// Query 1: Get rates from last 2 seconds
 	type RateResult struct {
-		TotalCount int64 `gorm:"column:total_count"`
-		ErrorCount int64 `gorm:"column:error_count"`
+		TotalCount    int64     `gorm:"column:total_count"`
+		ErrorCount    int64     `gorm:"column:error_count"`
+		LastTimestamp time.Time `gorm:"column:last_timestamp"`
 	}
 
 	var rateResult RateResult
 	rateQuery := m.db.WithContext(ctx).Table("http_requests").
 		Select(`
 			COUNT(*) as total_count,
-			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
+			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count,
+			MAX(timestamp) as last_timestamp
 		`).
-		Where("timestamp > ?", tenSecondsAgo)
+		Where("timestamp > ?", twoSecondsAgo)
 
 	rateQuery = m.applyFilters(rateQuery, host, serviceFilters, excludeIPFilter)
 
@@ -339,9 +363,18 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		return &RealtimeMetrics{Timestamp: now}
 	}
 
-	// Calculate rates per second based on 10-second window
-	requestRate := float64(rateResult.TotalCount) / 10.0
-	errorRate := float64(rateResult.ErrorCount) / 10.0
+	// Calculate rates per second based on 2-second window
+	requestRate := float64(rateResult.TotalCount) / 2.0
+	errorRate := float64(rateResult.ErrorCount) / 2.0
+
+	// If no recent requests (>2 seconds old), force rates to zero immediately
+	if !rateResult.LastTimestamp.IsZero() {
+		timeSinceLastRequest := now.Sub(rateResult.LastTimestamp)
+		if timeSinceLastRequest > 2*time.Second {
+			requestRate = 0.0
+			errorRate = 0.0
+		}
+	}
 
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
@@ -363,8 +396,8 @@ type ServiceMetrics struct {
 
 // GetPerServiceMetrics returns real-time metrics for each service
 func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
-	// Use 10-second window for accurate real-time rates
-	tenSecondsAgo := time.Now().Add(-10 * time.Second)
+	// Use 2-second window for accurate real-time rates
+	twoSecondsAgo := time.Now().Add(-2 * time.Second)
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
@@ -380,7 +413,7 @@ func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFi
 
 	query := m.db.WithContext(ctx).Table("http_requests").
 		Select("backend_name, backend_url, host, COUNT(*) as total_count").
-		Where("timestamp > ?", tenSecondsAgo)
+		Where("timestamp > ?", twoSecondsAgo)
 
 	// Apply service filters (if any)
 	if len(filters) > 0 {
@@ -453,7 +486,7 @@ func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFi
 			continue
 		}
 
-		requestRate := float64(result.TotalCount) / 10.0 // Divide by 10 seconds, not 60
+		requestRate := float64(result.TotalCount) / 2.0 // Divide by 2 seconds
 		serviceMetrics = append(serviceMetrics, ServiceMetrics{
 			ServiceName: serviceName,
 			RequestRate: requestRate,
