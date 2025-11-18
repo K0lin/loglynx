@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"loglynx/internal/database/repositories"
@@ -12,17 +13,26 @@ import (
 	"github.com/pterm/pterm"
 )
 
+const (
+	// MaxSSEConnections is the maximum number of simultaneous SSE connections
+	MaxSSEConnections = 100
+)
+
 // RealtimeHandler handles real-time streaming endpoints
 type RealtimeHandler struct {
-	collector *realtime.MetricsCollector
-	logger    *pterm.Logger
+	collector           *realtime.MetricsCollector
+	logger              *pterm.Logger
+	activeConnections   int
+	maxConnections      int
+	connectionMutex     sync.Mutex
 }
 
 // NewRealtimeHandler creates a new realtime handler
 func NewRealtimeHandler(collector *realtime.MetricsCollector, logger *pterm.Logger) *RealtimeHandler {
 	return &RealtimeHandler{
-		collector: collector,
-		logger:    logger,
+		collector:      collector,
+		logger:         logger,
+		maxConnections: MaxSSEConnections,
 	}
 }
 
@@ -114,6 +124,29 @@ func (h *RealtimeHandler) getExcludeOwnIP(c *gin.Context) *realtime.ExcludeIPFil
 
 // StreamMetrics streams real-time metrics via Server-Sent Events
 func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
+	// Check connection limit
+	h.connectionMutex.Lock()
+	if h.activeConnections >= h.maxConnections {
+		h.connectionMutex.Unlock()
+		c.JSON(503, gin.H{"error": "Maximum concurrent connections reached. Please try again later."})
+		return
+	}
+	h.activeConnections++
+	currentConnections := h.activeConnections
+	h.connectionMutex.Unlock()
+
+	// Ensure we decrement on exit
+	defer func() {
+		h.connectionMutex.Lock()
+		h.activeConnections--
+		h.connectionMutex.Unlock()
+
+		// Recover from panics
+		if r := recover(); r != nil {
+			h.logger.Error("Panic in SSE stream", h.logger.Args("panic", r, "client_ip", c.ClientIP()))
+		}
+	}()
+
 	// Get filters
 	serviceName, _ := h.getServiceFilter(c) // Legacy single service filter
 	serviceFilters := h.getServiceFilters(c)
@@ -133,7 +166,7 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 	clientGone := c.Writer.CloseNotify()
 
 	h.logger.Debug("Client connected to real-time metrics stream",
-		h.logger.Args("client_ip", c.ClientIP(), "host_filter", serviceName, "exclude_own_ip", excludeIPFilter != nil))
+		h.logger.Args("client_ip", c.ClientIP(), "host_filter", serviceName, "exclude_own_ip", excludeIPFilter != nil, "active_connections", currentConnections))
 
 	for {
 		select {

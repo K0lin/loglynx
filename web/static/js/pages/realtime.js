@@ -9,8 +9,6 @@ let updateCount = 0;
 let isStreamPaused = false;
 let liveRequestsInterval = null;
 let reconnectTimeout = null;
-let lastPerServiceUpdate = 0;
-const PER_SERVICE_THROTTLE_MS = 5000; // Only update per-service chart every 5 seconds
 
 // Exponential backoff for reconnection
 let reconnectAttempts = 0;
@@ -277,15 +275,8 @@ function updateRealtimeMetrics(metrics) {
     $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
 }
 
-// Update per-service metrics (throttled)
+// Update per-service metrics
 async function updatePerServiceMetrics() {
-    // Throttle: Only update if enough time has passed since last update
-    const now = Date.now();
-    if (now - lastPerServiceUpdate < PER_SERVICE_THROTTLE_MS) {
-        return; // Skip this update
-    }
-    lastPerServiceUpdate = now;
-
     const result = await LogLynxAPI.getPerServiceMetrics();
 
     // Always keep the section visible
