@@ -11,9 +11,21 @@ const LogLynxAPI = {
     currentServiceType: 'auto', // Currently selected service type (auto, backend_name, backend_url, host)
     hideMyTraffic: false, // Whether to hide own IP traffic
     hideTrafficServices: [], // Array of services to hide traffic on [{name: 'X', type: 'backend_name'}, ...]
+    pendingRequests: new Map(), // Track in-flight requests to prevent duplicates
+    abortControllers: new Map(), // Track abort controllers for request cancellation
+
+    // Performance monitoring
+    _performanceMetrics: {
+        totalRequests: 0,
+        successfulRequests: 0,
+        failedRequests: 0,
+        totalResponseTime: 0,
+        slowestRequest: { url: '', time: 0 },
+        recentRequests: [] // Keep last 10 requests for debugging
+    },
 
     /**
-     * Make a GET request with optional caching
+     * Make a GET request with optional caching and request deduplication
      */
     async get(endpoint, params = {}, useCache = false) {
         // Build URL with parameters
@@ -25,25 +37,92 @@ const LogLynxAPI = {
             if (cached) return cached;
         }
 
-        try {
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-
-            // Store in cache if enabled
-            if (useCache) {
-                this.setCache(url, data);
-            }
-
-            return { success: true, data };
-        } catch (error) {
-            console.error(`API Error [${endpoint}]:`, error);
-            return { success: false, error: error.message };
+        // Request deduplication: If same request is already in-flight, wait for it
+        if (this.pendingRequests.has(url)) {
+            return this.pendingRequests.get(url);
         }
+
+        // Create abort controller for request cancellation
+        const abortController = new AbortController();
+        this.abortControllers.set(url, abortController);
+
+        // Create the request promise
+        const requestPromise = (async () => {
+            const startTime = performance.now();
+            this._performanceMetrics.totalRequests++;
+
+            try {
+                const response = await fetch(url, {
+                    signal: abortController.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const responseTime = performance.now() - startTime;
+
+                // Update performance metrics
+                this._performanceMetrics.successfulRequests++;
+                this._performanceMetrics.totalResponseTime += responseTime;
+
+                // Track slowest request
+                if (responseTime > this._performanceMetrics.slowestRequest.time) {
+                    this._performanceMetrics.slowestRequest = { url: endpoint, time: responseTime };
+                }
+
+                // Track recent requests (keep last 10)
+                this._performanceMetrics.recentRequests.unshift({
+                    endpoint,
+                    time: responseTime,
+                    timestamp: Date.now(),
+                    success: true
+                });
+                if (this._performanceMetrics.recentRequests.length > 10) {
+                    this._performanceMetrics.recentRequests.pop();
+                }
+
+                // Store in cache if enabled
+                if (useCache) {
+                    this.setCache(url, data);
+                }
+
+                return { success: true, data };
+            } catch (error) {
+                const responseTime = performance.now() - startTime;
+
+                // Update failure metrics (except for aborts)
+                if (error.name !== 'AbortError') {
+                    this._performanceMetrics.failedRequests++;
+                    this._performanceMetrics.recentRequests.unshift({
+                        endpoint,
+                        time: responseTime,
+                        timestamp: Date.now(),
+                        success: false,
+                        error: error.message
+                    });
+                    if (this._performanceMetrics.recentRequests.length > 10) {
+                        this._performanceMetrics.recentRequests.pop();
+                    }
+                }
+
+                // Don't log abort errors (they're intentional cancellations)
+                if (error.name !== 'AbortError') {
+                    console.error(`API Error [${endpoint}]:`, error);
+                }
+                return { success: false, error: error.message, aborted: error.name === 'AbortError' };
+            } finally {
+                // Cleanup
+                this.pendingRequests.delete(url);
+                this.abortControllers.delete(url);
+            }
+        })();
+
+        // Store in pending requests
+        this.pendingRequests.set(url, requestPromise);
+
+        return requestPromise;
     },
 
     /**
@@ -194,6 +273,66 @@ const LogLynxAPI = {
 
     clearCache() {
         this.cache.clear();
+    },
+
+    /**
+     * Cancel a specific pending request by URL
+     */
+    cancelRequest(endpoint, params = {}) {
+        const url = this.buildURL(endpoint, params);
+        const controller = this.abortControllers.get(url);
+        if (controller) {
+            controller.abort();
+            this.abortControllers.delete(url);
+            this.pendingRequests.delete(url);
+        }
+    },
+
+    /**
+     * Cancel all pending requests
+     */
+    cancelAllRequests() {
+        for (const controller of this.abortControllers.values()) {
+            controller.abort();
+        }
+        this.abortControllers.clear();
+        this.pendingRequests.clear();
+    },
+
+    /**
+     * Get API performance metrics
+     */
+    getPerformanceMetrics() {
+        const avgResponseTime = this._performanceMetrics.successfulRequests > 0
+            ? this._performanceMetrics.totalResponseTime / this._performanceMetrics.successfulRequests
+            : 0;
+
+        return {
+            totalRequests: this._performanceMetrics.totalRequests,
+            successfulRequests: this._performanceMetrics.successfulRequests,
+            failedRequests: this._performanceMetrics.failedRequests,
+            successRate: this._performanceMetrics.totalRequests > 0
+                ? (this._performanceMetrics.successfulRequests / this._performanceMetrics.totalRequests * 100).toFixed(1)
+                : 0,
+            avgResponseTime: avgResponseTime.toFixed(2),
+            slowestRequest: this._performanceMetrics.slowestRequest,
+            recentRequests: this._performanceMetrics.recentRequests,
+            pendingRequests: this.pendingRequests.size
+        };
+    },
+
+    /**
+     * Reset performance metrics
+     */
+    resetPerformanceMetrics() {
+        this._performanceMetrics = {
+            totalRequests: 0,
+            successfulRequests: 0,
+            failedRequests: 0,
+            totalResponseTime: 0,
+            slowestRequest: { url: '', time: 0 },
+            recentRequests: []
+        };
     },
 
     // ======================

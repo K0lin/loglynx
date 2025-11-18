@@ -4,6 +4,12 @@
  */
 
 const LogLynxUtils = {
+    // Event handler references for cleanup
+    _serviceFilterDocClickHandler: null,
+    _hideTrafficDocClickHandler: null,
+    _filterChangeDebounceTimer: null,
+    _hideTrafficChangeDebounceTimer: null,
+
     /**
      * Show notification
      */
@@ -334,13 +340,21 @@ const LogLynxUtils = {
             toggleBtn.classList.toggle('open');
         });
 
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
+        // Remove old document click handler to prevent accumulation
+        if (this._serviceFilterDocClickHandler) {
+            document.removeEventListener('click', this._serviceFilterDocClickHandler);
+        }
+
+        // Create new handler and store reference
+        this._serviceFilterDocClickHandler = (e) => {
             if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
                 dropdown.classList.remove('show');
                 toggleBtn.classList.remove('open');
             }
-        });
+        };
+
+        // Add new handler
+        document.addEventListener('click', this._serviceFilterDocClickHandler);
 
         // Handle filter type changes
         filterTypeSelect.addEventListener('change', () => {
@@ -535,7 +549,7 @@ const LogLynxUtils = {
     },
 
     /**
-     * Handle service checkbox change
+     * Handle service checkbox change (with debouncing)
      */
     handleServiceCheckboxChange() {
         const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
@@ -569,11 +583,19 @@ const LogLynxUtils = {
             sessionStorage.setItem('selectedServices', JSON.stringify(validServices));
         }
 
-        // Update label and trigger callback
+        // Update label immediately for responsive UI
         this.updateServiceFilterLabel();
-        if (this._serviceFilterCallback) {
-            this._serviceFilterCallback();
+
+        // Debounce the callback to prevent rapid API calls
+        if (this._filterChangeDebounceTimer) {
+            clearTimeout(this._filterChangeDebounceTimer);
         }
+
+        this._filterChangeDebounceTimer = setTimeout(() => {
+            if (this._serviceFilterCallback) {
+                this._serviceFilterCallback();
+            }
+        }, 300); // Wait 300ms after last change before triggering callback
     },
 
     /**
@@ -1233,13 +1255,21 @@ const LogLynxUtils = {
                 toggleBtn.classList.toggle('open');
             });
 
-            // Close dropdown when clicking outside
-            document.addEventListener('click', (e) => {
+            // Remove old document click handler to prevent accumulation
+            if (this._hideTrafficDocClickHandler) {
+                document.removeEventListener('click', this._hideTrafficDocClickHandler);
+            }
+
+            // Create new handler and store reference
+            this._hideTrafficDocClickHandler = (e) => {
                 if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
                     dropdown.classList.remove('show');
                     toggleBtn.classList.remove('open');
                 }
-            });
+            };
+
+            // Add new handler
+            document.addEventListener('click', this._hideTrafficDocClickHandler);
         }
 
         // Handle "All Services" checkbox
@@ -1365,7 +1395,7 @@ const LogLynxUtils = {
     },
 
     /**
-     * Handle hide traffic checkbox change
+     * Handle hide traffic checkbox change (with debouncing)
      */
     handleHideTrafficCheckboxChange() {
         const allServicesCheckbox = document.getElementById('hideAllServicesCheckbox');
@@ -1391,10 +1421,19 @@ const LogLynxUtils = {
             sessionStorage.setItem('hideMyTrafficServices', JSON.stringify(selectedServices));
         }
 
+        // Update label immediately for responsive UI
         this.updateHideTrafficLabel();
-        if (this._hideTrafficCallback) {
-            this._hideTrafficCallback();
+
+        // Debounce the callback to prevent rapid API calls
+        if (this._hideTrafficChangeDebounceTimer) {
+            clearTimeout(this._hideTrafficChangeDebounceTimer);
         }
+
+        this._hideTrafficChangeDebounceTimer = setTimeout(() => {
+            if (this._hideTrafficCallback) {
+                this._hideTrafficCallback();
+            }
+        }, 300); // Wait 300ms after last change before triggering callback
     },
 
     /**

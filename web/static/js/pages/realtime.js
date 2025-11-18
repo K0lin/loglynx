@@ -7,6 +7,25 @@ let liveChart, perServiceChart;
 let eventSource = null;
 let updateCount = 0;
 let isStreamPaused = false;
+let liveRequestsInterval = null;
+let reconnectTimeout = null;
+let lastPerServiceUpdate = 0;
+const PER_SERVICE_THROTTLE_MS = 5000; // Only update per-service chart every 5 seconds
+
+// Exponential backoff for reconnection
+let reconnectAttempts = 0;
+const INITIAL_RECONNECT_DELAY = 1000; // Start with 1 second
+const MAX_RECONNECT_DELAY = 30000; // Max 30 seconds
+const BACKOFF_MULTIPLIER = 2;
+
+// Performance monitoring for SSE
+let sseMetrics = {
+    messagesReceived: 0,
+    connectionTime: null,
+    lastMessageTime: null,
+    avgMessageInterval: 0,
+    messageIntervals: []
+};
 
 // Live chart data (keep last 30 data points = 1 minute at 2sec intervals)
 const maxDataPoints = 30;
@@ -102,9 +121,16 @@ function initPerServiceChart() {
 
 // Connect to real-time SSE stream
 function connectRealtimeStream() {
+    // Clear any pending reconnection timeout to prevent race conditions
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
+
     // Close existing connection
     if (eventSource) {
         eventSource.close();
+        eventSource = null;
     }
 
     // Show connecting status
@@ -115,6 +141,27 @@ function connectRealtimeStream() {
         // On message callback
         (metrics) => {
             if (!isStreamPaused) {
+                // Update SSE performance metrics
+                const now = Date.now();
+                sseMetrics.messagesReceived++;
+
+                if (sseMetrics.lastMessageTime) {
+                    const interval = now - sseMetrics.lastMessageTime;
+                    sseMetrics.messageIntervals.push(interval);
+
+                    // Keep last 10 intervals for average calculation
+                    if (sseMetrics.messageIntervals.length > 10) {
+                        sseMetrics.messageIntervals.shift();
+                    }
+
+                    // Calculate average interval
+                    sseMetrics.avgMessageInterval =
+                        sseMetrics.messageIntervals.reduce((a, b) => a + b, 0) /
+                        sseMetrics.messageIntervals.length;
+                }
+
+                sseMetrics.lastMessageTime = now;
+
                 updateRealtimeMetrics(metrics);
                 updateCount++;
                 $('#updateCount').text(updateCount);
@@ -124,25 +171,65 @@ function connectRealtimeStream() {
         // On error callback
         (error) => {
             console.error('SSE connection error:', error);
-            showConnectionStatus('Connection lost. Reconnecting...', 'error');
 
-            // Attempt to reconnect after 5 seconds
-            setTimeout(() => {
-                if (eventSource.readyState === EventSource.CLOSED) {
+            // Increment reconnect attempts for exponential backoff
+            reconnectAttempts++;
+
+            // Calculate delay with exponential backoff
+            const delay = Math.min(
+                INITIAL_RECONNECT_DELAY * Math.pow(BACKOFF_MULTIPLIER, reconnectAttempts - 1),
+                MAX_RECONNECT_DELAY
+            );
+
+            showConnectionStatus(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`, 'error');
+
+            // Clear any existing timeout
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+
+            // Attempt to reconnect with exponential backoff
+            reconnectTimeout = setTimeout(() => {
+                if (eventSource && eventSource.readyState === EventSource.CLOSED) {
                     connectRealtimeStream();
                 }
-            }, 5000);
+                reconnectTimeout = null;
+            }, delay);
         }
     );
 
     // Connection opened
     eventSource.onopen = () => {
+        // Reset reconnect attempts on successful connection
+        reconnectAttempts = 0;
+
+        // Track connection time for performance monitoring
+        sseMetrics.connectionTime = Date.now();
+
         showConnectionStatus('Connected', 'success');
         setTimeout(() => {
             hideConnectionStatus();
         }, 3000);
     };
 }
+
+// Get SSE performance metrics (accessible via browser console for debugging)
+function getSSEMetrics() {
+    const uptime = sseMetrics.connectionTime
+        ? ((Date.now() - sseMetrics.connectionTime) / 1000).toFixed(1)
+        : 0;
+
+    return {
+        messagesReceived: sseMetrics.messagesReceived,
+        avgMessageInterval: sseMetrics.avgMessageInterval.toFixed(0) + 'ms',
+        uptime: uptime + 's',
+        reconnectAttempts,
+        apiMetrics: LogLynxAPI.getPerformanceMetrics()
+    };
+}
+
+// Make available globally for debugging
+window.getSSEMetrics = getSSEMetrics;
 
 // Update real-time metrics
 function updateRealtimeMetrics(metrics) {
@@ -190,8 +277,15 @@ function updateRealtimeMetrics(metrics) {
     $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
 }
 
-// Update per-service metrics
+// Update per-service metrics (throttled)
 async function updatePerServiceMetrics() {
+    // Throttle: Only update if enough time has passed since last update
+    const now = Date.now();
+    if (now - lastPerServiceUpdate < PER_SERVICE_THROTTLE_MS) {
+        return; // Skip this update
+    }
+    lastPerServiceUpdate = now;
+
     const result = await LogLynxAPI.getPerServiceMetrics();
 
     // Always keep the section visible
@@ -234,12 +328,17 @@ function hideConnectionStatus() {
 
 // Initialize DataTable for live requests
 function initLiveRequestsTable() {
+    // Clear any existing interval to prevent leaks
+    if (liveRequestsInterval) {
+        clearInterval(liveRequestsInterval);
+    }
+
     // We'll manually update this table with real-time data
     // Start by loading recent requests
     loadRecentRequests();
 
     // Refresh every 10 seconds
-    setInterval(loadRecentRequests, 10000);
+    liveRequestsInterval = setInterval(loadRecentRequests, 10000);
 }
 
 // Load recent requests
@@ -394,5 +493,14 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('beforeunload', () => {
     if (eventSource) {
         eventSource.close();
+        eventSource = null;
+    }
+    if (liveRequestsInterval) {
+        clearInterval(liveRequestsInterval);
+        liveRequestsInterval = null;
+    }
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
     }
 });
