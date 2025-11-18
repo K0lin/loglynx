@@ -1617,6 +1617,154 @@ const LogLynxUtils = {
         }
 
         return displayValue;
+    },
+
+    showEmptyState(containerId, type = 'chart', message = null, options = {}) {
+        const container = document.getElementById(containerId);
+        if (!container) {
+            console.warn(`Container with ID '${containerId}' not found`);
+            return;
+        }
+
+        // Default messages based on type
+        const defaultMessages = {
+            chart: 'No chart data available',
+            table: 'No table data available',
+            datatable: 'No data available in table',
+            map: 'No map data available',
+            heatmap: 'No heatmap data available'
+        };
+
+        // Default icons based on type
+        const defaultIcons = {
+            chart: 'fas fa-chart-line',
+            table: 'fas fa-table',
+            datatable: 'fas fa-table',
+            map: 'fas fa-map-marked-alt',
+            heatmap: 'fas fa-th'
+        };
+
+        // Use provided message or default
+        const displayMessage = message || defaultMessages[type] || 'No data available';
+        const displayIcon = options.icon || defaultIcons[type] || 'fas fa-exclamation-circle';
+
+        // For DataTables, we need to handle it differently
+        if (type === 'datatable' && $.fn.DataTable.isDataTable(container)) {
+            // Update DataTable's language option to show custom message
+            const dataTable = $(container).DataTable();
+            
+            // Store original empty table message if not already stored
+            if (!container._originalEmptyTable) {
+                container._originalEmptyTable = dataTable.settings()[0].oLanguage.sEmptyTable || 'No data available';
+            }
+            
+            // Create custom empty message HTML
+            const customEmptyHtml = `
+                <div class="datatable-empty-state">
+                    <div class="datatable-empty-content">
+                        <i class="${displayIcon} datatable-empty-icon"></i>
+                        <div class="datatable-empty-message">${displayMessage}</div>
+                        ${options.subtitle ? `<div class="datatable-empty-subtitle">${options.subtitle}</div>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Update the DataTable's empty table message
+            dataTable.settings()[0].oLanguage.sEmptyTable = customEmptyHtml;
+            
+            // If table is already empty, redraw to show the new message
+            if (dataTable.data().length === 0) {
+                dataTable.draw();
+            }
+            return;
+        }
+
+        // For regular containers (charts, tables, etc.)
+        // Clear existing content
+        container.innerHTML = '';
+
+        // Create empty state element with consistent styling
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state-container';
+        
+        // Use existing chart-empty CSS for consistency
+        if (type === 'chart' || type === 'heatmap') {
+            emptyState.className = 'chart-empty';
+        }
+        
+        emptyState.innerHTML = `
+            <div class="empty-state-content">
+                <i class="${displayIcon} empty-state-icon"></i>
+                <div class="empty-state-message">${displayMessage}</div>
+                ${options.subtitle ? `<div class="empty-state-subtitle">${options.subtitle}</div>` : ''}
+                ${options.action ? `<button class="btn btn-primary empty-state-action" onclick="${options.action}">${options.actionText || 'Retry'}</button>` : ''}
+            </div>
+        `;
+        
+        container.appendChild(emptyState);
+        
+        // Add custom styles if provided
+        if (options.customClass) {
+            emptyState.classList.add(options.customClass);
+        }
+    },
+
+    /**
+     * Clear empty state from a container
+     * @param {string} containerId - The ID of the container element
+     * @param {string} type - The type of container: 'chart', 'table', 'datatable'
+     */
+    clearEmptyState(containerId, type = 'chart') {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        // For DataTables, restore original empty message
+        if (type === 'datatable' && $.fn.DataTable.isDataTable(container) && container._originalEmptyTable) {
+            const dataTable = $(container).DataTable();
+            dataTable.settings()[0].oLanguage.sEmptyTable = container._originalEmptyTable;
+            if (dataTable.data().length === 0) {
+                dataTable.draw();
+            }
+            return;
+        }
+
+        // For regular containers, remove empty state elements
+        const emptyElements = container.querySelectorAll('.empty-state-container, .chart-empty');
+        emptyElements.forEach(el => el.remove());
+    },
+
+    /**
+     * Check if data is empty or null and show empty state if needed
+     * @param {Array|Object} data - The data to check
+     * @param {string} containerId - The container ID to show empty state in
+     * @param {string} type - Container type
+     * @param {string} message - Optional custom message
+     * @param {object} options - Additional options
+     * @returns {boolean} - True if data is empty, false otherwise
+     */
+    checkAndShowEmptyState(data, containerId, type, message, options) {
+        let isEmpty = false;
+        
+        // Check for different types of empty data
+        if (data === null || data === undefined) {
+            isEmpty = true;
+        } else if (Array.isArray(data)) {
+            isEmpty = data.length === 0;
+        } else if (typeof data === 'object') {
+            // For objects, check if it has any properties or if all arrays are empty
+            const hasNonEmptyArray = Object.values(data).some(value =>
+                Array.isArray(value) && value.length > 0
+            );
+            isEmpty = !hasNonEmptyArray && Object.keys(data).length === 0;
+        }
+        
+        if (isEmpty) {
+            this.showEmptyState(containerId, type, message, options);
+        } else {
+            this.clearEmptyState(containerId, type);
+        }
+        
+        return isEmpty;
     }
 };
 

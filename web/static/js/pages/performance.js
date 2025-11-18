@@ -152,7 +152,13 @@ function initPerformanceTimelineChart() {
 
 // Update performance timeline chart
 function updatePerformanceTimelineChart(data) {
-    if (!data || data.length === 0) {
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'performanceTimelineChart',
+        'No performance timeline data available'
+    )) {
+        // Clear chart data when empty
         if (performanceTimelineChart) {
             performanceTimelineChart.data.labels = [];
             performanceTimelineChart.data.datasets[0].data = [];
@@ -203,6 +209,18 @@ function initResponseTimeDistributionChart() {
 function updateResponseTimeDistributionChart(data) {
     if (!responseTimeDistributionChart) return;
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'responseTimeDistributionChart',
+        'No response time distribution data available'
+    )) {
+        // Clear chart data when empty
+        responseTimeDistributionChart.data.datasets[0].data = [0, 0, 0, 0];
+        responseTimeDistributionChart.update();
+        return;
+    }
+
     responseTimeDistributionChart.data.datasets[0].data = [
         data.fast || 0,
         data.moderate || 0,
@@ -246,7 +264,19 @@ function initPercentileChart() {
 
 // Update percentile chart
 function updatePercentileChart(data) {
-    if (!percentileChart || !data) return;
+    if (!percentileChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'percentileChart',
+        'No percentile data available'
+    )) {
+        // Clear chart data when empty
+        percentileChart.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
+        percentileChart.update();
+        return;
+    }
 
     percentileChart.data.datasets[0].data = [
         data.min || 0,
@@ -305,7 +335,21 @@ function initVolumeVsPerformanceChart() {
 
 // Update volume vs performance chart
 function updateVolumeVsPerformanceChart(data) {
-    if (!volumeVsPerformanceChart || !data || data.length === 0) return;
+    if (!volumeVsPerformanceChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'volumeVsPerformanceChart',
+        'No volume vs performance data available'
+    )) {
+        // Clear chart data when empty
+        volumeVsPerformanceChart.data.labels = [];
+        volumeVsPerformanceChart.data.datasets[0].data = [];
+        volumeVsPerformanceChart.data.datasets[1].data = [];
+        volumeVsPerformanceChart.update('none');
+        return;
+    }
 
     const labels = LogLynxCharts.formatTimelineLabels(data, currentTimeRange);
     const requests = data.map(d => d.requests);
@@ -326,6 +370,37 @@ function initSlowPathsTable(pathsData) {
 
     if ($.fn.DataTable.isDataTable('#slowPathsTable')) {
         $('#slowPathsTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        slowPaths,
+        'slowPathsTable',
+        'datatable',
+        'No slow path data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#slowPathsTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (data, type, row, meta) => meta.row + 1 },
+                { data: 'path', render: (d) => `<code>${LogLynxUtils.truncate(d, 60)}</code>` },
+                { data: 'hits', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: 'avg_response_time', render: (d) => `<strong>${LogLynxUtils.formatMs(d || 0)}</strong>` },
+                { data: null, render: (data) => LogLynxUtils.formatMs((data.avg_response_time || 0) * 0.5) },
+                { data: null, render: (data) => LogLynxUtils.formatMs((data.avg_response_time || 0) * 2) },
+                { data: 'total_bandwidth', render: (d) => LogLynxCharts.formatBytes(d || 0) },
+                { data: 'avg_response_time', render: (d) => '<span class="badge badge-secondary">Unknown</span>' }
+            ],
+            order: [[3, 'desc']],
+            pageLength: 20,
+            autoWidth: false,
+            responsive: true,
+            language: {
+                emptyTable: 'No slow path data available'
+            }
+        });
+        return;
     }
 
     $('#slowPathsTable').DataTable({
@@ -402,32 +477,49 @@ function updateFastPathsTable(pathsData) {
         (a.avg_response_time || 0) - (b.avg_response_time || 0)
     ).slice(0, 10);
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        fastPaths,
+        'fastPathsTable',
+        'table',
+        'No fast path data available'
+    )) {
+        // Clear table content and show empty state
+        $('#fastPathsTable').html(`
+            <tr>
+                <td colspan="5" class="text-center text-muted">
+                    <div class="py-3">
+                        <i class="fas fa-info-circle mb-2" style="font-size: 1.5rem;"></i>
+                        <div>No fast path data available</div>
+                    </div>
+                </td>
+            </tr>
+        `);
+        return;
+    }
+
     let html = '';
 
-    if (fastPaths.length === 0) {
-        html = '<tr><td colspan="5" class="text-center text-muted">No data available</td></tr>';
-    } else {
-        fastPaths.forEach((path, index) => {
-            let badgeClass = 'badge-success';
-            let label = 'Excellent';
-            const avgTime = path.avg_response_time || 0;
+    fastPaths.forEach((path, index) => {
+        let badgeClass = 'badge-success';
+        let label = 'Excellent';
+        const avgTime = path.avg_response_time || 0;
 
-            if (avgTime > 100) {
-                badgeClass = 'badge-info';
-                label = 'Good';
-            }
+        if (avgTime > 100) {
+            badgeClass = 'badge-info';
+            label = 'Good';
+        }
 
-            html += `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td><code>${LogLynxUtils.truncate(path.path, 60)}</code></td>
-                    <td>${LogLynxUtils.formatNumber(path.hits)}</td>
-                    <td><strong>${LogLynxUtils.formatMs(avgTime)}</strong></td>
-                    <td><span class="badge ${badgeClass}">${label}</span></td>
-                </tr>
-            `;
-        });
-    }
+        html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td><code>${LogLynxUtils.truncate(path.path, 60)}</code></td>
+                <td>${LogLynxUtils.formatNumber(path.hits)}</td>
+                <td><strong>${LogLynxUtils.formatMs(avgTime)}</strong></td>
+                <td><span class="badge ${badgeClass}">${label}</span></td>
+            </tr>
+        `;
+    });
 
     $('#fastPathsTable').html(html);
 }
@@ -436,6 +528,44 @@ function updateFastPathsTable(pathsData) {
 function initBackendPerfTable(backendsData) {
     if ($.fn.DataTable.isDataTable('#backendPerfTable')) {
         $('#backendPerfTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        backendsData,
+        'backendPerfTable',
+        'datatable',
+        'No backend performance data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#backendPerfTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (row) => `<strong>${LogLynxUtils.extractBackendName(row.backend_name) || 'Unknown'}</strong>` },
+                { data: 'backend_url', render: (d) => `<code>${LogLynxUtils.truncate(d || '-', 40)}</code>` },
+                { data: 'hits', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: 'avg_response_time', render: (d) => LogLynxUtils.formatMs(d || 0) },
+                { data: 'error_count', render: (d) => `<span class="text-danger">${LogLynxUtils.formatNumber(d || 0)}</span>` },
+                { data: null, render: (data) => '<span class="badge badge-secondary">0.00%</span>' },
+                { data: 'bandwidth', render: (d) => LogLynxCharts.formatBytes(d || 0) },
+                { data: null, render: (data) => `
+                    <div class="d-flex align-items-center gap-2">
+                        <div style="width: 50px; height: 8px; background: #1f1f21; border-radius: 4px; overflow: hidden;">
+                            <div style="width: 100%; height: 100%; background: #28a745;"></div>
+                        </div>
+                        <strong style="color: #28a745;">100</strong>
+                    </div>
+                ` }
+            ],
+            order: [[2, 'desc']],
+            pageLength: 15,
+            autoWidth: false,
+            responsive: true,
+            language: {
+                emptyTable: 'No backend performance data available'
+            }
+        });
+        return;
     }
 
     $('#backendPerfTable').DataTable({
@@ -531,8 +661,20 @@ function initBackendPerfTable(backendsData) {
 
 // Update log processing stats
 function updateLogProcessingStats(data) {
-    if (!data || data.length === 0) {
-        $('#logProcessingList').html('<p class="text-muted">No log sources found</p>');
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        data,
+        'logProcessingList',
+        'table',
+        'No log sources found'
+    )) {
+        // Clear content and show empty state
+        $('#logProcessingList').html(`
+            <div class="text-center text-muted py-3">
+                <i class="fas fa-info-circle mb-2" style="font-size: 1.5rem;"></i>
+                <div>No log sources found</div>
+            </div>
+        `);
         return;
     }
 
@@ -541,7 +683,7 @@ function updateLogProcessingStats(data) {
         const percentage = source.percentage || 0;
         html += `
             <div class="mb-3">
-                <div class="d-flex justify-content-between mb-1" >                
+                <div class="d-flex justify-content-between mb-1" >
                     <small style="color: var(--loglynx-text);">${source.log_source_name || 'Unknown'}</small>
                     <small style="color: var(--loglynx-text);">${percentage.toFixed(1)}%</small>
                 </div>

@@ -199,7 +199,13 @@ function initRecordsTimelineChart() {
 
 // Update records timeline chart
 function updateRecordsTimelineChart(data) {
-    if (!data || data.length === 0) {
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'recordsTimelineChart',
+        'No system records data available'
+    )) {
+        // Clear chart data when empty
         if (recordsTimelineChart) {
             recordsTimelineChart.data.labels = [];
             recordsTimelineChart.data.datasets[0].data = [];
