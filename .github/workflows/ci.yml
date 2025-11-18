@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main ]
 
@@ -41,3 +41,6 @@ jobs:
 
       - name: Test
         run: go test ./... -v
+
+
+
