@@ -2,11 +2,42 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main ]
 
 jobs:
+  vulnerability-scan:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
+          
+      - name: Install Gosec
+        run: |
+          go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+          
+      - name: Run Gosec Security Scanner
+        run: |
+          gosec -no-fail -fmt sarif -out results.sarif ./...
+          
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: results.sarif
+          
+      - name: Run govulncheck for known vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
   build:
     name: Build and test
     runs-on: ubuntu-latest
@@ -41,3 +72,4 @@ jobs:
 
       - name: Test
         run: go test ./... -v
+
