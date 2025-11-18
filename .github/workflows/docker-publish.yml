@@ -2,7 +2,7 @@ name: Docker Publish
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   release:
     types: [ published ]
 
@@ -29,6 +29,14 @@ jobs:
 
       - name: Prepare image name
         run: echo "IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/loglynx" >> $GITHUB_ENV
+
+      - name: Build and push (dev branch -> dev-k)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:dev-k
 
       - name: Build and push (main -> dev)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
