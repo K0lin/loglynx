@@ -101,92 +101,31 @@
             </button>
         </div>
 
-        <!-- Filters Group -->
+        <!-- Filters Group - Trigger Buttons -->
         <div class="header-filters-group">
-            <!-- Service Filter -->
-            <div class="filter-group">
-                <div class="filter-header">
-                    <i class="fas fa-filter"></i>
-                    <span>Filters</span>
+            <!-- Filter Settings Button -->
+            <button id="filterSettingsBtn" class="filter-trigger-btn"
+                    data-bs-toggle="modal" data-bs-target="#filterSettingsModal"
+                    title="Configure filters">
+                <i class="fas fa-filter"></i>
+                <div class="filter-btn-info">
+                    <div class="filter-btn-label">Filters</div>
+                    <div class="filter-btn-status" id="filterStatus">All Traffic</div>
                 </div>
-                <div class="filter-content">
-                    <div class="filter-row">
-                        <select id="filterType" class="form-control-compact" aria-label="Filter Type">
-                            <option value="auto">Auto Detect</option>
-                            <option value="backend_name">Backend Name</option>
-                            <option value="backend_url">Backend URL</option>
-                            <option value="host">Host</option>
-                        </select>
-                    </div>
-                    <div class="filter-row">
-                        <div class="service-multiselect">
-                            <button type="button" class="form-control-compact dropdown-toggle" id="serviceFilterToggle" aria-label="Select Services" aria-haspopup="true" aria-expanded="false">
-                                <i class="fas fa-server"></i>
-                                <span id="serviceFilterLabel">All Services</span>
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
-                            <div class="service-dropdown-menu" id="serviceDropdownMenu" role="menu">
-                                <div class="service-search">
-                                    <i class="fas fa-search search-icon"></i>
-                                    <input type="text" class="form-control-compact" id="serviceSearchInput" placeholder="Search services..." aria-label="Search Services">
-                                </div>
-                                <div class="service-options" id="serviceOptions" role="group">
-                                    <label class="service-option">
-                                        <input type="checkbox" value="" data-type="all" id="allTrafficCheckbox" checked>
-                                        <span>All Traffic</span>
-                                    </label>
-                                    <!-- Populated dynamically -->
-                                </div>
-                                <div class="service-actions">
-                                    <button type="button" class="btn-link-compact" id="clearServiceSelection">
-                                        <i class="fas fa-times"></i> Clear
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                <i class="fas fa-cog filter-btn-settings-icon"></i>
+            </button>
 
-            <!-- Hide My Traffic -->
-            <div class="filter-group">
-                <div class="filter-header">
-                    <label class="traffic-checkbox-label">
-                        <input type="checkbox" id="hideMyTrafficCheckbox">
-                        <i class="fas fa-eye-slash"></i>
-                        <span>Hide My Traffic</span>
-                    </label>
+            <!-- Hide Traffic Button -->
+            <button id="hideTrafficBtn" class="filter-trigger-btn"
+                    data-bs-toggle="modal" data-bs-target="#hideTrafficModal"
+                    title="Hide my traffic">
+                <i class="fas fa-eye-slash"></i>
+                <div class="filter-btn-info">
+                    <div class="filter-btn-label">Hide Traffic</div>
+                    <div class="filter-btn-status" id="hideTrafficStatus">Disabled</div>
                 </div>
-                <div class="filter-content" id="hideTrafficServicesContainer" style="display: none;">
-                    <div class="filter-row">
-                        <div class="hide-traffic-multiselect">
-                            <button type="button" class="form-control-compact dropdown-toggle" id="hideTrafficToggle" aria-label="Select Services to Hide" aria-haspopup="true" aria-expanded="false">
-                                <i class="fas fa-server"></i>
-                                <span id="hideTrafficLabel">All Services</span>
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
-                            <div class="service-dropdown-menu" id="hideTrafficDropdownMenu" role="menu">
-                                <div class="service-search">
-                                    <i class="fas fa-search search-icon"></i>
-                                    <input type="text" class="form-control-compact" id="hideTrafficSearchInput" placeholder="Search services..." aria-label="Search Services">
-                                </div>
-                                <div class="service-options" id="hideTrafficOptions" role="group">
-                                    <label class="service-option">
-                                        <input type="checkbox" value="" data-type="all" id="hideAllServicesCheckbox" checked>
-                                        <span>All Services</span>
-                                    </label>
-                                    <!-- Populated dynamically -->
-                                </div>
-                                <div class="service-actions">
-                                    <button type="button" class="btn-link-compact" id="clearHideTrafficSelection">
-                                        <i class="fas fa-times"></i> Clear
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                <i class="fas fa-cog filter-btn-settings-icon"></i>
+            </button>
         </div>
 
         <!-- Refresh Controls - Compact Button -->
@@ -382,6 +321,141 @@
                                 <span>Use Global Settings</span>
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Settings Modal -->
+<div class="modal fade" id="filterSettingsModal" tabindex="-1" aria-labelledby="filterSettingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content filter-modal">
+            <div class="modal-header">
+                <h5 class="modal-title" id="filterSettingsModalLabel">
+                    <i class="fas fa-filter"></i> Filter Settings
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Filter Type Selection -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <div class="setting-header-left">
+                            <i class="fas fa-tags"></i>
+                            <span>Filter Type</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Choose how to identify services: Auto Detect, Backend Name, Backend URL, or Host
+                    </div>
+                    <select id="filterType" class="form-select form-select-lg" aria-label="Filter Type">
+                        <option value="auto">Auto Detect</option>
+                        <option value="backend_name">Backend Name</option>
+                        <option value="backend_url">Backend URL</option>
+                        <option value="host">Host</option>
+                    </select>
+                </div>
+
+                <!-- Service Selection -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <div class="setting-header-left">
+                            <i class="fas fa-server"></i>
+                            <span>Select Services</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Filter analytics by specific services. No selection shows all traffic.
+                    </div>
+
+                    <!-- Search Box -->
+                    <div class="filter-search-box">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" class="form-control" id="serviceSearchInput"
+                               placeholder="Search services..." aria-label="Search Services">
+                    </div>
+
+                    <!-- Service List -->
+                    <div class="service-options-modal" id="serviceOptions">
+                        <!-- Populated dynamically -->
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="filter-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="clearServiceSelection">
+                            <i class="fas fa-times"></i> Clear Selection
+                        </button>
+                        <span id="selectedServiceCount" class="text-muted small">0 services selected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hide My Traffic Modal -->
+<div class="modal fade" id="hideTrafficModal" tabindex="-1" aria-labelledby="hideTrafficModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content filter-modal">
+            <div class="modal-header">
+                <h5 class="modal-title" id="hideTrafficModalLabel">
+                    <i class="fas fa-eye-slash"></i> Hide My Traffic
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Enable/Disable Toggle -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <div class="setting-header-left">
+                            <i class="fas fa-power-off"></i>
+                            <span>Enable Filter</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Filter out requests from your IP address to focus on external traffic only
+                    </div>
+                    <div class="traffic-toggle-group">
+                        <label class="traffic-toggle-label">
+                            <input type="checkbox" id="hideMyTrafficCheckbox" class="traffic-toggle-checkbox">
+                            <span class="traffic-toggle-slider"></span>
+                            <span class="traffic-toggle-text">Hide my traffic from analytics</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Service Selection (shows when enabled) -->
+                <div class="setting-card" id="hideTrafficServicesContainer" style="display: none;">
+                    <div class="setting-header">
+                        <div class="setting-header-left">
+                            <i class="fas fa-server"></i>
+                            <span>Services to Filter</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Select which services to hide. No selection applies filter to all services.
+                    </div>
+
+                    <!-- Search Box -->
+                    <div class="filter-search-box">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" class="form-control" id="hideTrafficSearchInput"
+                               placeholder="Search services..." aria-label="Search Services">
+                    </div>
+
+                    <!-- Service List -->
+                    <div class="service-options-modal" id="hideTrafficOptions">
+                        <!-- Populated dynamically -->
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="filter-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="clearHideTrafficSelection">
+                            <i class="fas fa-times"></i> Clear Selection
+                        </button>
+                        <span id="selectedHideTrafficCount" class="text-muted small">0 services selected</span>
                     </div>
                 </div>
             </div>

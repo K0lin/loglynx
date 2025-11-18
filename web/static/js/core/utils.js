@@ -314,10 +314,10 @@ const LogLynxUtils = {
         const filterTypeSelect = document.getElementById('filterType');
         const searchInput = document.getElementById('serviceSearchInput');
         const clearBtn = document.getElementById('clearServiceSelection');
-        const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
         const serviceOptionsContainer = document.getElementById('serviceOptions');
 
-        if (!toggleBtn || !dropdown || !filterTypeSelect) return;
+        // Only require filterTypeSelect - dropdown elements are optional (removed for modal approach)
+        if (!filterTypeSelect) return;
 
         // Restore from sessionStorage
         const savedServices = sessionStorage.getItem('selectedServices');
@@ -333,28 +333,31 @@ const LogLynxUtils = {
         }
         filterTypeSelect.value = savedType;
 
-        // Toggle dropdown visibility
-        toggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            dropdown.classList.toggle('show');
-            toggleBtn.classList.toggle('open');
-        });
+        // Old dropdown functionality (only if elements exist)
+        if (toggleBtn && dropdown) {
+            // Toggle dropdown visibility
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dropdown.classList.toggle('show');
+                toggleBtn.classList.toggle('open');
+            });
 
-        // Remove old document click handler to prevent accumulation
-        if (this._serviceFilterDocClickHandler) {
-            document.removeEventListener('click', this._serviceFilterDocClickHandler);
-        }
-
-        // Create new handler and store reference
-        this._serviceFilterDocClickHandler = (e) => {
-            if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
-                dropdown.classList.remove('show');
-                toggleBtn.classList.remove('open');
+            // Remove old document click handler to prevent accumulation
+            if (this._serviceFilterDocClickHandler) {
+                document.removeEventListener('click', this._serviceFilterDocClickHandler);
             }
-        };
 
-        // Add new handler
-        document.addEventListener('click', this._serviceFilterDocClickHandler);
+            // Create new handler and store reference
+            this._serviceFilterDocClickHandler = (e) => {
+                if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                    toggleBtn.classList.remove('open');
+                }
+            };
+
+            // Add new handler
+            document.addEventListener('click', this._serviceFilterDocClickHandler);
+        }
 
         // Handle filter type changes
         filterTypeSelect.addEventListener('change', () => {
@@ -372,16 +375,8 @@ const LogLynxUtils = {
             LogLynxAPI.setServiceFilters(validServices);
             if (validServices.length === 0) {
                 sessionStorage.removeItem('selectedServices');
-                // Check "All Traffic" checkbox
-                if (allTrafficCheckbox) {
-                    allTrafficCheckbox.checked = true;
-                }
             } else {
                 sessionStorage.setItem('selectedServices', JSON.stringify(validServices));
-                // Uncheck "All Traffic" if there are valid services
-                if (allTrafficCheckbox) {
-                    allTrafficCheckbox.checked = false;
-                }
             }
 
             // Save the selected type
@@ -397,31 +392,12 @@ const LogLynxUtils = {
             }
         });
 
-        // Handle "All Traffic" checkbox
-        if (allTrafficCheckbox) {
-            allTrafficCheckbox.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    // Uncheck all other checkboxes
-                    if (serviceOptionsContainer) {
-                        serviceOptionsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                            if (cb !== allTrafficCheckbox) cb.checked = false;
-                        });
-                    }
-                    LogLynxAPI.setServiceFilters([]);
-                    sessionStorage.removeItem('selectedServices');
-                    this.updateServiceFilterLabel();
-                    if (onChangeCallback) onChangeCallback();
-                }
-            });
-        }
-
         // Handle search input
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
                 if (serviceOptionsContainer) {
-                    serviceOptionsContainer.querySelectorAll('.service-option').forEach(option => {
-                        if (option.querySelector('input').value === '') return; // Skip "All Traffic"
+                    serviceOptionsContainer.querySelectorAll('.service-option-modal').forEach(option => {
                         const text = option.textContent.toLowerCase();
                         option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
                     });
@@ -437,12 +413,16 @@ const LogLynxUtils = {
                         cb.checked = false;
                     });
                 }
-                if (allTrafficCheckbox) {
-                    allTrafficCheckbox.checked = true;
-                }
                 LogLynxAPI.setServiceFilters([]);
                 sessionStorage.removeItem('selectedServices');
                 this.updateServiceFilterLabel();
+
+                // Update count display
+                const countDisplay = document.getElementById('selectedServiceCount');
+                if (countDisplay) {
+                    countDisplay.textContent = 'No services selected';
+                }
+
                 if (onChangeCallback) onChangeCallback();
             });
         }
@@ -453,6 +433,14 @@ const LogLynxUtils = {
         // Initial load
         this.loadServiceFilter();
         this.updateServiceFilterLabel();
+
+        // Reload services when modal is shown
+        const filterModal = document.getElementById('filterSettingsModal');
+        if (filterModal) {
+            filterModal.addEventListener('shown.bs.modal', () => {
+                this.loadServiceFilter();
+            });
+        }
     },
 
     /**
@@ -468,12 +456,8 @@ const LogLynxUtils = {
             // Get current filter type
             const currentType = filterTypeSelect ? filterTypeSelect.value : 'auto';
 
-            // Clear existing options except "All Traffic"
-            const allTrafficOption = optionsContainer.querySelector('label:first-child');
+            // Clear existing options
             optionsContainer.innerHTML = '';
-            if (allTrafficOption) {
-                optionsContainer.appendChild(allTrafficOption);
-            }
 
             // Filter services based on selected type
             let services = result.data;
@@ -488,22 +472,10 @@ const LogLynxUtils = {
                 : currentServices.filter(s => s.type === currentType);
             const currentServiceNames = validCurrentServices.map(s => s.name);
 
-            // Update "All Traffic" checkbox state
-            const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
-            if (allTrafficCheckbox) {
-                if (validCurrentServices.length > 0) {
-                    // If there are specific services selected, uncheck "All Traffic"
-                    allTrafficCheckbox.checked = false;
-                } else {
-                    // If no specific services, check "All Traffic"
-                    allTrafficCheckbox.checked = true;
-                }
-            }
-
             // Add service options with checkboxes
             services.forEach(service => {
                 const label = document.createElement('label');
-                label.className = 'service-option';
+                label.className = 'service-option-modal';
 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
@@ -545,6 +517,15 @@ const LogLynxUtils = {
                     this.handleServiceCheckboxChange();
                 });
             });
+
+            // Update count display after loading
+            const countDisplay = document.getElementById('selectedServiceCount');
+            if (countDisplay) {
+                const count = validCurrentServices.length;
+                countDisplay.textContent = count === 0 ? 'No services selected' :
+                                          count === 1 ? '1 service selected' :
+                                          `${count} services selected`;
+            }
         }
     },
 
@@ -552,11 +533,10 @@ const LogLynxUtils = {
      * Handle service checkbox change (with debouncing)
      */
     handleServiceCheckboxChange() {
-        const allTrafficCheckbox = document.getElementById('allTrafficCheckbox');
         const serviceOptionsContainer = document.getElementById('serviceOptions');
         if (!serviceOptionsContainer) return;
 
-        const checkboxes = serviceOptionsContainer.querySelectorAll('input[type="checkbox"]:not(#allTrafficCheckbox)');
+        const checkboxes = serviceOptionsContainer.querySelectorAll('input[type="checkbox"]');
 
         // Get all checked services (excluding empty values)
         const selectedServices = [];
@@ -572,19 +552,26 @@ const LogLynxUtils = {
         // Filter out any invalid services (empty names or "all" type)
         const validServices = selectedServices.filter(s => s.name && s.name !== '' && s.type !== 'all');
 
-        // If no services selected, check "All Traffic"
+        // Update API filters (empty array means "All Traffic")
         if (validServices.length === 0) {
-            allTrafficCheckbox.checked = true;
             LogLynxAPI.setServiceFilters([]);
             sessionStorage.removeItem('selectedServices');
         } else {
-            allTrafficCheckbox.checked = false;
             LogLynxAPI.setServiceFilters(validServices);
             sessionStorage.setItem('selectedServices', JSON.stringify(validServices));
         }
 
         // Update label immediately for responsive UI
         this.updateServiceFilterLabel();
+
+        // Update service count display
+        const countDisplay = document.getElementById('selectedServiceCount');
+        if (countDisplay) {
+            const count = validServices.length;
+            countDisplay.textContent = count === 0 ? 'No services selected' :
+                                      count === 1 ? '1 service selected' :
+                                      `${count} services selected`;
+        }
 
         // Debounce the callback to prevent rapid API calls
         if (this._filterChangeDebounceTimer) {
@@ -623,6 +610,68 @@ const LogLynxUtils = {
             label.textContent = this.formatHostDisplay(rowObj, service.name);
         } else {
             label.textContent = `${selectedServices.length} Services Selected`;
+        }
+
+        // Update modal trigger button status
+        this.updateFilterButtonStatus();
+    },
+
+    /**
+     * Update filter trigger button status badge
+     */
+    updateFilterButtonStatus() {
+        const filterStatus = document.getElementById('filterStatus');
+        if (!filterStatus) return;
+
+        const selectedServices = LogLynxAPI.getServiceFilters();
+
+        if (selectedServices.length === 0) {
+            filterStatus.textContent = 'All Traffic';
+        } else if (selectedServices.length === 1) {
+            // Show service name (shortened if too long)
+            const service = selectedServices[0];
+            let rowObj = {};
+            if (service.type === 'backend_name') {
+                rowObj.backend_name = service.name;
+            } else if (service.type === 'backend_url') {
+                rowObj.backend_url = service.name;
+            } else if (service.type === 'host') {
+                rowObj.host = service.name;
+            }
+            const displayName = this.formatHostDisplay(rowObj, service.name);
+            // Truncate if too long
+            filterStatus.textContent = displayName.length > 20 ? displayName.substring(0, 20) + '...' : displayName;
+        } else {
+            filterStatus.textContent = `${selectedServices.length} Services`;
+        }
+    },
+
+    /**
+     * Update hide traffic trigger button status badge
+     */
+    updateHideTrafficButtonStatus() {
+        const hideTrafficBtn = document.getElementById('hideTrafficBtn');
+        const hideTrafficStatus = document.getElementById('hideTrafficStatus');
+        if (!hideTrafficBtn || !hideTrafficStatus) return;
+
+        const hideMyTrafficCheckbox = document.getElementById('hideMyTrafficCheckbox');
+        const isEnabled = hideMyTrafficCheckbox && hideMyTrafficCheckbox.checked;
+
+        if (isEnabled) {
+            hideTrafficBtn.classList.add('active');
+
+            // Show number of services if any are selected
+            const selectedServices = LogLynxAPI.getHideTrafficFilters();
+            if (selectedServices.length === 0) {
+                hideTrafficStatus.textContent = 'Enabled (All)';
+            } else if (selectedServices.length === 1) {
+                hideTrafficStatus.textContent = 'Enabled (1 service)';
+            } else {
+                hideTrafficStatus.textContent = `Enabled (${selectedServices.length} services)`;
+            }
+        } else {
+            hideTrafficBtn.classList.remove('active');
+            hideTrafficStatus.textContent = 'Disabled';
         }
     },
 
@@ -1206,7 +1255,6 @@ const LogLynxUtils = {
         const dropdown = document.getElementById('hideTrafficDropdownMenu');
         const searchInput = document.getElementById('hideTrafficSearchInput');
         const clearBtn = document.getElementById('clearHideTrafficSelection');
-        const allServicesCheckbox = document.getElementById('hideAllServicesCheckbox');
 
         if (!checkbox) return;
 
@@ -1218,7 +1266,7 @@ const LogLynxUtils = {
         LogLynxAPI.setHideMyTraffic(hideEnabled); // Restore in API object
 
         if (hideEnabled && container) {
-            container.style.display = 'flex';
+            container.style.display = 'block';
         }
 
         if (hideServices) {
@@ -1238,14 +1286,20 @@ const LogLynxUtils = {
                 LogLynxAPI.setHideMyTraffic(isEnabled);
 
                 if (container) {
-                    container.style.display = isEnabled ? 'flex' : 'none';
+                    container.style.display = isEnabled ? 'block' : 'none';
                 }
+
+                // Update trigger button status
+                this.updateHideTrafficButtonStatus();
 
                 if (onChangeCallback) {
                     onChangeCallback();
                 }
             });
         }
+
+        // Initial button status update
+        this.updateHideTrafficButtonStatus();
 
         // Toggle dropdown
         if (toggleBtn && dropdown) {
@@ -1272,27 +1326,11 @@ const LogLynxUtils = {
             document.addEventListener('click', this._hideTrafficDocClickHandler);
         }
 
-        // Handle "All Services" checkbox
-        if (allServicesCheckbox) {
-            allServicesCheckbox.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]').forEach(cb => {
-                        if (cb !== allServicesCheckbox) cb.checked = false;
-                    });
-                    LogLynxAPI.setHideTrafficFilters([]);
-                    sessionStorage.removeItem('hideMyTrafficServices');
-                    this.updateHideTrafficLabel();
-                    if (onChangeCallback) onChangeCallback();
-                }
-            });
-        }
-
         // Handle search
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
-                document.querySelectorAll('#hideTrafficOptions .service-option').forEach(option => {
-                    if (option.querySelector('input').value === '') return;
+                document.querySelectorAll('#hideTrafficOptions .service-option-modal').forEach(option => {
                     const text = option.textContent.toLowerCase();
                     option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
                 });
@@ -1305,10 +1343,19 @@ const LogLynxUtils = {
                 document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]').forEach(cb => {
                     cb.checked = false;
                 });
-                allServicesCheckbox.checked = true;
                 LogLynxAPI.setHideTrafficFilters([]);
                 sessionStorage.removeItem('hideMyTrafficServices');
                 this.updateHideTrafficLabel();
+
+                // Update count display
+                const countDisplay = document.getElementById('selectedHideTrafficCount');
+                if (countDisplay) {
+                    countDisplay.textContent = 'No services selected';
+                }
+
+                // Update button status
+                this.updateHideTrafficButtonStatus();
+
                 if (onChangeCallback) onChangeCallback();
             });
         }
@@ -1319,6 +1366,14 @@ const LogLynxUtils = {
         // Initial load
         this.loadHideTrafficServices();
         this.updateHideTrafficLabel();
+
+        // Reload services when modal is shown
+        const hideTrafficModal = document.getElementById('hideTrafficModal');
+        if (hideTrafficModal) {
+            hideTrafficModal.addEventListener('shown.bs.modal', () => {
+                this.loadHideTrafficServices();
+            });
+        }
     },
 
     /**
@@ -1330,32 +1385,16 @@ const LogLynxUtils = {
 
         const result = await LogLynxAPI.getServices();
         if (result.success && result.data) {
-            // Clear existing options except "All Services"
-            const allServicesOption = optionsContainer.querySelector('label:first-child');
+            // Clear existing options
             optionsContainer.innerHTML = '';
-            if (allServicesOption) {
-                optionsContainer.appendChild(allServicesOption);
-            }
 
             const currentServices = LogLynxAPI.getHideTrafficFilters();
             const currentServiceNames = currentServices.map(s => s.name);
 
-            // Update "All Services" checkbox state
-            const allServicesCheckbox = document.getElementById('hideAllServicesCheckbox');
-            if (allServicesCheckbox) {
-                if (currentServices.length > 0) {
-                    // If there are specific services selected, uncheck "All Services"
-                    allServicesCheckbox.checked = false;
-                } else {
-                    // If no specific services, check "All Services"
-                    allServicesCheckbox.checked = true;
-                }
-            }
-
             // Add all services (no filtering by type)
             result.data.forEach(service => {
                 const label = document.createElement('label');
-                label.className = 'service-option';
+                label.className = 'service-option-modal';
 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
@@ -1391,6 +1430,15 @@ const LogLynxUtils = {
                     this.handleHideTrafficCheckboxChange();
                 });
             });
+
+            // Update count display after loading
+            const countDisplay = document.getElementById('selectedHideTrafficCount');
+            if (countDisplay) {
+                const count = currentServices.length;
+                countDisplay.textContent = count === 0 ? 'No services selected' :
+                                          count === 1 ? '1 service selected' :
+                                          `${count} services selected`;
+            }
         }
     },
 
@@ -1398,8 +1446,7 @@ const LogLynxUtils = {
      * Handle hide traffic checkbox change (with debouncing)
      */
     handleHideTrafficCheckboxChange() {
-        const allServicesCheckbox = document.getElementById('hideAllServicesCheckbox');
-        const checkboxes = document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]:not(#hideAllServicesCheckbox)');
+        const checkboxes = document.querySelectorAll('#hideTrafficOptions input[type="checkbox"]');
 
         const selectedServices = [];
         checkboxes.forEach(cb => {
@@ -1411,18 +1458,29 @@ const LogLynxUtils = {
             }
         });
 
+        // Update API filters (empty array means "All Services")
         if (selectedServices.length === 0) {
-            allServicesCheckbox.checked = true;
             LogLynxAPI.setHideTrafficFilters([]);
             sessionStorage.removeItem('hideMyTrafficServices');
         } else {
-            allServicesCheckbox.checked = false;
             LogLynxAPI.setHideTrafficFilters(selectedServices);
             sessionStorage.setItem('hideMyTrafficServices', JSON.stringify(selectedServices));
         }
 
         // Update label immediately for responsive UI
         this.updateHideTrafficLabel();
+
+        // Update service count display
+        const countDisplay = document.getElementById('selectedHideTrafficCount');
+        if (countDisplay) {
+            const count = selectedServices.length;
+            countDisplay.textContent = count === 0 ? 'No services selected' :
+                                      count === 1 ? '1 service selected' :
+                                      `${count} services selected`;
+        }
+
+        // Update button status to reflect service count
+        this.updateHideTrafficButtonStatus();
 
         // Debounce the callback to prevent rapid API calls
         if (this._hideTrafficChangeDebounceTimer) {
