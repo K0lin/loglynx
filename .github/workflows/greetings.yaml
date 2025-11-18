@@ -1,0 +1,81 @@
+name: Greetings
+
+on:
+  pull_request:
+    types:
+      - opened
+  issues:
+    types:
+      - opened
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  greeting:
+    name: Greet First-Time Contributors
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/first-interaction@v3
+        with:
+          issue_message: |
+            # 🎉 Welcome to LogLynx!
+
+            Thank you for opening your first issue in the LogLynx project! We appreciate you taking the time to help improve our advanced log analytics platform.
+
+            ## 📝 What to expect
+            - Our maintainers will review your issue shortly
+            - We may ask for additional information to better understand the issue
+            - We'll label the issue appropriately to track its progress
+
+            ## 🔍 Useful Resources
+            - [Project Documentation](../tree/main/README.md)
+            - [Contributing Guidelines](../tree/main/CONTRIBUTING.md)
+            - [Code of Conduct](../tree/main/CODE_OF_CONDUCT.md)
+            - [Security Policy](../tree/main/SECURITY.md)
+
+            ## 🚀 Getting Started with LogLynx
+            LogLynx is a powerful log analytics platform that provides real-time insights into your web traffic. If you're new to the project, you might want to:
+            - Read about our [features](../tree/main/README.md#-features)
+            - Learn how to [get started](../tree/main/README.md#-quick-start)
+
+            Thanks again for your contribution! 🙏
+
+            _The LogLynx Team_
+          pr_message: |
+            # 🎉 Welcome to LogLynx!
+
+            Thank you for your first pull request to LogLynx! We're excited to have you contribute to our advanced log analytics platform.
+
+            ## 📋 Review Process
+            Your PR will be reviewed by our maintainers who will:
+            - Check that it follows our [contributing guidelines](../tree/main/CONTRIBUTING.md)
+            - Ensure tests pass and code quality standards are met
+            - Verify the PR addresses an existing issue or brings valuable improvements
+            - May suggest changes or request additional information
+
+            ## 🔧 Development Checklist
+            - [ ] Code follows the project's style guidelines
+            - [ ] Tests have been added/updated if applicable
+            - [ ] Documentation has been updated if needed
+            - [ ] Commit messages are clear and descriptive
+            - [ ] PR is linked to any relevant issues
+
+            ## 📚 Helpful Resources
+            - [Contributing Guidelines](../tree/main/CONTRIBUTING.md)
+            - [Code of Conduct](../tree/main/CODE_OF_CONDUCT.md)
+            - [Project Architecture](../tree/main/README.md#architecture)
+            - [API Documentation](../wiki/API-Documentation)
+
+            ## 🚀 About LogLynx
+            Your contribution helps improve LogLynx, a comprehensive log analytics solution that provides:
+            - Real-time log monitoring and visualization
+            - Geographic analytics and IP intelligence
+            - Performance metrics and system statistics
+            - Advanced filtering and search capabilities
+
+            We appreciate your time and effort to make LogLynx better! 🙏
+
+            _The LogLynx Team_
