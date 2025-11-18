@@ -27,7 +27,7 @@
                 <i class="fas fa-chart-line"></i>
                 <span>Traffic Analysis</span>
             </a>
-            <a href="/geographic" class="nav-item" data-page="geographic">
+            <a href="/geographic" class="nav-item" data-page="geographic" style="display: none;">
                 <i class="fas fa-map-marked-alt"></i>
                 <span>Geographic Analytics</span>
                 <span class="badge badge-success">MAP</span>
@@ -40,7 +40,7 @@
                 <i class="fas fa-shield-alt"></i>
                 <span>Security & Network</span>
             </a>
-            <a href="/users" class="nav-item" data-page="users">
+            <a href="/users" class="nav-item" data-page="users" style="display: none;">
                 <i class="fas fa-users"></i>
                 <span>User Analytics</span>
             </a>
@@ -74,6 +74,24 @@
         <span class="sidebar-version-caption">Advanced log analytics platform</span>
     </div>
 </aside>
+<script>
+    (function() {
+        // Check cached availability immediately to prevent flash of content
+        const hasGeoData = localStorage.getItem('loglynx_geoip_available');
+        const hasUserData = localStorage.getItem('loglynx_user_analytics_available');
+        
+        // Default is hidden in HTML. Show if true.
+        if (hasGeoData === 'true') {
+            const geoNav = document.querySelector('a[data-page="geographic"]');
+            if (geoNav) geoNav.style.display = 'flex';
+        }
+        
+        if (hasUserData === 'true') {
+            const userNav = document.querySelector('a[data-page="users"]');
+            if (userNav) userNav.style.display = 'flex';
+        }
+    })();
+</script>
 {{end}}
 
 {{define "header"}}

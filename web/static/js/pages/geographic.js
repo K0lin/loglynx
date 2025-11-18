@@ -806,6 +806,13 @@ function initHideTrafficFilterWithReload() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if GeoIP data is available
+    const hasGeoData = localStorage.getItem('loglynx_geoip_available');
+    if (hasGeoData === 'false') {
+        window.location.href = '/';
+        return;
+    }
+
     // Initialize charts
     initContinentChart();
     initTopCountriesBarChart();

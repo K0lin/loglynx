@@ -107,6 +107,10 @@ const LogLynxStartupLoader = {
                 if (avgPercentage >= this.MIN_PROCESSING_PERCENTAGE) {
                     // Already ready, don't show loader and skip data verification
                     console.log(`[StartupLoader] Already at ${avgPercentage.toFixed(2)}%, skipping loader`);
+                    
+                    // Check data availability
+                    await this.checkDataAvailability();
+
                     this.isReady = true;
                     this.isInitialLoad = false; // Not really initial load if already complete
                     return;
@@ -633,6 +637,79 @@ const LogLynxStartupLoader = {
     },
     
     /**
+     * Check if specific data features are available (GeoIP, User Analytics)
+     * and handle navigation visibility/redirects
+     */
+    async checkDataAvailability() {
+        console.log('[StartupLoader] Checking data availability...');
+        
+        // Check cache first to avoid redundant API calls
+        // If we have confirmed data availability previously, skip the check
+        const cachedGeo = localStorage.getItem('loglynx_geoip_available');
+        const cachedUser = localStorage.getItem('loglynx_user_analytics_available');
+        
+        if (cachedGeo === 'true' && cachedUser === 'true') {
+            console.log('[StartupLoader] Data availability cached (true), skipping check');
+            return true;
+        }
+
+        try {
+            // Check GeoIP Data
+            const geoResult = await LogLynxAPI.getTopCountries(1);
+            const hasGeoData = geoResult.success && geoResult.data && geoResult.data.length > 0;
+            localStorage.setItem('loglynx_geoip_available', hasGeoData);
+            
+            // Check User Analytics Data
+            const userResult = await LogLynxAPI.getDeviceTypeDistribution();
+            // Check if we have any non-zero counts
+            let hasUserData = false;
+            if (userResult.success && userResult.data && userResult.data.length > 0) {
+                hasUserData = userResult.data.some(d => d.count > 0);
+            }
+            localStorage.setItem('loglynx_user_analytics_available', hasUserData);
+            
+            console.log(`[StartupLoader] Data availability - GeoIP: ${hasGeoData}, User Analytics: ${hasUserData}`);
+            
+            // Handle redirects if on a page that requires missing data
+            const path = window.location.pathname;
+            if (path.includes('/geographic') && !hasGeoData) {
+                console.log('[StartupLoader] GeoIP data missing, redirecting from geographic page');
+                window.location.href = '/';
+                return false;
+            }
+            
+            if (path.includes('/users') && !hasUserData) {
+                console.log('[StartupLoader] User analytics data missing, redirecting from users page');
+                window.location.href = '/';
+                return false;
+            }
+            
+            // Update navigation visibility immediately
+            this.updateNavigationVisibility(hasGeoData, hasUserData);
+            
+            return true;
+        } catch (error) {
+            console.warn('[StartupLoader] Error checking data availability:', error);
+            return true; // Continue on error
+        }
+    },
+
+    /**
+     * Update navigation menu visibility based on data availability
+     */
+    updateNavigationVisibility(hasGeoData, hasUserData) {
+        const geoNav = document.querySelector('a[data-page="geographic"]');
+        if (geoNav) {
+            geoNav.style.display = hasGeoData ? 'flex' : 'none';
+        }
+        
+        const userNav = document.querySelector('a[data-page="users"]');
+        if (userNav) {
+            userNav.style.display = hasUserData ? 'flex' : 'none';
+        }
+    },
+    
+    /**
      * Calculate ETA based on processing speed (improved algorithm)
      */
     calculateETA(currentPercentage) {
@@ -995,6 +1072,10 @@ const LogLynxStartupLoader = {
             if (summaryResult.success && summaryResult.data && summaryResult.data.total_requests > 0) {
                 // Data is available, refresh page to load fresh data
                 console.log('[StartupLoader] Data verified, refreshing page to load fresh data');
+                
+                // Check data availability
+                await this.checkDataAvailability();
+
                 this.updateLoadingMessage('Ready! Refreshing page...');
                 this.isInitialLoad = false; // Mark that initial load is complete
 

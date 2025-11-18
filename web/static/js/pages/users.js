@@ -708,6 +708,13 @@ function initHideTrafficFilterWithReload() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if User Analytics data is available
+    const hasUserData = localStorage.getItem('loglynx_user_analytics_available');
+    if (hasUserData === 'false') {
+        window.location.href = '/';
+        return;
+    }
+
     // Initialize all charts
     initDeviceTypeChart();
     initBrowserChart();
