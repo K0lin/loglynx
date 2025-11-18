@@ -1720,7 +1720,35 @@ document.addEventListener('DOMContentLoaded', () => {
     LogLynxUtils.initSidebar();
     initIPSearch();
     initDisplayPreference();
+    // Hide filters on specific pages
+    LogLynxUtils.hideFiltersOnSpecificPages();
 });
+
+/**
+ * Hide filter service and hide my traffic options on specific pages
+ * This function checks the current URL path and hides the filter elements
+ * on System, backend, and IP detail pages
+ */
+LogLynxUtils.hideFiltersOnSpecificPages = function() {
+    // Get the current path
+    const currentPath = window.location.pathname;
+    
+    // Check if current page should have filters hidden
+    const shouldHideFilters =
+        currentPath === '/system' ||
+        currentPath === '/backends' ||
+        currentPath === '/content' ||
+        currentPath === '/security' ||
+        currentPath.startsWith('/ip/');
+    
+    if (shouldHideFilters) {
+        // Hide the entire filters group
+        const filtersGroup = document.querySelector('.header-filters-group');
+        if (filtersGroup) {
+            filtersGroup.style.display = 'none';
+        }
+    }
+};
 
 // Initialize Display Preference selector(s)
 function initDisplayPreference() {
