@@ -3,7 +3,6 @@
  */
 
 let timelineChart, statusChart, statusTimelineChart;
-let timelineHours; 
 let currentTimeRange = 168; // Default 7 days
 
 // Load all dashboard data
