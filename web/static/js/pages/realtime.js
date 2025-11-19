@@ -293,12 +293,113 @@ function updateRealtimeMetrics(metrics) {
     // Update per-service metrics
     updatePerServiceMetrics();
 
+    // Update Top IPs table
+    updateTopIPsTable(metrics.top_ips);
+
+    // Update Live Requests Table (Prepend new requests)
+    if (metrics.latest_requests && metrics.latest_requests.length > 0) {
+        prependLatestRequests(metrics.latest_requests);
+    }
+
     // Add visual feedback (with stale indicator if data is old)
     if (isStale) {
         $('.live-indicator').css('opacity', '0.5'); // Dimmed for stale data
     } else {
         $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
     }
+}
+
+// Prepend latest requests to table
+function prependLatestRequests(requests) {
+    const tbody = $('#liveRequestsBody');
+    
+    // Remove "No requests yet" row if present
+    if (tbody.find('td[colspan="8"]').length > 0) {
+        tbody.empty();
+    }
+
+    // Initialize seen IDs set if not exists
+    if (!window.seenRequestIds) {
+        window.seenRequestIds = new Set();
+        // Populate from existing rows
+        tbody.find('tr').each(function() {
+            const id = $(this).data('id');
+            if (id) window.seenRequestIds.add(parseInt(id));
+        });
+    }
+
+    // Process requests
+    requests.forEach(req => {
+        if (window.seenRequestIds.has(req.id)) return;
+        window.seenRequestIds.add(req.id);
+
+        const row = `
+            <tr class="fade-in" data-id="${req.id}">
+                <td>${LogLynxUtils.formatDateTime(req.timestamp)}</td>
+                <td>${LogLynxUtils.getMethodBadge(req.method)}</td>
+                <td>${LogLynxUtils.formatHostDisplay(req, '-')}</td>
+                <td><code>${LogLynxUtils.truncate(req.path, 40)}</code></td>
+                <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
+                <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
+                <td>${req.geo_country || '-'}</td>
+                <td>${req.client_ip}</td>
+            </tr>
+        `;
+        tbody.prepend(row);
+    });
+
+    // Limit to 50 rows
+    const rows = tbody.find('tr');
+    if (rows.length > 50) {
+        rows.slice(50).remove();
+        // Rebuild Set to keep memory usage low
+        window.seenRequestIds.clear();
+        tbody.find('tr').each(function() {
+            const id = $(this).data('id');
+            if (id) window.seenRequestIds.add(parseInt(id));
+        });
+    }
+}
+
+// Update Top IPs Table
+function updateTopIPsTable(topIPs) {
+    const tbody = $('#topIPsBody');
+    
+    if (!topIPs || topIPs.length === 0) {
+        tbody.html('<tr><td colspan="3" class="text-center text-muted">No active clients</td></tr>');
+        return;
+    }
+
+    let html = '';
+    topIPs.forEach(ip => {
+        // Calculate width for progress bar background
+        // Assuming max rate is the first one since it's sorted
+        const maxRate = topIPs[0].request_rate;
+        const percent = (ip.request_rate / maxRate) * 100;
+        
+        html += `
+            <tr>
+                <td>
+                    <a href="/ip/${ip.ip}" class="text-decoration-none">
+                        <code>${ip.ip}</code>
+                    </a>
+                </td>
+                <td>
+                    ${ip.country ? `<span class="badge bg-secondary">${ip.country}</span>` : '<span class="text-muted">-</span>'}
+                </td>
+                <td class="text-end">
+                    <div class="d-flex align-items-center justify-content-end gap-2">
+                        <span class="fw-bold">${ip.request_rate.toFixed(1)}</span>
+                        <div class="progress" style="width: 50px; height: 4px;">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.html(html);
 }
 
 // Update per-service metrics
@@ -353,9 +454,6 @@ function initLiveRequestsTable() {
     // We'll manually update this table with real-time data
     // Start by loading recent requests
     loadRecentRequests();
-
-    // Refresh every 1 second to match real-time chart
-    liveRequestsInterval = setInterval(loadRecentRequests, 1000);
 }
 
 // Load recent requests
@@ -379,7 +477,7 @@ function updateLiveRequestsTable(requests) {
     } else {
         requests.forEach(req => {
             html += `
-                <tr class="fade-in">
+                <tr class="fade-in" data-id="${req.ID}">
                     <td>${LogLynxUtils.formatDateTime(req.Timestamp)}</td>
                     <td>${LogLynxUtils.getMethodBadge(req.Method)}</td>
                     <td>${LogLynxUtils.formatHostDisplay(req, '-')}</td>

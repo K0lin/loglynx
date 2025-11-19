@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -54,14 +55,37 @@ type MetricsCollector struct {
 
 // RealtimeMetrics represents current real-time statistics
 type RealtimeMetrics struct {
-	RequestRate       float64   `json:"request_rate"`      // req/sec
-	ErrorRate         float64   `json:"error_rate"`        // errors/sec
-	AvgResponseTime   float64   `json:"avg_response_time"` // ms
-	ActiveConnections int       `json:"active_connections"`
-	Status2xx         int64     `json:"status_2xx"`
-	Status4xx         int64     `json:"status_4xx"`
-	Status5xx         int64     `json:"status_5xx"`
-	Timestamp         time.Time `json:"timestamp"`
+	RequestRate       float64          `json:"request_rate"`      // req/sec
+	ErrorRate         float64          `json:"error_rate"`        // errors/sec
+	AvgResponseTime   float64          `json:"avg_response_time"` // ms
+	ActiveConnections int              `json:"active_connections"`
+	Status2xx         int64            `json:"status_2xx"`
+	Status4xx         int64            `json:"status_4xx"`
+	Status5xx         int64            `json:"status_5xx"`
+	Timestamp         time.Time        `json:"timestamp"`
+	TopIPs            []IPMetrics      `json:"top_ips"`
+	LatestRequests    []RequestSummary `json:"latest_requests"`
+}
+
+// RequestSummary is a lightweight representation of a request for the real-time table
+type RequestSummary struct {
+	ID             uint      `json:"id"`
+	Timestamp      time.Time `json:"timestamp"`
+	Method         string    `json:"method"`
+	Host           string    `json:"host"`
+	BackendName    string    `json:"backend_name"`
+	Path           string    `json:"path"`
+	StatusCode     int       `json:"status_code"`
+	ResponseTimeMs float64   `json:"response_time_ms"`
+	GeoCountry     string    `json:"geo_country"`
+	ClientIP       string    `json:"client_ip"`
+}
+
+// IPMetrics represents metrics for a single IP
+type IPMetrics struct {
+	IP          string  `json:"ip"`
+	Country     string  `json:"country"`
+	RequestRate float64 `json:"request_rate"`
 }
 
 // NewMetricsCollector creates a new real-time metrics collector
@@ -202,17 +226,59 @@ func (m *MetricsCollector) collectMetrics() {
 	requestRate := float64(totalCount2s) / 2.0
 	errorRate := float64(errorCount2s) / 2.0
 
+	// Calculate Top IPs (last 2s)
+	ipCounts := make(map[string]int)
+	ipCountries := make(map[string]string)
+
+	for _, req := range m.requestBuffer {
+		if req.Timestamp.After(twoSecondsAgo) {
+			// Check filters if any (this logic is shared with GetMetricsWithFilters)
+			// But here we are in collectMetrics which is global.
+			// Wait, collectMetrics is global. GetMetricsWithFilters is per-request.
+			// We should calculate TopIPs here for the global cache.
+			
+			ipCounts[req.ClientIP]++
+			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
+				ipCountries[req.ClientIP] = req.GeoCountry
+			}
+		}
+	}
+
+	var topIPs []IPMetrics
+	for ip, count := range ipCounts {
+		rate := float64(count) / 2.0
+		if rate > 0 {
+			topIPs = append(topIPs, IPMetrics{
+				IP:          ip,
+				Country:     ipCountries[ip],
+				RequestRate: rate,
+			})
+		}
+	}
+
+	// Sort by rate desc
+	sort.Slice(topIPs, func(i, j int) bool {
+		return topIPs[i].RequestRate > topIPs[j].RequestRate
+	})
+
+	// Limit to top 10
+	if len(topIPs) > 10 {
+		topIPs = topIPs[:10]
+	}
+
 	// If no recent requests (>2 seconds old), force rates to zero immediately
 	if !lastRequestTime.IsZero() {
 		timeSinceLastRequest := now.Sub(lastRequestTime)
 		if timeSinceLastRequest > 2*time.Second {
 			requestRate = 0.0
 			errorRate = 0.0
+			topIPs = nil // Clear top IPs if no traffic
 		}
 	} else {
 		// No requests in window
 		requestRate = 0.0
 		errorRate = 0.0
+		topIPs = nil
 		// Use previous lastRequestTime if available
 		m.mu.RLock()
 		lastRequestTime = m.lastRequestTime
@@ -221,6 +287,9 @@ func (m *MetricsCollector) collectMetrics() {
 
 	// Collect per-service metrics (global) - passing nil filters uses buffer
 	perServiceMetrics := m.calculatePerServiceMetrics(m.requestBuffer, nil, nil)
+
+	// Get Latest Requests (last 20 from buffer)
+	latestRequests := m.getLatestRequests(m.requestBuffer, 20)
 
 	// Prepare metrics struct for JSON caching
 	metrics := &RealtimeMetrics{
@@ -232,6 +301,8 @@ func (m *MetricsCollector) collectMetrics() {
 		Status4xx:         status4xx,
 		Status5xx:         status5xx,
 		Timestamp:         now,
+		TopIPs:            topIPs,
+		LatestRequests:    latestRequests,
 	}
 
 	// Marshal to JSON immediately for caching
@@ -318,6 +389,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		status5xx       int64
 		count1m         int64
 		lastRequestTime time.Time
+		filteredRequests []*models.HTTPRequest
 	)
 
 	// Convert local ServiceFilter to repositories.ServiceFilter for helper compatibility
@@ -348,6 +420,9 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		if !m.matchesFilters(req, repoFilters, repoExcludeIP) {
 			continue
 		}
+
+		// Collect matching requests for latest list
+		filteredRequests = append(filteredRequests, req)
 
 		// For rates (last 2s)
 		if req.Timestamp.After(twoSecondsAgo) {
@@ -383,14 +458,63 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	requestRate := float64(totalCount2s) / 2.0
 	errorRate := float64(errorCount2s) / 2.0
 
+	// Calculate Top IPs (last 2s)
+	ipCounts := make(map[string]int)
+	ipCountries := make(map[string]string)
+
+	for _, req := range m.requestBuffer {
+		// Check host filter
+		if host != "" && !strings.Contains(req.BackendName, strings.ReplaceAll(host, " ", "-")) {
+			continue
+		}
+
+		// Check other filters
+		if !m.matchesFilters(req, repoFilters, repoExcludeIP) {
+			continue
+		}
+
+		if req.Timestamp.After(twoSecondsAgo) {
+			ipCounts[req.ClientIP]++
+			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
+				ipCountries[req.ClientIP] = req.GeoCountry
+			}
+		}
+	}
+
+	var topIPs []IPMetrics
+	for ip, count := range ipCounts {
+		rate := float64(count) / 2.0
+		if rate > 0 {
+			topIPs = append(topIPs, IPMetrics{
+				IP:          ip,
+				Country:     ipCountries[ip],
+				RequestRate: rate,
+			})
+		}
+	}
+
+	// Sort by rate desc
+	sort.Slice(topIPs, func(i, j int) bool {
+		return topIPs[i].RequestRate > topIPs[j].RequestRate
+	})
+
+	// Limit to top 10
+	if len(topIPs) > 10 {
+		topIPs = topIPs[:10]
+	}
+
 	// If no recent requests (>2 seconds old), force rates to zero immediately
 	if !lastRequestTime.IsZero() {
 		timeSinceLastRequest := now.Sub(lastRequestTime)
 		if timeSinceLastRequest > 2*time.Second {
 			requestRate = 0.0
 			errorRate = 0.0
+			topIPs = nil
 		}
 	}
+
+	// Get Latest Requests (last 20 from filtered)
+	latestRequests := m.getLatestRequests(filteredRequests, 20)
 
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
@@ -401,6 +525,8 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		Status4xx:         status4xx,
 		Status5xx:         status5xx,
 		Timestamp:         now,
+		TopIPs:            topIPs,
+		LatestRequests:    latestRequests,
 	}
 }
 
@@ -540,4 +666,35 @@ func extractServiceName(backendName string) string {
 	}
 
 	return backendName
+}
+
+// getLatestRequests returns the last N requests from the buffer as summaries
+func (m *MetricsCollector) getLatestRequests(requests []*models.HTTPRequest, limit int) []RequestSummary {
+	count := len(requests)
+	if count == 0 {
+		return []RequestSummary{}
+	}
+
+	start := count - limit
+	if start < 0 {
+		start = 0
+	}
+
+	summary := make([]RequestSummary, 0, count-start)
+	for i := start; i < count; i++ {
+		req := requests[i]
+		summary = append(summary, RequestSummary{
+			ID:             req.ID,
+			Timestamp:      req.Timestamp,
+			Method:         req.Method,
+			Host:           req.Host,
+			BackendName:    req.BackendName,
+			Path:           req.Path,
+			StatusCode:     req.StatusCode,
+			ResponseTimeMs: req.ResponseTimeMs,
+			GeoCountry:     req.GeoCountry,
+			ClientIP:       req.ClientIP,
+		})
+	}
+	return summary
 }
