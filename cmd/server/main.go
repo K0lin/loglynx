@@ -161,6 +161,11 @@ func main() {
 		}
 	}()
 
+	// Initialize real-time metrics collector with configured interval
+	logger.Info("Initializing real-time metrics collector...")
+	metricsCollector := realtime.NewMetricsCollector(db, logger)
+	metricsCollector.Start(cfg.Performance.RealtimeMetricsInterval)
+
 	// Initialize ingestion coordinator with initial import limiting and performance config
 	// NOTE: Coordinator is initialized before cleanup service because cleanup needs to pause ingestion during VACUUM
 	logger.Debug("Initializing ingestion coordinator...")
@@ -169,6 +174,7 @@ func main() {
 		httpRepo,
 		parserRegistry,
 		geoIP,
+		metricsCollector,
 		logger,
 		cfg.LogSources.InitialImportDays,
 		cfg.LogSources.InitialImportEnable,
@@ -210,11 +216,6 @@ func main() {
 		// Wait up to 3 seconds for processing to start
 		time.Sleep(3 * time.Second)
 	}
-
-	// Initialize real-time metrics collector with configured interval
-	logger.Info("Initializing real-time metrics collector...")
-	metricsCollector := realtime.NewMetricsCollector(db, logger)
-	metricsCollector.Start(cfg.Performance.RealtimeMetricsInterval)
 
 	// Initialize web server with configured settings
 	logger.Info("Initializing web server...")

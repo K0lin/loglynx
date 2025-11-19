@@ -13,26 +13,28 @@ import (
 	"loglynx/internal/enrichment"
 	parsers "loglynx/internal/parser"
 	"loglynx/internal/parser/useragent"
+	"loglynx/internal/realtime"
 
 	"github.com/pterm/pterm"
 )
 
 // SourceProcessor processes logs from a single source
 type SourceProcessor struct {
-	source         *models.LogSource
-	parser         parsers.LogParser
-	reader         *IncrementalReader
-	httpRepo       repositories.HTTPRequestRepository
-	sourceRepo     repositories.LogSourceRepository
-	geoIP          *enrichment.GeoIPEnricher
-	logger         *pterm.Logger
-	batchSize      int
-	workerPoolSize int
-	batchTimeout   time.Duration
-	pollInterval   time.Duration
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
+	source           *models.LogSource
+	parser           parsers.LogParser
+	reader           *IncrementalReader
+	httpRepo         repositories.HTTPRequestRepository
+	sourceRepo       repositories.LogSourceRepository
+	geoIP            *enrichment.GeoIPEnricher
+	metricsCollector *realtime.MetricsCollector
+	logger           *pterm.Logger
+	batchSize        int
+	workerPoolSize   int
+	batchTimeout     time.Duration
+	pollInterval     time.Duration
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
 	// Statistics
 	totalProcessed int64
 	totalErrors    int64
@@ -51,6 +53,7 @@ func NewSourceProcessor(
 	httpRepo repositories.HTTPRequestRepository,
 	sourceRepo repositories.LogSourceRepository,
 	geoIP *enrichment.GeoIPEnricher,
+	metricsCollector *realtime.MetricsCollector,
 	logger *pterm.Logger,
 	batchSize int,
 	workerPoolSize int,
@@ -83,6 +86,7 @@ func NewSourceProcessor(
 		httpRepo:            httpRepo,
 		sourceRepo:          sourceRepo,
 		geoIP:               geoIP,
+		metricsCollector:    metricsCollector,
 		logger:              logger,
 		batchSize:           batchSize,       // Configurable via BATCH_SIZE env var
 		workerPoolSize:      workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
@@ -359,6 +363,11 @@ func (sp *SourceProcessor) parseAndEnrichParallel(lines []string) []*models.HTTP
 				}
 
 				results <- dbRequest
+
+				// Send to real-time metrics collector
+				if sp.metricsCollector != nil {
+					sp.metricsCollector.Ingest(dbRequest)
+				}
 			}
 		}()
 	}

@@ -1,13 +1,12 @@
 package realtime
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"sync"
 	"time"
 
+	"loglynx/internal/database/models"
 	"loglynx/internal/database/repositories"
 
 	"github.com/pterm/pterm"
@@ -17,12 +16,18 @@ import (
 const (
 	// QueryTimeout is the maximum time for a database query
 	QueryTimeout = 5 * time.Second
+	// BufferDuration is the duration of data to keep in memory
+	BufferDuration = 60 * time.Second
 )
 
 // MetricsCollector collects real-time metrics
 type MetricsCollector struct {
 	db     *gorm.DB
 	logger *pterm.Logger
+
+	// In-memory buffer for real-time metrics
+	requestBuffer []*models.HTTPRequest
+	bufferMu      sync.RWMutex
 
 	// Current metrics
 	mu                sync.RWMutex
@@ -62,11 +67,19 @@ type RealtimeMetrics struct {
 // NewMetricsCollector creates a new real-time metrics collector
 func NewMetricsCollector(db *gorm.DB, logger *pterm.Logger) *MetricsCollector {
 	return &MetricsCollector{
-		db:         db,
-		logger:     logger,
-		lastUpdate: time.Now(),
-		stopChan:   make(chan struct{}),
+		db:            db,
+		logger:        logger,
+		lastUpdate:    time.Now(),
+		stopChan:      make(chan struct{}),
+		requestBuffer: make([]*models.HTTPRequest, 0, 10000),
 	}
+}
+
+// Ingest adds a new request to the in-memory buffer
+func (m *MetricsCollector) Ingest(req *models.HTTPRequest) {
+	m.bufferMu.Lock()
+	m.requestBuffer = append(m.requestBuffer, req)
+	m.bufferMu.Unlock()
 }
 
 // Start begins collecting metrics at regular intervals
@@ -112,123 +125,116 @@ func (m *MetricsCollector) GetCachedJSON() []byte {
 	return m.cachedJSON
 }
 
-// collectMetrics gathers current statistics from the database
-// Uses a sliding window approach for accurate rate calculation
+// collectMetrics gathers current statistics from the in-memory buffer
+// Uses a sliding window approach for accurate rate calculation without DB queries
 func (m *MetricsCollector) collectMetrics() {
 	now := time.Now()
 
 	// Use a 2-second sliding window for immediate real-time responsiveness
-	// This ensures the chart shows zero quickly when traffic stops
 	twoSecondsAgo := now.Add(-2 * time.Second)
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancel()
+	m.bufferMu.Lock()
+	defer m.bufferMu.Unlock()
 
-	// Query for rate calculation (last 2 seconds for real-time accuracy)
-	type RateResult struct {
-		TotalCount    int64          `gorm:"column:total_count"`
-		ErrorCount    int64          `gorm:"column:error_count"`
-		LastTimestamp sql.NullString `gorm:"column:last_timestamp"`
+	// 1. Prune old requests from buffer (keep only last 60s)
+	validIndex := -1
+	for i, req := range m.requestBuffer {
+		if req.Timestamp.After(oneMinuteAgo) {
+			validIndex = i
+			break
+		}
 	}
 
-	var rateResult RateResult
-	err := m.db.WithContext(ctx).Table("http_requests").
-		Select(`
-			COUNT(*) as total_count,
-			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count,
-			MAX(timestamp) as last_timestamp
-		`).
-		Where("timestamp > ?", twoSecondsAgo).
-		Scan(&rateResult).Error
-
-	if err != nil {
-		m.logger.Warn("Failed to collect rate metrics", m.logger.Args("error", err))
-		return
+	if validIndex > 0 {
+		// Create a new slice to allow GC to collect the old array backing
+		newBuffer := make([]*models.HTTPRequest, len(m.requestBuffer)-validIndex)
+		copy(newBuffer, m.requestBuffer[validIndex:])
+		m.requestBuffer = newBuffer
+	} else if validIndex == -1 && len(m.requestBuffer) > 0 {
+		// All requests are too old
+		m.requestBuffer = m.requestBuffer[:0]
 	}
 
-	// Query for status distribution and avg response time (last 1 minute for smoother stats)
-	type MetricsResult struct {
-		AvgRespTime float64 `gorm:"column:avg_response_time"`
-		Status2xx   int64   `gorm:"column:status_2xx"`
-		Status4xx   int64   `gorm:"column:status_4xx"`
-		Status5xx   int64   `gorm:"column:status_5xx"`
+	// 2. Calculate metrics from buffer
+	var (
+		totalCount2s    int64
+		errorCount2s    int64
+		status2xx       int64
+		status4xx       int64
+		status5xx       int64
+		totalRespTime   float64
+		count1m         int64
+		lastRequestTime time.Time
+	)
+
+	for _, req := range m.requestBuffer {
+		// For rates (last 2s)
+		if req.Timestamp.After(twoSecondsAgo) {
+			totalCount2s++
+			if req.StatusCode >= 400 {
+				errorCount2s++
+			}
+			if req.Timestamp.After(lastRequestTime) {
+				lastRequestTime = req.Timestamp
+			}
+		}
+
+		// For distribution (last 1m)
+		count1m++
+		totalRespTime += req.ResponseTimeMs
+		if req.StatusCode >= 200 && req.StatusCode < 300 {
+			status2xx++
+		} else if req.StatusCode >= 400 && req.StatusCode < 500 {
+			status4xx++
+		} else if req.StatusCode >= 500 {
+			status5xx++
+		}
 	}
 
-	var result MetricsResult
-	err = m.db.WithContext(ctx).Table("http_requests").
-		Select(`
-			COALESCE(AVG(response_time_ms), 0) as avg_response_time,
-			SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as status_2xx,
-			SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END) as status_4xx,
-			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as status_5xx
-		`).
-		Where("timestamp > ?", oneMinuteAgo).
-		Scan(&result).Error
-
-	if err != nil {
-		m.logger.Warn("Failed to collect status metrics", m.logger.Args("error", err))
-		return
+	// Calculate averages
+	avgRespTime := 0.0
+	if count1m > 0 {
+		avgRespTime = totalRespTime / float64(count1m)
 	}
 
 	// Calculate rates per second based on 2-second window
-	requestRate := float64(rateResult.TotalCount) / 2.0
-	errorRate := float64(rateResult.ErrorCount) / 2.0
+	requestRate := float64(totalCount2s) / 2.0
+	errorRate := float64(errorCount2s) / 2.0
 
-	// Track last request time for proactive zero detection
-	var lastRequestTime time.Time
-	if rateResult.LastTimestamp.Valid {
-		// Try parsing common formats
-		// GORM/SQLite usually stores as "2006-01-02 15:04:05.999+07:00" or similar
-		// We try a few common formats
-		formats := []string{
-			"2006-01-02 15:04:05.999999999-07:00",
-			"2006-01-02 15:04:05.999-07:00",
-			"2006-01-02 15:04:05",
-			time.RFC3339,
-			time.RFC3339Nano,
+	// If no recent requests (>2 seconds old), force rates to zero immediately
+	if !lastRequestTime.IsZero() {
+		timeSinceLastRequest := now.Sub(lastRequestTime)
+		if timeSinceLastRequest > 2*time.Second {
+			requestRate = 0.0
+			errorRate = 0.0
 		}
-
-		for _, format := range formats {
-			if t, err := time.Parse(format, rateResult.LastTimestamp.String); err == nil {
-				lastRequestTime = t
-				break
-			}
-		}
-	}
-
-	if lastRequestTime.IsZero() {
-		// No requests in window - use previous lastRequestTime
+	} else {
+		// No requests in window
+		requestRate = 0.0
+		errorRate = 0.0
+		// Use previous lastRequestTime if available
 		m.mu.RLock()
 		lastRequestTime = m.lastRequestTime
 		m.mu.RUnlock()
 	}
 
-	// If no recent requests (>2 seconds old), force rates to zero immediately
-	timeSinceLastRequest := now.Sub(lastRequestTime)
-	if timeSinceLastRequest > 2*time.Second {
-		requestRate = 0.0
-		errorRate = 0.0
-	}
-
-	// Collect per-service metrics (global)
-	perServiceMetrics := m.fetchPerServiceMetrics(nil, nil)
+	// Collect per-service metrics (global) - passing nil filters uses buffer
+	perServiceMetrics := m.calculatePerServiceMetrics(m.requestBuffer, nil, nil)
 
 	// Prepare metrics struct for JSON caching
 	metrics := &RealtimeMetrics{
 		RequestRate:       requestRate,
 		ErrorRate:         errorRate,
-		AvgResponseTime:   result.AvgRespTime,
-		ActiveConnections: m.activeConnections, // Use current active connections
-		Status2xx:         result.Status2xx,
-		Status4xx:         result.Status4xx,
-		Status5xx:         result.Status5xx,
+		AvgResponseTime:   avgRespTime,
+		ActiveConnections: m.activeConnections,
+		Status2xx:         status2xx,
+		Status4xx:         status4xx,
+		Status5xx:         status5xx,
 		Timestamp:         now,
 	}
 
 	// Marshal to JSON immediately for caching
-	// This avoids repeated marshaling for every connected client
 	jsonBytes, _ := json.Marshal(metrics)
 
 	// Update metrics with lock
@@ -236,10 +242,10 @@ func (m *MetricsCollector) collectMetrics() {
 	m.perServiceMetrics = perServiceMetrics
 	m.requestRate = requestRate
 	m.errorRate = errorRate
-	m.avgResponseTime = result.AvgRespTime
-	m.last2xxCount = result.Status2xx
-	m.last4xxCount = result.Status4xx
-	m.last5xxCount = result.Status5xx
+	m.avgResponseTime = avgRespTime
+	m.last2xxCount = status2xx
+	m.last4xxCount = status4xx
+	m.last5xxCount = status5xx
 	m.lastUpdate = now
 	m.lastRequestTime = lastRequestTime
 	if jsonBytes != nil {
@@ -247,11 +253,10 @@ func (m *MetricsCollector) collectMetrics() {
 	}
 	m.mu.Unlock()
 
-	m.logger.Trace("Collected real-time metrics",
+	m.logger.Trace("Collected real-time metrics (in-memory)",
 		m.logger.Args(
 			"request_rate", requestRate,
-			"error_rate", errorRate,
-			"avg_response_time", result.AvgRespTime,
+			"buffer_size", len(m.requestBuffer),
 		))
 }
 
@@ -290,82 +295,9 @@ func (m *MetricsCollector) GetMetricsWithHost(host string) *RealtimeMetrics {
 	return m.GetMetricsWithFilters(host, nil, nil)
 }
 
-// applyFilters applies service and IP exclusion filters to a query
-func (m *MetricsCollector) applyFilters(query *gorm.DB, host string, serviceFilters []ServiceFilter, excludeIPFilter *ExcludeIPFilter) *gorm.DB {
-	// Apply host filter (legacy single host filter)
-	if host != "" {
-		query = query.Where("backend_name LIKE ?", "%-"+strings.ReplaceAll(host, " ", "-")+"-%")
-	}
-
-	// Apply service filters (new multi-service filter)
-	if len(serviceFilters) > 0 {
-		conditions := make([]string, len(serviceFilters))
-		args := make([]interface{}, len(serviceFilters))
-
-		for i, filter := range serviceFilters {
-			switch filter.Type {
-			case "backend_name":
-				conditions[i] = "backend_name = ?"
-				args[i] = filter.Name
-			case "backend_url":
-				conditions[i] = "backend_url = ?"
-				args[i] = filter.Name
-			case "host":
-				conditions[i] = "host = ?"
-				args[i] = filter.Name
-			default:
-				// Auto-detect: try all fields
-				conditions[i] = "(backend_name = ? OR backend_url = ? OR host = ?)"
-				args[i] = filter.Name
-			}
-		}
-
-		// Combine conditions with OR
-		whereClause := strings.Join(conditions, " OR ")
-		query = query.Where("("+whereClause+")", args...)
-	}
-
-	// Apply IP exclusion filter
-	if excludeIPFilter != nil && excludeIPFilter.ClientIP != "" {
-		if len(excludeIPFilter.ExcludeServices) == 0 {
-			// Exclude IP from all services
-			query = query.Where("client_ip != ?", excludeIPFilter.ClientIP)
-		} else {
-			// Exclude IP only from specific services
-			serviceConditions := make([]string, len(excludeIPFilter.ExcludeServices))
-			serviceArgs := make([]interface{}, 0, len(excludeIPFilter.ExcludeServices)*3)
-
-			for i, filter := range excludeIPFilter.ExcludeServices {
-				switch filter.Type {
-				case "backend_name":
-					serviceConditions[i] = "backend_name = ?"
-					serviceArgs = append(serviceArgs, filter.Name)
-				case "backend_url":
-					serviceConditions[i] = "backend_url = ?"
-					serviceArgs = append(serviceArgs, filter.Name)
-				case "host":
-					serviceConditions[i] = "host = ?"
-					serviceArgs = append(serviceArgs, filter.Name)
-				default:
-					serviceConditions[i] = "(backend_name = ? OR backend_url = ? OR host = ?)"
-					serviceArgs = append(serviceArgs, filter.Name, filter.Name, filter.Name)
-				}
-			}
-
-			serviceWhere := strings.Join(serviceConditions, " OR ")
-			allArgs := append([]interface{}{excludeIPFilter.ClientIP}, serviceArgs...)
-			query = query.Where("NOT (client_ip = ? AND ("+serviceWhere+"))", allArgs...)
-		}
-	}
-
-	return query
-}
-
 // GetMetricsWithFilters returns real-time metrics with service and IP exclusion filters
 func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []ServiceFilter, excludeIPFilter *ExcludeIPFilter) *RealtimeMetrics {
 	now := time.Now()
-
-	// Use 2-second window for rates, 1 minute for status distribution
 	twoSecondsAgo := now.Add(-2 * time.Second)
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
@@ -374,97 +306,100 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		return m.GetMetrics()
 	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancel()
+	m.bufferMu.RLock()
+	defer m.bufferMu.RUnlock()
 
-	// Query 1: Get rates from last 2 seconds
-	type RateResult struct {
-		TotalCount    int64          `gorm:"column:total_count"`
-		ErrorCount    int64          `gorm:"column:error_count"`
-		LastTimestamp sql.NullString `gorm:"column:last_timestamp"`
+	var (
+		totalCount2s    int64
+		errorCount2s    int64
+		status2xx       int64
+		status4xx       int64
+		status5xx       int64
+		totalRespTime   float64
+		count1m         int64
+		lastRequestTime time.Time
+	)
+
+	// Convert local ServiceFilter to repositories.ServiceFilter for helper compatibility
+	repoFilters := make([]repositories.ServiceFilter, len(serviceFilters))
+	for i, f := range serviceFilters {
+		repoFilters[i] = repositories.ServiceFilter{Name: f.Name, Type: f.Type}
+	}
+	
+	// Convert local ExcludeIPFilter to repositories.ExcludeIPFilter
+	var repoExcludeIP *repositories.ExcludeIPFilter
+	if excludeIPFilter != nil {
+		repoExcludeIP = &repositories.ExcludeIPFilter{
+			ClientIP: excludeIPFilter.ClientIP,
+			ExcludeServices: make([]repositories.ServiceFilter, len(excludeIPFilter.ExcludeServices)),
+		}
+		for i, f := range excludeIPFilter.ExcludeServices {
+			repoExcludeIP.ExcludeServices[i] = repositories.ServiceFilter{Name: f.Name, Type: f.Type}
+		}
 	}
 
-	var rateResult RateResult
-	rateQuery := m.db.WithContext(ctx).Table("http_requests").
-		Select(`
-			COUNT(*) as total_count,
-			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count,
-			MAX(timestamp) as last_timestamp
-		`).
-		Where("timestamp > ?", twoSecondsAgo)
+	for _, req := range m.requestBuffer {
+		// Check host filter
+		if host != "" && !strings.Contains(req.BackendName, strings.ReplaceAll(host, " ", "-")) {
+			continue
+		}
 
-	rateQuery = m.applyFilters(rateQuery, host, serviceFilters, excludeIPFilter)
+		// Check other filters
+		if !m.matchesFilters(req, repoFilters, repoExcludeIP) {
+			continue
+		}
 
-	if err := rateQuery.Scan(&rateResult).Error; err != nil {
-		m.logger.Warn("Failed to collect filtered rate metrics", m.logger.Args("error", err))
-		return &RealtimeMetrics{Timestamp: now}
+		// For rates (last 2s)
+		if req.Timestamp.After(twoSecondsAgo) {
+			totalCount2s++
+			if req.StatusCode >= 400 {
+				errorCount2s++
+			}
+			if req.Timestamp.After(lastRequestTime) {
+				lastRequestTime = req.Timestamp
+			}
+		}
+
+		// For distribution (last 1m)
+		if req.Timestamp.After(oneMinuteAgo) {
+			count1m++
+			totalRespTime += req.ResponseTimeMs
+			if req.StatusCode >= 200 && req.StatusCode < 300 {
+				status2xx++
+			} else if req.StatusCode >= 400 && req.StatusCode < 500 {
+				status4xx++
+			} else if req.StatusCode >= 500 {
+				status5xx++
+			}
+		}
 	}
 
-	// Query 2: Get status distribution from last 1 minute
-	type StatusResult struct {
-		AvgRespTime float64 `gorm:"column:avg_response_time"`
-		Status2xx   int64   `gorm:"column:status_2xx"`
-		Status4xx   int64   `gorm:"column:status_4xx"`
-		Status5xx   int64   `gorm:"column:status_5xx"`
+	// Calculate averages
+	avgRespTime := 0.0
+	if count1m > 0 {
+		avgRespTime = totalRespTime / float64(count1m)
 	}
 
-	var statusResult StatusResult
-	statusQuery := m.db.WithContext(ctx).Table("http_requests").
-		Select(`
-			COALESCE(AVG(response_time_ms), 0) as avg_response_time,
-			SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as status_2xx,
-			SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END) as status_4xx,
-			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as status_5xx
-		`).
-		Where("timestamp > ?", oneMinuteAgo)
-
-	statusQuery = m.applyFilters(statusQuery, host, serviceFilters, excludeIPFilter)
-
-	if err := statusQuery.Scan(&statusResult).Error; err != nil {
-		m.logger.Warn("Failed to collect filtered status metrics", m.logger.Args("error", err))
-		return &RealtimeMetrics{Timestamp: now}
-	}
-
-	// Calculate rates per second based on 2-second window
-	requestRate := float64(rateResult.TotalCount) / 2.0
-	errorRate := float64(rateResult.ErrorCount) / 2.0
+	requestRate := float64(totalCount2s) / 2.0
+	errorRate := float64(errorCount2s) / 2.0
 
 	// If no recent requests (>2 seconds old), force rates to zero immediately
-	if rateResult.LastTimestamp.Valid {
-		var lastTimestamp time.Time
-		formats := []string{
-			"2006-01-02 15:04:05.999999999-07:00",
-			"2006-01-02 15:04:05.999-07:00",
-			"2006-01-02 15:04:05",
-			time.RFC3339,
-			time.RFC3339Nano,
-		}
-
-		for _, format := range formats {
-			if t, err := time.Parse(format, rateResult.LastTimestamp.String); err == nil {
-				lastTimestamp = t
-				break
-			}
-		}
-
-		if !lastTimestamp.IsZero() {
-			timeSinceLastRequest := now.Sub(lastTimestamp)
-			if timeSinceLastRequest > 2*time.Second {
-				requestRate = 0.0
-				errorRate = 0.0
-			}
+	if !lastRequestTime.IsZero() {
+		timeSinceLastRequest := now.Sub(lastRequestTime)
+		if timeSinceLastRequest > 2*time.Second {
+			requestRate = 0.0
+			errorRate = 0.0
 		}
 	}
 
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
 		ErrorRate:         errorRate,
-		AvgResponseTime:   statusResult.AvgRespTime,
-		ActiveConnections: 0, // Not applicable for filtered metrics
-		Status2xx:         statusResult.Status2xx,
-		Status4xx:         statusResult.Status4xx,
-		Status5xx:         statusResult.Status5xx,
+		AvgResponseTime:   avgRespTime,
+		ActiveConnections: 0, // Not tracked per filter
+		Status2xx:         status2xx,
+		Status4xx:         status4xx,
+		Status5xx:         status5xx,
 		Timestamp:         now,
 	}
 }
@@ -484,109 +419,102 @@ func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFi
 		return m.perServiceMetrics
 	}
 
-	return m.fetchPerServiceMetrics(filters, excludeIP)
+	m.bufferMu.RLock()
+	defer m.bufferMu.RUnlock()
+	return m.calculatePerServiceMetrics(m.requestBuffer, filters, excludeIP)
 }
 
-// fetchPerServiceMetrics queries the database for per-service metrics
-func (m *MetricsCollector) fetchPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
+// calculatePerServiceMetrics calculates per-service metrics from the buffer
+func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPRequest, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
 	// Use 2-second window for accurate real-time rates
 	twoSecondsAgo := time.Now().Add(-2 * time.Second)
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancel()
+	// Map to aggregate counts by service
+	serviceCounts := make(map[string]int64)
 
-	// Query database for per-service metrics
-	type ServiceResult struct {
-		BackendName string `gorm:"column:backend_name"`
-		BackendURL  string `gorm:"column:backend_url"`
-		Host        string `gorm:"column:host"`
-		TotalCount  int64  `gorm:"column:total_count"`
-	}
-
-	query := m.db.WithContext(ctx).Table("http_requests").
-		Select("backend_name, backend_url, host, COUNT(*) as total_count").
-		Where("timestamp > ?", twoSecondsAgo)
-
-	// Apply service filters (if any)
-	if len(filters) > 0 {
-		serviceQuery := m.db.Where("1 = 0") // Start with false condition
-		for _, filter := range filters {
-			switch filter.Type {
-			case "backend_name":
-				serviceQuery = serviceQuery.Or("backend_name = ?", filter.Name)
-			case "backend_url":
-				serviceQuery = serviceQuery.Or("backend_url = ?", filter.Name)
-			case "host":
-				serviceQuery = serviceQuery.Or("host = ?", filter.Name)
-			}
-		}
-		query = query.Where(serviceQuery)
-	}
-
-	// Apply IP exclusion filter (if any)
-	if excludeIP != nil && excludeIP.ClientIP != "" {
-		if len(excludeIP.ExcludeServices) == 0 {
-			// Exclude IP from all services
-			query = query.Where("client_ip != ?", excludeIP.ClientIP)
-		} else {
-			// Exclude IP only on specific services
-			serviceConds := []string{}
-			args := []interface{}{excludeIP.ClientIP}
-
-			for _, filter := range excludeIP.ExcludeServices {
-				switch filter.Type {
-				case "backend_name":
-					serviceConds = append(serviceConds, "backend_name = ?")
-					args = append(args, filter.Name)
-				case "backend_url":
-					serviceConds = append(serviceConds, "backend_url = ?")
-					args = append(args, filter.Name)
-				case "host":
-					serviceConds = append(serviceConds, "host = ?")
-					args = append(args, filter.Name)
-				}
-			}
-
-			whereClause := "NOT (client_ip = ? AND (" + strings.Join(serviceConds, " OR ") + "))"
-			query = query.Where(whereClause, args...)
-		}
-	}
-
-	var results []ServiceResult
-	err := query.Group("backend_name, backend_url, host").
-		Scan(&results).Error
-
-	if err != nil {
-		m.logger.Warn("Failed to collect per-service metrics", m.logger.Args("error", err))
-		return []ServiceMetrics{}
-	}
-
-	// Extract service names and calculate rates (per second based on 10-second window)
-	serviceMetrics := make([]ServiceMetrics, 0, len(results))
-	for _, result := range results {
-		// Determine service name based on priority: backend_name > backend_url > host
-		serviceName := ""
-		if result.BackendName != "" {
-			serviceName = extractServiceName(result.BackendName)
-		} else if result.BackendURL != "" {
-			serviceName = result.BackendURL
-		} else if result.Host != "" {
-			serviceName = result.Host
-		}
-
-		if serviceName == "" {
+	for _, req := range buffer {
+		if !req.Timestamp.After(twoSecondsAgo) {
 			continue
 		}
 
-		requestRate := float64(result.TotalCount) / 2.0 // Divide by 2 seconds
-		serviceMetrics = append(serviceMetrics, ServiceMetrics{
-			ServiceName: serviceName,
-			RequestRate: requestRate,
+		// Apply filters
+		if !m.matchesFilters(req, filters, excludeIP) {
+			continue
+		}
+
+		// Determine service name
+		serviceName := ""
+		if req.BackendName != "" {
+			serviceName = extractServiceName(req.BackendName)
+		} else if req.BackendURL != "" {
+			serviceName = req.BackendURL
+		} else if req.Host != "" {
+			serviceName = req.Host
+		}
+
+		if serviceName != "" {
+			serviceCounts[serviceName]++
+		}
+	}
+
+	// Convert map to slice
+	metrics := make([]ServiceMetrics, 0, len(serviceCounts))
+	for name, count := range serviceCounts {
+		metrics = append(metrics, ServiceMetrics{
+			ServiceName: name,
+			RequestRate: float64(count) / 2.0,
 		})
 	}
 
-	return serviceMetrics
+	return metrics
+}
+
+// matchesFilters checks if a request matches the given filters
+func (m *MetricsCollector) matchesFilters(req *models.HTTPRequest, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) bool {
+	// Apply IP exclusion
+	if excludeIP != nil && excludeIP.ClientIP != "" {
+		if req.ClientIP == excludeIP.ClientIP {
+			if len(excludeIP.ExcludeServices) == 0 {
+				return false // Exclude from all
+			}
+			// Check if excluded from this specific service
+			for _, filter := range excludeIP.ExcludeServices {
+				if m.matchesServiceFilter(req, filter) {
+					return false
+				}
+			}
+		}
+	}
+
+	// Apply service filters (OR logic)
+	if len(filters) > 0 {
+		matched := false
+		for _, filter := range filters {
+			if m.matchesServiceFilter(req, filter) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
+// matchesServiceFilter checks if a request matches a single service filter
+func (m *MetricsCollector) matchesServiceFilter(req *models.HTTPRequest, filter repositories.ServiceFilter) bool {
+	switch filter.Type {
+	case "backend_name":
+		return req.BackendName == filter.Name
+	case "backend_url":
+		return req.BackendURL == filter.Name
+	case "host":
+		return req.Host == filter.Name
+	default:
+		return req.BackendName == filter.Name || req.BackendURL == filter.Name || req.Host == filter.Name
+	}
 }
 
 // extractServiceName extracts the readable name from backend_name

@@ -9,6 +9,7 @@ import (
 	"loglynx/internal/database/repositories"
 	"loglynx/internal/enrichment"
 	parsers "loglynx/internal/parser"
+	"loglynx/internal/realtime"
 
 	"github.com/pterm/pterm"
 )
@@ -19,6 +20,7 @@ type Coordinator struct {
 	httpRepo            repositories.HTTPRequestRepository
 	parserReg           *parsers.Registry
 	geoIP               *enrichment.GeoIPEnricher
+	metricsCollector    *realtime.MetricsCollector
 	processors          map[string]*SourceProcessor // Changed from slice to map for O(1) lookup by source name
 	logger              *pterm.Logger
 	mu                  sync.RWMutex
@@ -35,6 +37,7 @@ func NewCoordinator(
 	httpRepo repositories.HTTPRequestRepository,
 	parserReg *parsers.Registry,
 	geoIP *enrichment.GeoIPEnricher,
+	metricsCollector *realtime.MetricsCollector,
 	logger *pterm.Logger,
 	initialImportDays int,
 	initialImportEnable bool,
@@ -46,6 +49,7 @@ func NewCoordinator(
 		httpRepo:            httpRepo,
 		parserReg:           parserReg,
 		geoIP:               geoIP,
+		metricsCollector:    metricsCollector,
 		processors:          make(map[string]*SourceProcessor),
 		logger:              logger,
 		isRunning:           false,
@@ -140,6 +144,7 @@ func (c *Coordinator) startSourceProcessorLocked(source *models.LogSource) error
 		c.httpRepo,
 		c.sourceRepo,
 		c.geoIP,
+		c.metricsCollector,
 		c.logger,
 		c.batchSize,
 		c.workerPoolSize,
