@@ -133,12 +133,16 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 	}
 	h.activeConnections++
 	currentConnections := h.activeConnections
+	// Update collector with active connection count
+	h.collector.SetActiveConnections(h.activeConnections)
 	h.connectionMutex.Unlock()
 
 	// Ensure we decrement on exit
 	defer func() {
 		h.connectionMutex.Lock()
 		h.activeConnections--
+		// Update collector with active connection count
+		h.collector.SetActiveConnections(h.activeConnections)
 		h.connectionMutex.Unlock()
 
 		// Recover from panics
@@ -162,9 +166,6 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 	ticker := time.NewTicker(1 * time.Second) // Send updates every 1 second for real-time responsiveness
 	defer ticker.Stop()
 
-	// Channel to detect client disconnect
-	clientGone := c.Writer.CloseNotify()
-
 	h.logger.Debug("Client connected to real-time metrics stream",
 		h.logger.Args("client_ip", c.ClientIP(), "host_filter", serviceName, "exclude_own_ip", excludeIPFilter != nil, "active_connections", currentConnections))
 
@@ -176,15 +177,26 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 				h.logger.Args("client_ip", c.ClientIP()))
 			return
 
-		case <-clientGone:
-			h.logger.Debug("Client disconnected from real-time stream",
-				h.logger.Args("client_ip", c.ClientIP()))
-			return
-
 		case <-ticker.C:
 			// Get current metrics with filters
 			var metrics *realtime.RealtimeMetrics
-			if len(serviceFilters) > 0 || excludeIPFilter != nil {
+
+			// Optimization: If no filters are active, use the cached global metrics JSON directly
+			// This avoids hitting the database AND avoids JSON marshaling for every connected client
+			if serviceName == "" && len(serviceFilters) == 0 && excludeIPFilter == nil {
+				if cachedJSON := h.collector.GetCachedJSON(); cachedJSON != nil {
+					// Write cached JSON directly to stream
+					_, err := fmt.Fprintf(c.Writer, "data: %s\n\n", cachedJSON)
+					if err != nil {
+						h.logger.Debug("Failed to write SSE data", h.logger.Args("error", err))
+						return
+					}
+					c.Writer.Flush()
+					continue
+				}
+				// Fallback if cache is empty (should rarely happen)
+				metrics = h.collector.GetMetrics()
+			} else if len(serviceFilters) > 0 || excludeIPFilter != nil {
 				// Use new filter system
 				metrics = h.collector.GetMetricsWithFilters(serviceName, serviceFilters, excludeIPFilter)
 			} else {

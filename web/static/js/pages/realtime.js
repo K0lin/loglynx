@@ -258,16 +258,23 @@ function updateRealtimeMetrics(metrics) {
     $('#live5xx').text(metrics.status_5xx || 0);
 
     // Update live chart
-    const timeLabel = now.toLocaleTimeString('en-US', {
+    const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
         hour12: false
     });
 
-    liveChartLabels.push(timeLabel);
-    liveRequestRateData.push(metrics.request_rate);
-    liveAvgResponseData.push(metrics.avg_response_time);
+    // Avoid duplicate points for the same timestamp
+    if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
+        // Update the last point instead of adding a new one
+        liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
+        liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+    } else {
+        liveChartLabels.push(timeLabel);
+        liveRequestRateData.push(metrics.request_rate);
+        liveAvgResponseData.push(metrics.avg_response_time);
+    }
 
     // Keep only last 60 points (1 minute at 1sec intervals)
     if (liveChartLabels.length > maxDataPoints) {
@@ -347,8 +354,8 @@ function initLiveRequestsTable() {
     // Start by loading recent requests
     loadRecentRequests();
 
-    // Refresh every 10 seconds
-    liveRequestsInterval = setInterval(loadRecentRequests, 10000);
+    // Refresh every 3 seconds
+    liveRequestsInterval = setInterval(loadRecentRequests, 3000);
 }
 
 // Load recent requests

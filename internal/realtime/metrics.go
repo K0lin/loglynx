@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,12 @@ type MetricsCollector struct {
 	last5xxCount      int64
 	lastUpdate        time.Time
 	lastRequestTime   time.Time // timestamp of last request seen
+
+	// Cached per-service metrics (global)
+	perServiceMetrics []ServiceMetrics
+
+	// Cached JSON for global metrics (optimization)
+	cachedJSON []byte
 
 	// Lifecycle management
 	stopChan chan struct{}
@@ -88,6 +95,20 @@ func (m *MetricsCollector) Stop() {
 		close(m.stopChan)
 	}
 	m.mu.Unlock()
+}
+
+// SetActiveConnections updates the active connection count
+func (m *MetricsCollector) SetActiveConnections(n int) {
+	m.mu.Lock()
+	m.activeConnections = n
+	m.mu.Unlock()
+}
+
+// GetCachedJSON returns the cached JSON representation of global metrics
+func (m *MetricsCollector) GetCachedJSON() []byte {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cachedJSON
 }
 
 // collectMetrics gathers current statistics from the database
@@ -172,8 +193,28 @@ func (m *MetricsCollector) collectMetrics() {
 		errorRate = 0.0
 	}
 
+	// Collect per-service metrics (global)
+	perServiceMetrics := m.fetchPerServiceMetrics(nil, nil)
+
+	// Prepare metrics struct for JSON caching
+	metrics := &RealtimeMetrics{
+		RequestRate:       requestRate,
+		ErrorRate:         errorRate,
+		AvgResponseTime:   result.AvgRespTime,
+		ActiveConnections: m.activeConnections, // Use current active connections
+		Status2xx:         result.Status2xx,
+		Status4xx:         result.Status4xx,
+		Status5xx:         result.Status5xx,
+		Timestamp:         now,
+	}
+
+	// Marshal to JSON immediately for caching
+	// This avoids repeated marshaling for every connected client
+	jsonBytes, _ := json.Marshal(metrics)
+
 	// Update metrics with lock
 	m.mu.Lock()
+	m.perServiceMetrics = perServiceMetrics
 	m.requestRate = requestRate
 	m.errorRate = errorRate
 	m.avgResponseTime = result.AvgRespTime
@@ -182,6 +223,9 @@ func (m *MetricsCollector) collectMetrics() {
 	m.last5xxCount = result.Status5xx
 	m.lastUpdate = now
 	m.lastRequestTime = lastRequestTime
+	if jsonBytes != nil {
+		m.cachedJSON = jsonBytes
+	}
 	m.mu.Unlock()
 
 	m.logger.Trace("Collected real-time metrics",
@@ -396,6 +440,18 @@ type ServiceMetrics struct {
 
 // GetPerServiceMetrics returns real-time metrics for each service
 func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
+	// If no filters, return cached global metrics
+	if len(filters) == 0 && (excludeIP == nil || excludeIP.ClientIP == "") {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		return m.perServiceMetrics
+	}
+
+	return m.fetchPerServiceMetrics(filters, excludeIP)
+}
+
+// fetchPerServiceMetrics queries the database for per-service metrics
+func (m *MetricsCollector) fetchPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
 	// Use 2-second window for accurate real-time rates
 	twoSecondsAgo := time.Now().Add(-2 * time.Second)
 
