@@ -55,7 +55,7 @@ info:
     - `hours`: Time range in hours (1-8760, default varies by endpoint)
     - `days`: Time range in days (1-365, default varies by endpoint)
 
-  version: 1.0.0
+  version: 1.0.2
   contact:
     name: LogLynx Support
     url: https://github.com/k0lin/loglynx
@@ -1973,49 +1973,110 @@ components:
       type: object
       description: Real-time metrics snapshot
       properties:
-        timestamp:
-          type: string
-          format: date-time
-          example: "2025-11-03T14:32:15Z"
-        requests_per_second:
+        request_rate:
           type: number
           format: double
           description: Current requests per second
           example: 45.3
+        error_rate:
+          type: number
+          format: double
+          description: Error rate (errors per second)
+          example: 2.3
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time (ms)
+          example: 89.5
         active_connections:
           type: integer
           description: Number of active connections
           example: 123
-        avg_response_time:
-          type: number
-          format: double
-          description: Average response time in last minute (ms)
-          example: 89.5
-        error_rate:
-          type: number
-          format: double
-          description: Error rate percentage
-          example: 2.3
-        bandwidth_per_second:
+        status_2xx:
           type: integer
           format: int64
-          description: Current bandwidth usage (bytes/sec)
-          example: 5242880
-        top_paths:
+          description: Count of 2xx status codes
+          example: 150
+        status_4xx:
+          type: integer
+          format: int64
+          description: Count of 4xx status codes
+          example: 5
+        status_5xx:
+          type: integer
+          format: int64
+          description: Count of 5xx status codes
+          example: 1
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:32:15Z"
+        top_ips:
           type: array
-          description: Most requested paths in last minute
+          description: Top IPs by request rate
           items:
-            type: object
-            properties:
-              path:
-                type: string
-              count:
-                type: integer
-        status_codes:
-          type: object
-          description: Status code counts in last minute
-          additionalProperties:
-            type: integer
+            $ref: '#/components/schemas/IPMetrics'
+        latest_requests:
+          type: array
+          description: List of most recent requests
+          items:
+            $ref: '#/components/schemas/RequestSummary'
+
+    IPMetrics:
+      type: object
+      description: Metrics for a specific IP address
+      properties:
+        ip:
+          type: string
+          format: ipv4
+          example: "192.168.1.100"
+        country:
+          type: string
+          description: ISO country code
+          example: "US"
+        request_rate:
+          type: number
+          format: double
+          description: Requests per second
+          example: 12.5
+
+    RequestSummary:
+      type: object
+      description: Lightweight summary of a request
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 12345
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:32:15Z"
+        method:
+          type: string
+          example: "GET"
+        host:
+          type: string
+          example: "api.example.com"
+        backend_name:
+          type: string
+          example: "api-service"
+        path:
+          type: string
+          example: "/api/v1/users"
+        status_code:
+          type: integer
+          example: 200
+        response_time_ms:
+          type: number
+          format: double
+          example: 45.2
+        geo_country:
+          type: string
+          example: "US"
+        client_ip:
+          type: string
+          example: "192.168.1.100"
 
     ServiceMetrics:
       type: object
@@ -2024,21 +2085,11 @@ components:
         service_name:
           type: string
           example: "api-service-prod"
-        requests_per_second:
+        request_rate:
           type: number
           format: double
+          description: Requests per second
           example: 23.4
-        avg_response_time:
-          type: number
-          format: double
-          example: 67.8
-        error_count:
-          type: integer
-          example: 3
-        bandwidth_per_second:
-          type: integer
-          format: int64
-          example: 2621440
 
     DomainStats:
       type: object
