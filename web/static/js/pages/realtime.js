@@ -3,16 +3,39 @@
  * Live metrics streaming with SSE
  */
 
-let liveChart, perServiceChart;
+let liveChart, perServiceChart, miniLiveChart;
 let eventSource = null;
 let updateCount = 0;
 let isStreamPaused = false;
+let liveRequestsInterval = null;
+let reconnectTimeout = null;
 
-// Live chart data (keep last 30 data points = 1 minute at 2sec intervals)
-const maxDataPoints = 30;
+// Mini chart data
+const miniChartMaxPoints = 30;
+let miniChartData = [];
+let miniChartLabels = [];
+
+// Exponential backoff for reconnection
+let reconnectAttempts = 0;
+const INITIAL_RECONNECT_DELAY = 1000; // Start with 1 second
+const MAX_RECONNECT_DELAY = 30000; // Max 30 seconds
+const BACKOFF_MULTIPLIER = 2;
+
+// Performance monitoring for SSE
+let sseMetrics = {
+    messagesReceived: 0,
+    connectionTime: null,
+    lastMessageTime: null,
+    avgMessageInterval: 0,
+    messageIntervals: []
+};
+
+// Live chart data (keep last 60 data points = 1 minute at 1sec intervals)
+const maxDataPoints = 60;
 let liveChartLabels = [];
 let liveRequestRateData = [];
 let liveAvgResponseData = [];
+let lastMetricsTimestamp = null;
 
 // Initialize live chart (dual Y-axis)
 function initLiveChart() {
@@ -100,11 +123,61 @@ function initPerServiceChart() {
     });
 }
 
+// Initialize mini live chart
+function initMiniChart() {
+    const ctx = document.getElementById('miniLiveChart').getContext('2d');
+    
+    // Initialize empty data
+    for (let i = 0; i < miniChartMaxPoints; i++) {
+        miniChartLabels.push('');
+        miniChartData.push(0);
+    }
+
+    miniLiveChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: miniChartLabels,
+            datasets: [{
+                data: miniChartData,
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false }
+            },
+            scales: {
+                x: { display: false },
+                y: { 
+                    display: false,
+                    min: 0
+                }
+            },
+            animation: false
+        }
+    });
+}
+
 // Connect to real-time SSE stream
 function connectRealtimeStream() {
+    // Clear any pending reconnection timeout to prevent race conditions
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
+
     // Close existing connection
     if (eventSource) {
         eventSource.close();
+        eventSource = null;
     }
 
     // Show connecting status
@@ -114,29 +187,74 @@ function connectRealtimeStream() {
     eventSource = LogLynxAPI.connectRealtimeStream(
         // On message callback
         (metrics) => {
+            // Always update mini monitor
+            updateMiniMonitor(metrics);
+
             if (!isStreamPaused) {
+                // Update SSE performance metrics
+                const now = Date.now();
+                sseMetrics.messagesReceived++;
+
+                if (sseMetrics.lastMessageTime) {
+                    const interval = now - sseMetrics.lastMessageTime;
+                    sseMetrics.messageIntervals.push(interval);
+
+                    // Keep last 10 intervals for average calculation
+                    if (sseMetrics.messageIntervals.length > 10) {
+                        sseMetrics.messageIntervals.shift();
+                    }
+
+                    // Calculate average interval
+                    sseMetrics.avgMessageInterval =
+                        sseMetrics.messageIntervals.reduce((a, b) => a + b, 0) /
+                        sseMetrics.messageIntervals.length;
+                }
+
+                sseMetrics.lastMessageTime = now;
+
                 updateRealtimeMetrics(metrics);
                 updateCount++;
                 $('#updateCount').text(updateCount);
-                $('#lastUpdate').text(LogLynxUtils.formatRelativeTime(metrics.timestamp || new Date()));
             }
         },
         // On error callback
         (error) => {
             console.error('SSE connection error:', error);
-            showConnectionStatus('Connection lost. Reconnecting...', 'error');
 
-            // Attempt to reconnect after 5 seconds
-            setTimeout(() => {
-                if (eventSource.readyState === EventSource.CLOSED) {
+            // Increment reconnect attempts for exponential backoff
+            reconnectAttempts++;
+
+            // Calculate delay with exponential backoff
+            const delay = Math.min(
+                INITIAL_RECONNECT_DELAY * Math.pow(BACKOFF_MULTIPLIER, reconnectAttempts - 1),
+                MAX_RECONNECT_DELAY
+            );
+
+            showConnectionStatus(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`, 'error');
+
+            // Clear any existing timeout
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+
+            // Attempt to reconnect with exponential backoff
+            reconnectTimeout = setTimeout(() => {
+                if (eventSource && eventSource.readyState === EventSource.CLOSED) {
                     connectRealtimeStream();
                 }
-            }, 5000);
+                reconnectTimeout = null;
+            }, delay);
         }
     );
 
     // Connection opened
     eventSource.onopen = () => {
+        // Reset reconnect attempts on successful connection
+        reconnectAttempts = 0;
+
+        // Track connection time for performance monitoring
+        sseMetrics.connectionTime = Date.now();
+
         showConnectionStatus('Connected', 'success');
         setTimeout(() => {
             hideConnectionStatus();
@@ -144,8 +262,41 @@ function connectRealtimeStream() {
     };
 }
 
+// Get SSE performance metrics (accessible via browser console for debugging)
+function getSSEMetrics() {
+    const uptime = sseMetrics.connectionTime
+        ? ((Date.now() - sseMetrics.connectionTime) / 1000).toFixed(1)
+        : 0;
+
+    return {
+        messagesReceived: sseMetrics.messagesReceived,
+        avgMessageInterval: sseMetrics.avgMessageInterval.toFixed(0) + 'ms',
+        uptime: uptime + 's',
+        reconnectAttempts,
+        apiMetrics: LogLynxAPI.getPerformanceMetrics()
+    };
+}
+
+// Make available globally for debugging
+window.getSSEMetrics = getSSEMetrics;
+
 // Update real-time metrics
 function updateRealtimeMetrics(metrics) {
+    // Validate metrics timestamp to detect stale data
+    const now = new Date();
+    let metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : now;
+
+    // Check if metrics are stale (older than 3 seconds)
+    const metricsAge = (now - metricsTimestamp) / 1000; // in seconds
+    const isStale = metricsAge > 3;
+
+    // If same timestamp as before and stale, skip update to avoid showing old data
+    if (lastMetricsTimestamp && metricsTimestamp.getTime() === lastMetricsTimestamp.getTime() && isStale) {
+        console.debug('Skipping stale metrics update', {age: metricsAge, timestamp: metricsTimestamp});
+        return;
+    }
+    lastMetricsTimestamp = metricsTimestamp;
+
     // Update KPI cards
     $('#liveRequestRate').text(metrics.request_rate.toFixed(2));
     $('#liveErrorRate').text(metrics.error_rate.toFixed(2));
@@ -157,19 +308,25 @@ function updateRealtimeMetrics(metrics) {
     $('#live5xx').text(metrics.status_5xx || 0);
 
     // Update live chart
-    const now = new Date();
-    const timeLabel = now.toLocaleTimeString('en-US', {
+    const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
         hour12: false
     });
 
-    liveChartLabels.push(timeLabel);
-    liveRequestRateData.push(metrics.request_rate);
-    liveAvgResponseData.push(metrics.avg_response_time);
+    // Avoid duplicate points for the same timestamp
+    if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
+        // Update the last point instead of adding a new one
+        liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
+        liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+    } else {
+        liveChartLabels.push(timeLabel);
+        liveRequestRateData.push(metrics.request_rate);
+        liveAvgResponseData.push(metrics.avg_response_time);
+    }
 
-    // Keep only last 30 points
+    // Keep only last 60 points (1 minute at 1sec intervals)
     if (liveChartLabels.length > maxDataPoints) {
         liveChartLabels.shift();
         liveRequestRateData.shift();
@@ -186,8 +343,113 @@ function updateRealtimeMetrics(metrics) {
     // Update per-service metrics
     updatePerServiceMetrics();
 
-    // Add visual feedback
-    $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
+    // Update Top IPs table
+    updateTopIPsTable(metrics.top_ips);
+
+    // Update Live Requests Table (Prepend new requests)
+    if (metrics.latest_requests && metrics.latest_requests.length > 0) {
+        prependLatestRequests(metrics.latest_requests);
+    }
+
+    // Add visual feedback (with stale indicator if data is old)
+    if (isStale) {
+        $('.live-indicator').css('opacity', '0.5'); // Dimmed for stale data
+    } else {
+        $('.live-indicator').css('opacity', '1').animate({opacity: 0.3}, 150).animate({opacity: 1}, 150);
+    }
+}
+
+// Prepend latest requests to table
+function prependLatestRequests(requests) {
+    const tbody = $('#liveRequestsBody');
+    
+    // Remove "No requests yet" row if present
+    if (tbody.find('td[colspan="8"]').length > 0) {
+        tbody.empty();
+    }
+
+    // Initialize seen IDs set if not exists
+    if (!window.seenRequestIds) {
+        window.seenRequestIds = new Set();
+        // Populate from existing rows
+        tbody.find('tr').each(function() {
+            const id = $(this).data('id');
+            if (id) window.seenRequestIds.add(parseInt(id));
+        });
+    }
+
+    // Process requests
+    requests.forEach(req => {
+        if (window.seenRequestIds.has(req.id)) return;
+        window.seenRequestIds.add(req.id);
+
+        const row = `
+            <tr class="fade-in" data-id="${req.id}">
+                <td>${LogLynxUtils.formatDateTime(req.timestamp)}</td>
+                <td>${LogLynxUtils.getMethodBadge(req.method)}</td>
+                <td>${LogLynxUtils.formatHostDisplay(req, '-')}</td>
+                <td><code>${LogLynxUtils.truncate(req.path, 40)}</code></td>
+                <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
+                <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
+                <td>${req.geo_country || '-'}</td>
+                <td>${req.client_ip}</td>
+            </tr>
+        `;
+        tbody.prepend(row);
+    });
+
+    // Limit to 50 rows
+    const rows = tbody.find('tr');
+    if (rows.length > 50) {
+        rows.slice(50).remove();
+        // Rebuild Set to keep memory usage low
+        window.seenRequestIds.clear();
+        tbody.find('tr').each(function() {
+            const id = $(this).data('id');
+            if (id) window.seenRequestIds.add(parseInt(id));
+        });
+    }
+}
+
+// Update Top IPs Table
+function updateTopIPsTable(topIPs) {
+    const tbody = $('#topIPsBody');
+    
+    if (!topIPs || topIPs.length === 0) {
+        tbody.html('<tr><td colspan="3" class="text-center text-muted">No active clients</td></tr>');
+        return;
+    }
+
+    let html = '';
+    topIPs.forEach(ip => {
+        // Calculate width for progress bar background
+        // Assuming max rate is the first one since it's sorted
+        const maxRate = topIPs[0].request_rate;
+        const percent = (ip.request_rate / maxRate) * 100;
+        
+        html += `
+            <tr>
+                <td>
+                    <a href="/ip/${ip.ip}" class="text-decoration-none">
+                        <code>${ip.ip}</code>
+                    </a>
+                </td>
+                <td>
+                    ${ip.country ? `<span>${countryCodeToFlag(ip.country, ip.country)} ${countryToContinentMap[ip.country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[ip.country]?.continent || 'Unknown'}</small>` : '<span class="text-muted">-</span>'}
+                </td>
+                <td class="text-end">
+                    <div class="d-flex align-items-center justify-content-end gap-2">
+                        <span class="fw-bold">${ip.request_rate.toFixed(1)}</span>
+                        <div class="progress" style="width: 50px; height: 4px;">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.html(html);
 }
 
 // Update per-service metrics
@@ -234,12 +496,14 @@ function hideConnectionStatus() {
 
 // Initialize DataTable for live requests
 function initLiveRequestsTable() {
+    // Clear any existing interval to prevent leaks
+    if (liveRequestsInterval) {
+        clearInterval(liveRequestsInterval);
+    }
+
     // We'll manually update this table with real-time data
     // Start by loading recent requests
     loadRecentRequests();
-
-    // Refresh every 10 seconds
-    setInterval(loadRecentRequests, 10000);
 }
 
 // Load recent requests
@@ -263,14 +527,14 @@ function updateLiveRequestsTable(requests) {
     } else {
         requests.forEach(req => {
             html += `
-                <tr class="fade-in">
+                <tr class="fade-in" data-id="${req.ID}">
                     <td>${LogLynxUtils.formatDateTime(req.Timestamp)}</td>
                     <td>${LogLynxUtils.getMethodBadge(req.Method)}</td>
                     <td>${LogLynxUtils.formatHostDisplay(req, '-')}</td>
                     <td><code>${LogLynxUtils.truncate(req.Path, 40)}</code></td>
                     <td>${LogLynxUtils.getStatusBadge(req.StatusCode)}</td>
                     <td>${LogLynxUtils.formatMs(req.ResponseTimeMs || 0)}</td>
-                    <td>${req.GeoCountry || '-'}</td>
+                    <td>${req.GeoCountry ? `<span>${countryCodeToFlag(req.GeoCountry, req.GeoCountry)} ${countryToContinentMap[req.GeoCountry]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.GeoCountry]?.continent || 'Unknown'}</small>` : '-'}</td>
                     <td>${req.ClientIP}</td>
                 </tr>
             `;
@@ -280,18 +544,54 @@ function updateLiveRequestsTable(requests) {
     tbody.html(html);
 }
 
+// Update Mini Monitor
+function updateMiniMonitor(metrics) {
+    // Update value
+    $('#miniRequestRate').text(metrics.request_rate.toFixed(1));
+
+    // Update chart
+    if (miniLiveChart) {
+        miniChartData.push(metrics.request_rate);
+        miniChartLabels.push('');
+        
+        if (miniChartData.length > miniChartMaxPoints) {
+            miniChartData.shift();
+            miniChartLabels.shift();
+        }
+        
+        miniLiveChart.data.datasets[0].data = miniChartData;
+        miniLiveChart.update('none');
+    }
+}
+
 // Pause/resume stream
 function toggleStreamPause() {
     isStreamPaused = !isStreamPaused;
-    const btn = $('#pauseStream');
+    const btns = $('.pause-stream-btn');
+    const indicator = $('.live-indicator');
+    const miniMonitor = $('#miniLiveMonitor');
 
     if (isStreamPaused) {
-        btn.html('<i class="fas fa-play"></i> Resume');
-        btn.removeClass('btn-outline').addClass('btn-primary');
+        btns.html('<i class="fas fa-play"></i> Resume');
+        btns.removeClass('btn-outline').addClass('btn-primary');
+        
+        // Update indicator
+        indicator.addClass('paused').html('<i class="fas fa-pause" style="font-size: 0.7em; margin-right: 4px;"></i> PAUSED');
+        
+        // Show mini monitor
+        miniMonitor.fadeIn(300);
+        
         LogLynxUtils.showNotification('Stream paused', 'info', 2000);
     } else {
-        btn.html('<i class="fas fa-pause"></i> Pause');
-        btn.removeClass('btn-primary').addClass('btn-outline');
+        btns.html('<i class="fas fa-pause"></i> Pause');
+        btns.removeClass('btn-primary').addClass('btn-outline');
+        
+        // Restore indicator
+        indicator.removeClass('paused').html('<span class="live-indicator-dot"></span> STREAMING');
+        
+        // Hide mini monitor
+        miniMonitor.fadeOut(300);
+        
         LogLynxUtils.showNotification('Stream resumed', 'success', 2000);
     }
 }
@@ -343,7 +643,7 @@ function initEventListeners() {
         LogLynxUtils.showNotification('Reconnecting to stream...', 'info', 2000);
     });
 
-    $('#pauseStream').on('click', toggleStreamPause);
+    $('.pause-stream-btn').on('click', toggleStreamPause);
 
     $('#clearStream').on('click', () => {
         if (confirm('Clear all live stream data?')) {
@@ -368,6 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
     initLiveChart();
     initPerServiceChart();
+    initMiniChart();
 
     // Initialize live requests table
     initLiveRequestsTable();
@@ -394,5 +695,14 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('beforeunload', () => {
     if (eventSource) {
         eventSource.close();
+        eventSource = null;
+    }
+    if (liveRequestsInterval) {
+        clearInterval(liveRequestsInterval);
+        liveRequestsInterval = null;
+    }
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
     }
 });

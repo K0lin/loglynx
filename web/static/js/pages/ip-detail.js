@@ -298,6 +298,20 @@ function updateTimelineChart(data) {
     const ctx = document.getElementById('timelineChart');
     if (!ctx) return;
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'timelineChart',
+        'No IP timeline data available'
+    )) {
+        // Clear existing chart
+        if (timelineChart) {
+            timelineChart.destroy();
+            timelineChart = null;
+        }
+        return;
+    }
+
     // Destroy existing chart
     if (timelineChart) {
         timelineChart.destroy();
@@ -355,7 +369,7 @@ function updateTimelineChart(data) {
                 },
                 x: {
                     grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                    ticks: { 
+                    ticks: {
                         color: '#B0B0B0',
                         maxRotation: 45,
                         minRotation: 45
@@ -372,6 +386,20 @@ function updateTimelineChart(data) {
 function updateHeatmapChart(data) {
     const ctx = document.getElementById('heatmapChart');
     if (!ctx) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'heatmapChart',
+        'No IP heatmap data available'
+    )) {
+        // Clear existing chart
+        if (heatmapChart) {
+            heatmapChart.destroy();
+            heatmapChart = null;
+        }
+        return;
+    }
 
     // Destroy existing chart
     if (heatmapChart) {
@@ -445,6 +473,20 @@ function updateStatusCodeChart(data) {
     const ctx = document.getElementById('statusCodeChart');
     if (!ctx) return;
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'statusCodeChart',
+        'No status code data available'
+    )) {
+        // Clear existing chart
+        if (statusCodeChart) {
+            statusCodeChart.destroy();
+            statusCodeChart = null;
+        }
+        return;
+    }
+
     if (statusCodeChart) {
         statusCodeChart.destroy();
     }
@@ -486,6 +528,20 @@ function updateBrowserChart(data) {
     const ctx = document.getElementById('browserChart');
     if (!ctx) return;
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'browserChart',
+        'No browser data available'
+    )) {
+        // Clear existing chart
+        if (browserChart) {
+            browserChart.destroy();
+            browserChart = null;
+        }
+        return;
+    }
+
     if (browserChart) {
         browserChart.destroy();
     }
@@ -519,6 +575,20 @@ function updateBrowserChart(data) {
 function updateOSChart(data) {
     const ctx = document.getElementById('osChart');
     if (!ctx) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'osChart',
+        'No operating system data available'
+    )) {
+        // Clear existing chart
+        if (osChart) {
+            osChart.destroy();
+            osChart = null;
+        }
+        return;
+    }
 
     if (osChart) {
         osChart.destroy();
@@ -562,6 +632,22 @@ function updateOSChart(data) {
 function updateDeviceChart(data) {
     const ctx = document.getElementById('deviceChart');
     if (!ctx) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'deviceChart',
+        'No device type data available'
+    )) {
+        // Clear existing chart
+        if (deviceChart) {
+            deviceChart.destroy();
+            deviceChart = null;
+        }
+        // Update bot detection with zeros
+        updateBotDetection(0, 0);
+        return;
+    }
 
     if (deviceChart) {
         deviceChart.destroy();
@@ -649,6 +735,26 @@ function initBackendsTable(data) {
         backendsTable.destroy();
     }
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        data,
+        'backendsTable',
+        'datatable',
+        'No backend data available for this IP'
+    )) {
+        // Create empty DataTable with empty state
+        backendsTable = $('#backendsTable').DataTable({
+            data: [],
+            pageLength: 10,
+            order: [[3, 'desc']],
+            columnDefs: [
+                { targets: [3, 5], className: 'text-end' }
+            ],
+            ...LogLynxCharts.defaultDataTableOptions
+        });
+        return;
+    }
+
     const tableData = data.map((item, index) => [
         index + 1,
         LogLynxUtils.formatHostDisplay(item, '-'),
@@ -675,6 +781,27 @@ function initBackendsTable(data) {
 function initPathsTable(data) {
     if (pathsTable) {
         pathsTable.destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        data,
+        'pathsTable',
+        'datatable',
+        'No path data available for this IP'
+    )) {
+        // Create empty DataTable with empty state
+        pathsTable = $('#pathsTable').DataTable({
+            data: [],
+            pageLength: 10,
+            order: [[3, 'desc']],
+            columnDefs: [
+                { targets: [3], className: 'text-end' },
+                { targets: [6], orderable: false }
+            ],
+            ...LogLynxCharts.defaultDataTableOptions
+        });
+        return;
     }
 
     const tableData = data.map((item, index) => [
@@ -714,6 +841,26 @@ function copyPath(path) {
 function initRecentRequestsTable(data) {
     if (recentRequestsTable) {
         recentRequestsTable.destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        data,
+        'recentRequestsTable',
+        'datatable',
+        'No recent requests available for this IP'
+    )) {
+        // Create empty DataTable with empty state
+        recentRequestsTable = $('#recentRequestsTable').DataTable({
+            data: [],
+            pageLength: 25,
+            order: [[0, 'desc']],
+            columnDefs: [
+                { targets: [5, 6], className: 'text-end' }
+            ],
+            ...LogLynxCharts.defaultDataTableOptions
+        });
+        return;
     }
 
     const tableData = data.map(request => [

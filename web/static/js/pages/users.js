@@ -112,7 +112,19 @@ function initDeviceTypeChart() {
 
 // Update device type chart
 function updateDeviceTypeChart(data) {
-    if (!data || data.length === 0 || !deviceTypeChart) return;
+    if (!deviceTypeChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'deviceTypeChart',
+        'No device type data available'
+    )) {
+        // Clear chart data when empty
+        deviceTypeChart.data.datasets[0].data = [0, 0, 0, 0];
+        deviceTypeChart.update();
+        return;
+    }
 
     const deviceMap = { 'desktop': 0, 'mobile': 0, 'tablet': 0, 'bot': 0 };
 
@@ -145,7 +157,21 @@ function initBrowserChart() {
 
 // Update browser chart
 function updateBrowserChart(data) {
-    if (!data || data.length === 0 || !browserChart) return;
+    if (!browserChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'browserChart',
+        'No browser data available'
+    )) {
+        // Clear chart data when empty
+        browserChart.data.labels = [];
+        browserChart.data.datasets[0].data = [];
+        browserChart.update();
+        $('#browserTypes').text('0');
+        return;
+    }
 
     const topBrowsers = data.slice(0, 8);
     const labels = topBrowsers.map(b => b.browser || 'Unknown');
@@ -171,7 +197,21 @@ function initOSChart() {
 
 // Update OS chart
 function updateOSChart(data) {
-    if (!data || data.length === 0 || !osChart) return;
+    if (!osChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'osChart',
+        'No operating system data available'
+    )) {
+        // Clear chart data when empty
+        osChart.data.labels = [];
+        osChart.data.datasets[0].data = [];
+        osChart.update();
+        $('#osTypes').text('0');
+        return;
+    }
 
     const topOS = data.slice(0, 8);
     const labels = topOS.map(os => os.os || 'Unknown');
@@ -189,6 +229,31 @@ function initBrowserTable(browsersData) {
     // Destroy existing DataTable if it exists
     if ($.fn.DataTable.isDataTable('#browserTable')) {
         $('#browserTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        browsersData,
+        'browserTable',
+        'datatable',
+        'No browser data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#browserTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (data, type, row, meta) => meta.row + 1 },
+                { data: 'browser', render: (d) => `<strong>${d || 'Unknown'}</strong>` },
+                { data: 'count', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: null, render: (data) => '0%' },
+                { data: null, render: (data) => '<div style="width: 100%; height: 20px; background: #1f1f21; border-radius: 4px;"></div>' }
+            ],
+            order: [[2, 'desc']],
+            pageLength: 15,
+            autoWidth: false,
+            responsive: true
+        });
+        return;
     }
 
     const total = browsersData.reduce((sum, b) => sum + b.count, 0);
@@ -245,6 +310,31 @@ function initOSTable(osData) {
     // Destroy existing DataTable if it exists
     if ($.fn.DataTable.isDataTable('#osTable')) {
         $('#osTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        osData,
+        'osTable',
+        'datatable',
+        'No operating system data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#osTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (data, type, row, meta) => meta.row + 1 },
+                { data: 'os', render: (d) => `<strong>${d || 'Unknown'}</strong>` },
+                { data: 'count', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: null, render: (data) => '0%' },
+                { data: null, render: (data) => '<div style="width: 100%; height: 20px; background: #1f1f21; border-radius: 4px;"></div>' }
+            ],
+            order: [[2, 'desc']],
+            pageLength: 15,
+            autoWidth: false,
+            responsive: true
+        });
+        return;
     }
 
     const total = osData.reduce((sum, os) => sum + os.count, 0);
@@ -358,6 +448,30 @@ function initUserAgentTable(userAgentsData) {
     // Destroy existing DataTable if it exists
     if ($.fn.DataTable.isDataTable('#userAgentTable')) {
         $('#userAgentTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        userAgentsData,
+        'userAgentTable',
+        'datatable',
+        'No user agent data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#userAgentTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (data, type, row, meta) => meta.row + 1 },
+                { data: 'user_agent', render: (d) => `<code style="font-size: 0.75rem;">${LogLynxUtils.truncate(d || 'Unknown', 80)}</code>` },
+                { data: 'count', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: 'user_agent', render: (d) => '<span class="badge badge-secondary">Unknown</span>' }
+            ],
+            order: [[2, 'desc']],
+            pageLength: 20,
+            autoWidth: false,
+            responsive: true
+        });
+        return;
     }
 
     $('#userAgentTable').DataTable({
@@ -594,6 +708,13 @@ function initHideTrafficFilterWithReload() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if User Analytics data is available
+    const hasUserData = localStorage.getItem('loglynx_user_analytics_available');
+    if (hasUserData === 'false') {
+        window.location.href = '/';
+        return;
+    }
+
     // Initialize all charts
     initDeviceTypeChart();
     initBrowserChart();

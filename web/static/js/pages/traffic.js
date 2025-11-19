@@ -144,7 +144,13 @@ function initTrafficTimelineChart() {
 
 // Update traffic timeline chart
 function updateTrafficTimelineChart(data) {
-    if (!data || data.length === 0) {
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'trafficTimelineChart',
+        'No traffic timeline data available'
+    )) {
+        // Clear chart data when empty
         if (trafficTimelineChart) {
             trafficTimelineChart.data.labels = [];
             trafficTimelineChart.data.datasets[0].data = [];
@@ -234,6 +240,19 @@ function updateTrafficHeatmapChart(data) {
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const hourLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0') + ':00');
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'trafficHeatmapChart',
+        'No traffic heatmap data available'
+    )) {
+        // Clear chart data when empty
+        trafficHeatmapChart.data.datasets[0].data = [];
+        trafficHeatmapChart.update('none');
+        $('#totalCountries').text('0');
+        return;
+    }
+
     const heatmapData = LogLynxCharts.generateHeatmapData(data, dayNames, hourLabels);
 
     trafficHeatmapChart.data.datasets[0].data = heatmapData.data;
@@ -262,7 +281,19 @@ function initDeviceTypeChart() {
 
 // Update device type chart
 function updateDeviceTypeChart(data) {
-    if (!data || data.length === 0 || !deviceTypeChart) return;
+    if (!deviceTypeChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'deviceTypeChart',
+        'No device type data available'
+    )) {
+        // Clear chart data when empty
+        deviceTypeChart.data.datasets[0].data = [0, 0, 0, 0];
+        deviceTypeChart.update();
+        return;
+    }
 
     const deviceMap = { 'desktop': 0, 'mobile': 0, 'tablet': 0, 'bot': 0 };
 
@@ -328,7 +359,20 @@ function initTopCountriesPieChart() {
 
 // Update top countries pie chart
 function updateTopCountriesPieChart(data) {
-    if (!data || data.length === 0 || !topCountriesPieChart) return;
+    if (!topCountriesPieChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: data }] },
+        'topCountriesPieChart',
+        'No countries data available'
+    )) {
+        // Clear chart data when empty
+        topCountriesPieChart.data.labels = [];
+        topCountriesPieChart.data.datasets[0].data = [];
+        topCountriesPieChart.update();
+        return;
+    }
 
     const labels = data.map(d => d.country_name || d.country || 'Unknown');
     const values = data.map(d => d.hits);
@@ -407,6 +451,9 @@ function initASNDataTable() {
         $('#asnTable').DataTable().destroy();
     }
 
+    // Show empty state initially
+    LogLynxUtils.showEmptyState('asnTable', 'datatable', 'Loading ASN data...');
+
     $('#asnTable').DataTable({
         ajax: function(data, callback, settings) {
             // Custom ajax function that rebuilds URL with current filters
@@ -415,10 +462,21 @@ function initASNDataTable() {
             fetch(url)
                 .then(response => response.json())
                 .then(json => {
-                    callback({ data: json });
+                    // Check if data is empty and show appropriate message
+                    if (!json || json.length === 0) {
+                        LogLynxUtils.showEmptyState('asnTable', 'datatable', 'No ASN data available');
+                    } else {
+                        LogLynxUtils.clearEmptyState('asnTable', 'datatable');
+                    }
+                    callback({ data: json || [] });
                 })
                 .catch(error => {
                     console.error('[ASN Table] AJAX error:', error);
+                    LogLynxUtils.showEmptyState('asnTable', 'datatable', 'Failed to load ASN data', {
+                        subtitle: 'Please check your connection and try again',
+                        action: 'location.reload()',
+                        actionText: 'Retry'
+                    });
                     callback({ data: [] });
                 });
         },
@@ -510,7 +568,31 @@ function initTrafficByDayChart() {
 
 // Update hourly and daily charts from heatmap data
 function updateHourlyAndDailyCharts(heatmapData) {
-    if (!heatmapData || heatmapData.length === 0) return;
+    // Check for empty data and show empty state if needed
+    const isHourlyEmpty = LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: heatmapData }] },
+        'trafficByHourChart',
+        'No hourly traffic data available'
+    );
+    
+    const isDailyEmpty = LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: heatmapData }] },
+        'trafficByDayChart',
+        'No daily traffic data available'
+    );
+
+    if (!heatmapData || heatmapData.length === 0) {
+        // Clear chart data when empty
+        if (trafficByHourChart) {
+            trafficByHourChart.data.datasets[0].data = Array(24).fill(0);
+            trafficByHourChart.update('none');
+        }
+        if (trafficByDayChart) {
+            trafficByDayChart.data.datasets[0].data = Array(7).fill(0);
+            trafficByDayChart.update('none');
+        }
+        return;
+    }
 
     // Aggregate by hour
     const hourlyData = Array(24).fill(0);

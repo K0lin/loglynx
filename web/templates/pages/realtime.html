@@ -39,7 +39,7 @@
                 Real-time Monitor
                 <span class="badge badge-live ms-2">LIVE</span>
             </h2>
-            <p class="page-description">Live metrics streaming every 2 seconds</p>
+            <p class="page-description">Live metrics streaming every 1 second</p>
         </div>
         <div class="page-actions">
             <button class="btn btn-outline btn-sm" id="reconnectStream">
@@ -91,8 +91,11 @@
                 STREAMING
             </span>
         </h5>
-        <div class="chart-controls">
-            <small class="text-muted">Updates: <span id="updateCount">0</span> | Last: <span id="lastUpdate">-</span></small>
+        <div class="chart-controls d-flex align-items-center gap-2">
+            <small class="text-muted me-2">Updates: <span id="updateCount">0</span></small>
+            <button class="btn btn-sm btn-outline pause-stream-btn">
+                <i class="fas fa-pause"></i> Pause
+            </button>
         </div>
     </div>
     <div class="chart-wrapper">
@@ -101,20 +104,45 @@
 </div>
 
 <!-- Per-Service Metrics (Only shown when "All Traffic" is selected) -->
-<div class="chart-container large mb-4" id="perServiceSection">
-    <div class="chart-header">
-        <h5 class="chart-title">
-            <i class="fas fa-server"></i>
-            Request Rate per Service
-        </h5>
-        <div class="chart-controls">
-            <button class="btn btn-sm btn-outline chart-export-btn" onclick="exportPerServiceChart()">
-                <i class="fas fa-download"></i> Export
-            </button>
+<div class="grid grid-cols-2 gap-4 mb-4">
+    <div class="chart-container large" id="perServiceSection">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-server"></i>
+                Request Rate per Service
+            </h5>
+            <div class="chart-controls">
+                <button class="btn btn-sm btn-outline chart-export-btn" onclick="exportPerServiceChart()">
+                    <i class="fas fa-download"></i> Export
+                </button>
+            </div>
+        </div>
+        <div class="per-service-chart-wrapper">
+            <canvas id="perServiceChart"></canvas>
         </div>
     </div>
-    <div class="per-service-chart-wrapper">
-        <canvas id="perServiceChart"></canvas>
+
+    <div class="chart-container large" id="topIPsSection">
+        <div class="chart-header">
+            <h5 class="chart-title">
+                <i class="fas fa-users"></i>
+                Top Active Clients
+            </h5>
+        </div>
+        <div class="table-responsive" style="height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-hover" id="topIPsTable">
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>Country</th>
+                        <th class="text-end">Req/Sec</th>
+                    </tr>
+                </thead>
+                <tbody id="topIPsBody">
+                    <tr><td colspan="3" class="text-center text-muted">Waiting for data...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -135,7 +163,7 @@
                     <option value="host">Host</option>
                 </select>
             </div>
-            <button class="btn btn-sm btn-outline" id="pauseStream">
+            <button class="btn btn-sm btn-outline pause-stream-btn" id="pauseStream">
                 <i class="fas fa-pause"></i> Pause
             </button>
             <button class="btn btn-sm btn-outline" id="clearStream">
@@ -173,6 +201,27 @@
         <strong>Connection Status:</strong> <span id="connectionStatusText">Connected</span>
     </div>
 </div>
+
+<!-- Mini Live Monitor (Visible only when paused) -->
+<div id="miniLiveMonitor" class="mini-monitor-card" style="display: none;">
+    <div class="mini-monitor-header">
+        <span class="text-uppercase fw-bold text-success" style="font-size: 0.75rem;">
+            <span class="live-indicator-dot bg-success"></span> Live Traffic
+        </span>
+    </div>
+    <div class="mini-monitor-body">
+        <div class="d-flex justify-content-between align-items-end mb-2">
+            <span class="h4 mb-0" id="miniRequestRate">0</span>
+            <small class="text-muted">req/s</small>
+        </div>
+        <div class="mini-chart-wrapper">
+            <canvas id="miniLiveChart"></canvas>
+        </div>
+        <button class="btn btn-sm btn-primary w-100 mt-2" onclick="toggleStreamPause()">
+            <i class="fas fa-play me-1"></i> Resume
+        </button>
+    </div>
+</div>
             </main>
             {{template "footer" .}}
         </div>
@@ -180,6 +229,7 @@
 
     {{template "scripts-common" .}}
     <script src="/static/js/pages/realtime.js"></script>
+    <script src="/static/js/core/country-data.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             LogLynxUtils.setActiveNavItem('realtime');

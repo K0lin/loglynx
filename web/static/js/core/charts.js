@@ -585,15 +585,45 @@ const LogLynxCharts = {
      * Show empty state
      */
     showEmptyState(containerId, message = 'No data available') {
-        const container = document.getElementById(containerId);
-        if (!container) return;
+        // Delegate to the centralized utils function
+        if (window.LogLynxUtils && LogLynxUtils.showEmptyState) {
+            LogLynxUtils.showEmptyState(containerId, 'chart', message);
+        } else {
+            // Fallback to original implementation if utils is not available
+            const container = document.getElementById(containerId);
+            if (!container) return;
 
-        container.innerHTML = `
-            <div class="chart-empty">
-                <i class="fas fa-chart-line"></i>
-                <div class="chart-empty-text">${message}</div>
-            </div>
-        `;
+            container.innerHTML = `
+                <div class="chart-empty">
+                    <i class="fas fa-chart-line"></i>
+                    <div class="chart-empty-text">${message}</div>
+                </div>
+            `;
+        }
+    },
+
+    checkAndShowEmptyState(data, containerId, message = null) {
+        let isEmpty = false;
+        
+        if (!data) {
+            isEmpty = true;
+        } else if (data.datasets && Array.isArray(data.datasets)) {
+            // Check if all datasets are empty
+            isEmpty = data.datasets.every(dataset =>
+                !dataset.data ||
+                (Array.isArray(dataset.data) && dataset.data.length === 0) ||
+                (Array.isArray(dataset.data) && dataset.data.every(val => val === 0 || val === null))
+            );
+        } else if (data.labels && Array.isArray(data.labels)) {
+            // Check if labels are empty
+            isEmpty = data.labels.length === 0;
+        }
+        
+        if (isEmpty) {
+            this.showEmptyState(containerId, message || 'No chart data available');
+        }
+        
+        return isEmpty;
     }
 };
 

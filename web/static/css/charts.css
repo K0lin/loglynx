@@ -193,9 +193,11 @@ canvas {
 
 .chart-empty-text {
     font-size: var(--font-size-lg);
-    font-weight: 500;
-    color: var(--loglynx-text);
+    font-weight: 600;
+    color: #dc3545; /* Red color for "Data Not Available" */
     margin-bottom: var(--space-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .chart-empty-subtitle {
@@ -293,6 +295,12 @@ canvas {
     font-size: var(--font-size-xs);
     font-weight: 600;
     animation: blink 2s infinite;
+}
+
+.live-indicator.paused {
+    background: var(--status-warning);
+    animation: none;
+    opacity: 1 !important;
 }
 
 @keyframes blink {
@@ -542,6 +550,95 @@ canvas {
     }
 }
 
+/* Empty State Container Styles */
+.empty-state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    padding: var(--space-xl);
+    color: var(--loglynx-text-muted);
+}
+
+.empty-state-content {
+    text-align: center;
+    max-width: 400px;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    color: var(--loglynx-primary);
+    margin-bottom: var(--space-lg);
+    opacity: 0.7;
+}
+
+.empty-state-message {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--loglynx-text);
+    margin-bottom: var(--space-sm);
+}
+
+.empty-state-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--loglynx-text-muted);
+    margin-bottom: var(--space-md);
+    line-height: 1.5;
+}
+
+.empty-state-action {
+    margin-top: var(--space-md);
+}
+
+/* DataTable Empty State Styles */
+.datatable-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    padding: var(--space-xl);
+}
+
+.datatable-empty-content {
+    text-align: center;
+    max-width: 400px;
+}
+
+.datatable-empty-icon {
+    font-size: 2.5rem;
+    color: var(--loglynx-primary);
+    margin-bottom: var(--space-md);
+    opacity: 0.7;
+}
+
+.datatable-empty-message {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: #dc3545; /* Red color for "Data Not Available" */
+    margin-bottom: var(--space-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Responsive adjustments for empty states */
+@media (max-width: 768px) {
+    .empty-state-container,
+    .datatable-empty-state {
+        min-height: 200px;
+        padding: var(--space-lg);
+    }
+    
+    .empty-state-icon,
+    .datatable-empty-icon {
+        font-size: 2.5rem;
+    }
+    
+    .empty-state-message {
+        font-size: var(--font-size-base);
+    }
+}
+
 @media (max-width: 768px) {
     .chart-header {
         flex-direction: column;
@@ -566,4 +663,40 @@ canvas {
     .chart-container {
         padding: var(--space-md);
     }
+}
+
+/* Mini Live Monitor */
+.mini-monitor-card {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 240px;
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 15px;
+    z-index: 1050;
+    animation: slideInRight 0.3s ease-out;
+    backdrop-filter: blur(10px);
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.mini-monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mini-chart-wrapper {
+    height: 50px;
+    width: 100%;
+    margin-bottom: 5px;
 }

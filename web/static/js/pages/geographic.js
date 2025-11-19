@@ -261,7 +261,20 @@ function initContinentChart() {
 
 // Update continent chart
 function updateContinentChart(countriesData) {
-    if (!continentChart || !countriesData) return;
+    if (!continentChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: countriesData }] },
+        'continentChart',
+        'No continent data available'
+    )) {
+        // Clear chart data when empty
+        continentChart.data.labels = [];
+        continentChart.data.datasets[0].data = [];
+        continentChart.update();
+        return;
+    }
 
     const continentData = {};
     countriesData.forEach(country => {
@@ -293,7 +306,20 @@ function initTopCountriesBarChart() {
 
 // Update top countries bar chart
 function updateTopCountriesBarChart(countriesData) {
-    if (!topCountriesBarChart || !countriesData) return;
+    if (!topCountriesBarChart) return;
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxCharts.checkAndShowEmptyState(
+        { datasets: [{ data: countriesData }] },
+        'topCountriesBarChart',
+        'No countries data available'
+    )) {
+        // Clear chart data when empty
+        topCountriesBarChart.data.labels = [];
+        topCountriesBarChart.data.datasets[0].data = [];
+        topCountriesBarChart.update();
+        return;
+    }
 
     const top10 = countriesData.slice(0, 10);
     const labels = top10.map(c => c.country_name || c.country);
@@ -308,6 +334,35 @@ function updateTopCountriesBarChart(countriesData) {
 function initCountryTable(countriesData) {
     if ($.fn.DataTable.isDataTable('#countryTable')) {
         $('#countryTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        countriesData,
+        'countryTable',
+        'datatable',
+        'No country data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#countryTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (data, type, row, meta) => meta.row + 1 },
+                { data: 'country', render: (d, type, row) => countryCodeToFlag(d, row.country_name) },
+                { data: 'country_name', render: (d, type, row) => `<strong>${d || 'Unknown'}</strong>` },
+                { data: 'country', render: (d) => `<code>${d || '-'}</code>` },
+                { data: 'hits', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: 'unique_visitors', render: (d) => LogLynxUtils.formatNumber(d || 0) },
+                { data: 'bandwidth', render: (d) => LogLynxCharts.formatBytes(d || 0) },
+                { data: null, render: (data) => '-' },
+                { data: null, render: (data) => '<div style="width: 100%; height: 20px; background: #1f1f21; border-radius: 4px;"></div>' }
+            ],
+            order: [[4, 'desc']],
+            pageLength: 20,
+            autoWidth: false,
+            responsive: true
+        });
+        return;
     }
 
     const total = countriesData.reduce((sum, c) => sum + c.hits, 0);
@@ -325,7 +380,7 @@ function initCountryTable(countriesData) {
             },
             {
                 data: 'country_name',
-                render: (d, type, row) => `<strong>${d || countryToContinentMap[row.country]?.name || 'Unknown'}</strong>` + `<small class='text-muted'>, ${countryToContinentMap[row.country]?.continent || 'Unknown'}</small>` 
+                render: (d, type, row) => `<strong>${d || countryToContinentMap[row.country]?.name || 'Unknown'}</strong>` + `<small class='text-muted'>, ${countryToContinentMap[row.country]?.continent || 'Unknown'}</small>`
             },
             {
                 data: 'country',
@@ -406,6 +461,34 @@ function initCityTable(ipsData) {
         .sort((a, b) => b.hits - a.hits)
         .slice(0, 50);
 
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        citiesData,
+        'cityTable',
+        'datatable',
+        'No city data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#cityTable').DataTable({
+            data: [],
+            columns: [
+                { data: null, render: (data, type, row, meta) => meta.row + 1 },
+                { data: 'city', render: (d) => `<strong>${d}</strong>` },
+                { data: 'country', render: (d) => d || '-' },
+                { data: 'latitude', render: (d) => d ? d.toFixed(4) : '-' },
+                { data: 'longitude', render: (d) => d ? d.toFixed(4) : '-' },
+                { data: 'hits', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: 'bandwidth', render: (d) => LogLynxCharts.formatBytes(d) },
+                { data: null, render: (data) => '<button class="btn btn-sm btn-secondary" disabled><i class="fas fa-map-marker-alt"></i> View</button>' }
+            ],
+            order: [[5, 'desc']],
+            pageLength: 20,
+            autoWidth: false,
+            responsive: true
+        });
+        return;
+    }
+
     $('#cityTable').DataTable({
         data: citiesData,
         columns: [
@@ -460,6 +543,34 @@ function initCityTable(ipsData) {
 function initIPGeoTable(ipsData) {
     if ($.fn.DataTable.isDataTable('#ipGeoTable')) {
         $('#ipGeoTable').DataTable().destroy();
+    }
+
+    // Check for empty data and show empty state if needed
+    if (LogLynxUtils.checkAndShowEmptyState(
+        ipsData,
+        'ipGeoTable',
+        'datatable',
+        'No IP geolocation data available'
+    )) {
+        // Create empty DataTable with empty state
+        $('#ipGeoTable').DataTable({
+            data: [],
+            columns: [
+                { data: 'ip_address', render: (d) => `<a href="/ip/${d}" class="ip-link"><code>${d}</code></a>` },
+                { data: 'country', render: (d) => d || '-' },
+                { data: 'city', render: (d) => d || '-' },
+                { data: null, render: (data) => '-' },
+                { data: null, render: (data) => '-' },
+                { data: null, render: (data) => '-' },
+                { data: 'hits', render: (d) => LogLynxUtils.formatNumber(d) },
+                { data: null, render: (data) => '<button class="btn btn-sm btn-secondary" disabled><i class="fas fa-map-marker-alt"></i> Map</button>' }
+            ],
+            order: [[6, 'desc']],
+            pageLength: 20,
+            autoWidth: false,
+            responsive: true
+        });
+        return;
     }
 
     $('#ipGeoTable').DataTable({
@@ -695,6 +806,13 @@ function initHideTrafficFilterWithReload() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if GeoIP data is available
+    const hasGeoData = localStorage.getItem('loglynx_geoip_available');
+    if (hasGeoData === 'false') {
+        window.location.href = '/';
+        return;
+    }
+
     // Initialize charts
     initContinentChart();
     initTopCountriesBarChart();
