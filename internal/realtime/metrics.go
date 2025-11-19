@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -127,9 +128,9 @@ func (m *MetricsCollector) collectMetrics() {
 
 	// Query for rate calculation (last 2 seconds for real-time accuracy)
 	type RateResult struct {
-		TotalCount    int64     `gorm:"column:total_count"`
-		ErrorCount    int64     `gorm:"column:error_count"`
-		LastTimestamp time.Time `gorm:"column:last_timestamp"`
+		TotalCount    int64          `gorm:"column:total_count"`
+		ErrorCount    int64          `gorm:"column:error_count"`
+		LastTimestamp sql.NullString `gorm:"column:last_timestamp"`
 	}
 
 	var rateResult RateResult
@@ -177,9 +178,27 @@ func (m *MetricsCollector) collectMetrics() {
 
 	// Track last request time for proactive zero detection
 	var lastRequestTime time.Time
-	if !rateResult.LastTimestamp.IsZero() {
-		lastRequestTime = rateResult.LastTimestamp
-	} else {
+	if rateResult.LastTimestamp.Valid {
+		// Try parsing common formats
+		// GORM/SQLite usually stores as "2006-01-02 15:04:05.999+07:00" or similar
+		// We try a few common formats
+		formats := []string{
+			"2006-01-02 15:04:05.999999999-07:00",
+			"2006-01-02 15:04:05.999-07:00",
+			"2006-01-02 15:04:05",
+			time.RFC3339,
+			time.RFC3339Nano,
+		}
+
+		for _, format := range formats {
+			if t, err := time.Parse(format, rateResult.LastTimestamp.String); err == nil {
+				lastRequestTime = t
+				break
+			}
+		}
+	}
+
+	if lastRequestTime.IsZero() {
 		// No requests in window - use previous lastRequestTime
 		m.mu.RLock()
 		lastRequestTime = m.lastRequestTime
@@ -361,9 +380,9 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 
 	// Query 1: Get rates from last 2 seconds
 	type RateResult struct {
-		TotalCount    int64     `gorm:"column:total_count"`
-		ErrorCount    int64     `gorm:"column:error_count"`
-		LastTimestamp time.Time `gorm:"column:last_timestamp"`
+		TotalCount    int64          `gorm:"column:total_count"`
+		ErrorCount    int64          `gorm:"column:error_count"`
+		LastTimestamp sql.NullString `gorm:"column:last_timestamp"`
 	}
 
 	var rateResult RateResult
@@ -412,11 +431,29 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	errorRate := float64(rateResult.ErrorCount) / 2.0
 
 	// If no recent requests (>2 seconds old), force rates to zero immediately
-	if !rateResult.LastTimestamp.IsZero() {
-		timeSinceLastRequest := now.Sub(rateResult.LastTimestamp)
-		if timeSinceLastRequest > 2*time.Second {
-			requestRate = 0.0
-			errorRate = 0.0
+	if rateResult.LastTimestamp.Valid {
+		var lastTimestamp time.Time
+		formats := []string{
+			"2006-01-02 15:04:05.999999999-07:00",
+			"2006-01-02 15:04:05.999-07:00",
+			"2006-01-02 15:04:05",
+			time.RFC3339,
+			time.RFC3339Nano,
+		}
+
+		for _, format := range formats {
+			if t, err := time.Parse(format, rateResult.LastTimestamp.String); err == nil {
+				lastTimestamp = t
+				break
+			}
+		}
+
+		if !lastTimestamp.IsZero() {
+			timeSinceLastRequest := now.Sub(lastTimestamp)
+			if timeSinceLastRequest > 2*time.Second {
+				requestRate = 0.0
+				errorRate = 0.0
+			}
 		}
 	}
 
