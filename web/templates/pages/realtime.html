@@ -39,7 +39,7 @@
                 Real-time Monitor
                 <span class="badge badge-live ms-2">LIVE</span>
             </h2>
-            <p class="page-description">Live metrics streaming every 2 seconds</p>
+            <p class="page-description">Live metrics streaming every 1 second</p>
         </div>
         <div class="page-actions">
             <button class="btn btn-outline btn-sm" id="reconnectStream">
@@ -91,8 +91,11 @@
                 STREAMING
             </span>
         </h5>
-        <div class="chart-controls">
-            <small class="text-muted">Updates: <span id="updateCount">0</span> | Last: <span id="lastUpdate">-</span></small>
+        <div class="chart-controls d-flex align-items-center gap-2">
+            <small class="text-muted me-2">Updates: <span id="updateCount">0</span></small>
+            <button class="btn btn-sm btn-outline pause-stream-btn">
+                <i class="fas fa-pause"></i> Pause
+            </button>
         </div>
     </div>
     <div class="chart-wrapper">
@@ -160,7 +163,7 @@
                     <option value="host">Host</option>
                 </select>
             </div>
-            <button class="btn btn-sm btn-outline" id="pauseStream">
+            <button class="btn btn-sm btn-outline pause-stream-btn" id="pauseStream">
                 <i class="fas fa-pause"></i> Pause
             </button>
             <button class="btn btn-sm btn-outline" id="clearStream">
@@ -196,6 +199,27 @@
     <i class="notification-icon fas fa-wifi"></i>
     <div class="notification-content">
         <strong>Connection Status:</strong> <span id="connectionStatusText">Connected</span>
+    </div>
+</div>
+
+<!-- Mini Live Monitor (Visible only when paused) -->
+<div id="miniLiveMonitor" class="mini-monitor-card" style="display: none;">
+    <div class="mini-monitor-header">
+        <span class="text-uppercase fw-bold text-success" style="font-size: 0.75rem;">
+            <span class="live-indicator-dot bg-success"></span> Live Traffic
+        </span>
+    </div>
+    <div class="mini-monitor-body">
+        <div class="d-flex justify-content-between align-items-end mb-2">
+            <span class="h4 mb-0" id="miniRequestRate">0</span>
+            <small class="text-muted">req/s</small>
+        </div>
+        <div class="mini-chart-wrapper">
+            <canvas id="miniLiveChart"></canvas>
+        </div>
+        <button class="btn btn-sm btn-primary w-100 mt-2" onclick="toggleStreamPause()">
+            <i class="fas fa-play me-1"></i> Resume
+        </button>
     </div>
 </div>
             </main>

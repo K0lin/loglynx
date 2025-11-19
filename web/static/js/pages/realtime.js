@@ -3,12 +3,17 @@
  * Live metrics streaming with SSE
  */
 
-let liveChart, perServiceChart;
+let liveChart, perServiceChart, miniLiveChart;
 let eventSource = null;
 let updateCount = 0;
 let isStreamPaused = false;
 let liveRequestsInterval = null;
 let reconnectTimeout = null;
+
+// Mini chart data
+const miniChartMaxPoints = 30;
+let miniChartData = [];
+let miniChartLabels = [];
 
 // Exponential backoff for reconnection
 let reconnectAttempts = 0;
@@ -118,6 +123,49 @@ function initPerServiceChart() {
     });
 }
 
+// Initialize mini live chart
+function initMiniChart() {
+    const ctx = document.getElementById('miniLiveChart').getContext('2d');
+    
+    // Initialize empty data
+    for (let i = 0; i < miniChartMaxPoints; i++) {
+        miniChartLabels.push('');
+        miniChartData.push(0);
+    }
+
+    miniLiveChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: miniChartLabels,
+            datasets: [{
+                data: miniChartData,
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false }
+            },
+            scales: {
+                x: { display: false },
+                y: { 
+                    display: false,
+                    min: 0
+                }
+            },
+            animation: false
+        }
+    });
+}
+
 // Connect to real-time SSE stream
 function connectRealtimeStream() {
     // Clear any pending reconnection timeout to prevent race conditions
@@ -139,6 +187,9 @@ function connectRealtimeStream() {
     eventSource = LogLynxAPI.connectRealtimeStream(
         // On message callback
         (metrics) => {
+            // Always update mini monitor
+            updateMiniMonitor(metrics);
+
             if (!isStreamPaused) {
                 // Update SSE performance metrics
                 const now = Date.now();
@@ -164,7 +215,6 @@ function connectRealtimeStream() {
                 updateRealtimeMetrics(metrics);
                 updateCount++;
                 $('#updateCount').text(updateCount);
-                $('#lastUpdate').text(LogLynxUtils.formatRelativeTime(metrics.timestamp || new Date()));
             }
         },
         // On error callback
@@ -494,18 +544,54 @@ function updateLiveRequestsTable(requests) {
     tbody.html(html);
 }
 
+// Update Mini Monitor
+function updateMiniMonitor(metrics) {
+    // Update value
+    $('#miniRequestRate').text(metrics.request_rate.toFixed(1));
+
+    // Update chart
+    if (miniLiveChart) {
+        miniChartData.push(metrics.request_rate);
+        miniChartLabels.push('');
+        
+        if (miniChartData.length > miniChartMaxPoints) {
+            miniChartData.shift();
+            miniChartLabels.shift();
+        }
+        
+        miniLiveChart.data.datasets[0].data = miniChartData;
+        miniLiveChart.update('none');
+    }
+}
+
 // Pause/resume stream
 function toggleStreamPause() {
     isStreamPaused = !isStreamPaused;
-    const btn = $('#pauseStream');
+    const btns = $('.pause-stream-btn');
+    const indicator = $('.live-indicator');
+    const miniMonitor = $('#miniLiveMonitor');
 
     if (isStreamPaused) {
-        btn.html('<i class="fas fa-play"></i> Resume');
-        btn.removeClass('btn-outline').addClass('btn-primary');
+        btns.html('<i class="fas fa-play"></i> Resume');
+        btns.removeClass('btn-outline').addClass('btn-primary');
+        
+        // Update indicator
+        indicator.addClass('paused').html('<i class="fas fa-pause" style="font-size: 0.7em; margin-right: 4px;"></i> PAUSED');
+        
+        // Show mini monitor
+        miniMonitor.fadeIn(300);
+        
         LogLynxUtils.showNotification('Stream paused', 'info', 2000);
     } else {
-        btn.html('<i class="fas fa-pause"></i> Pause');
-        btn.removeClass('btn-primary').addClass('btn-outline');
+        btns.html('<i class="fas fa-pause"></i> Pause');
+        btns.removeClass('btn-primary').addClass('btn-outline');
+        
+        // Restore indicator
+        indicator.removeClass('paused').html('<span class="live-indicator-dot"></span> STREAMING');
+        
+        // Hide mini monitor
+        miniMonitor.fadeOut(300);
+        
         LogLynxUtils.showNotification('Stream resumed', 'success', 2000);
     }
 }
@@ -557,7 +643,7 @@ function initEventListeners() {
         LogLynxUtils.showNotification('Reconnecting to stream...', 'info', 2000);
     });
 
-    $('#pauseStream').on('click', toggleStreamPause);
+    $('.pause-stream-btn').on('click', toggleStreamPause);
 
     $('#clearStream').on('click', () => {
         if (confirm('Clear all live stream data?')) {
@@ -582,6 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
     initLiveChart();
     initPerServiceChart();
+    initMiniChart();
 
     // Initialize live requests table
     initLiveRequestsTable();

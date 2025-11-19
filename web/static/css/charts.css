@@ -297,6 +297,12 @@ canvas {
     animation: blink 2s infinite;
 }
 
+.live-indicator.paused {
+    background: var(--status-warning);
+    animation: none;
+    opacity: 1 !important;
+}
+
 @keyframes blink {
     0%, 50%, 100% { opacity: 1; }
     25%, 75% { opacity: 0.5; }
@@ -657,4 +663,40 @@ canvas {
     .chart-container {
         padding: var(--space-md);
     }
+}
+
+/* Mini Live Monitor */
+.mini-monitor-card {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 240px;
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 15px;
+    z-index: 1050;
+    animation: slideInRight 0.3s ease-out;
+    backdrop-filter: blur(10px);
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.mini-monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mini-chart-wrapper {
+    height: 50px;
+    width: 100%;
+    margin-bottom: 5px;
 }
