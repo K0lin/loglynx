@@ -55,3 +55,8 @@ grep
 
 # Standalone example files
 web/static/*-examples.html
+# Binaries for programs and plugins
+loglynx
+server
+# macOS hidden file
+.DS_Store
