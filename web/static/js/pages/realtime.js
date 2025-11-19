@@ -385,7 +385,7 @@ function updateTopIPsTable(topIPs) {
                     </a>
                 </td>
                 <td>
-                    ${ip.country ? `<span class="badge bg-secondary">${ip.country}</span>` : '<span class="text-muted">-</span>'}
+                    ${ip.country ? `<span>${countryCodeToFlag(ip.country, ip.country)} ${countryToContinentMap[ip.country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[ip.country]?.continent || 'Unknown'}</small>` : '<span class="text-muted">-</span>'}
                 </td>
                 <td class="text-end">
                     <div class="d-flex align-items-center justify-content-end gap-2">
@@ -484,7 +484,7 @@ function updateLiveRequestsTable(requests) {
                     <td><code>${LogLynxUtils.truncate(req.Path, 40)}</code></td>
                     <td>${LogLynxUtils.getStatusBadge(req.StatusCode)}</td>
                     <td>${LogLynxUtils.formatMs(req.ResponseTimeMs || 0)}</td>
-                    <td>${req.GeoCountry || '-'}</td>
+                    <td>${req.GeoCountry ? `<span>${countryCodeToFlag(req.GeoCountry, req.GeoCountry)} ${countryToContinentMap[req.GeoCountry]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.GeoCountry]?.continent || 'Unknown'}</small>` : '-'}</td>
                     <td>${req.ClientIP}</td>
                 </tr>
             `;
