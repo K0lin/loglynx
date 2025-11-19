@@ -160,10 +160,10 @@ func (m *MetricsCollector) collectMetrics() {
 	var (
 		totalCount2s    int64
 		errorCount2s    int64
+		totalRespTime2s float64
 		status2xx       int64
 		status4xx       int64
 		status5xx       int64
-		totalRespTime   float64
 		count1m         int64
 		lastRequestTime time.Time
 	)
@@ -172,6 +172,7 @@ func (m *MetricsCollector) collectMetrics() {
 		// For rates (last 2s)
 		if req.Timestamp.After(twoSecondsAgo) {
 			totalCount2s++
+			totalRespTime2s += req.ResponseTimeMs
 			if req.StatusCode >= 400 {
 				errorCount2s++
 			}
@@ -182,7 +183,6 @@ func (m *MetricsCollector) collectMetrics() {
 
 		// For distribution (last 1m)
 		count1m++
-		totalRespTime += req.ResponseTimeMs
 		if req.StatusCode >= 200 && req.StatusCode < 300 {
 			status2xx++
 		} else if req.StatusCode >= 400 && req.StatusCode < 500 {
@@ -192,10 +192,10 @@ func (m *MetricsCollector) collectMetrics() {
 		}
 	}
 
-	// Calculate averages
+	// Calculate averages (Instant - last 2s)
 	avgRespTime := 0.0
-	if count1m > 0 {
-		avgRespTime = totalRespTime / float64(count1m)
+	if totalCount2s > 0 {
+		avgRespTime = totalRespTime2s / float64(totalCount2s)
 	}
 
 	// Calculate rates per second based on 2-second window
@@ -312,10 +312,10 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	var (
 		totalCount2s    int64
 		errorCount2s    int64
+		totalRespTime2s float64
 		status2xx       int64
 		status4xx       int64
 		status5xx       int64
-		totalRespTime   float64
 		count1m         int64
 		lastRequestTime time.Time
 	)
@@ -352,6 +352,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		// For rates (last 2s)
 		if req.Timestamp.After(twoSecondsAgo) {
 			totalCount2s++
+			totalRespTime2s += req.ResponseTimeMs
 			if req.StatusCode >= 400 {
 				errorCount2s++
 			}
@@ -363,7 +364,6 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		// For distribution (last 1m)
 		if req.Timestamp.After(oneMinuteAgo) {
 			count1m++
-			totalRespTime += req.ResponseTimeMs
 			if req.StatusCode >= 200 && req.StatusCode < 300 {
 				status2xx++
 			} else if req.StatusCode >= 400 && req.StatusCode < 500 {
@@ -376,8 +376,8 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 
 	// Calculate averages
 	avgRespTime := 0.0
-	if count1m > 0 {
-		avgRespTime = totalRespTime / float64(count1m)
+	if totalCount2s > 0 {
+		avgRespTime = totalRespTime2s / float64(totalCount2s)
 	}
 
 	requestRate := float64(totalCount2s) / 2.0

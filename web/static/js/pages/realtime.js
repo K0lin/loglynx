@@ -354,8 +354,8 @@ function initLiveRequestsTable() {
     // Start by loading recent requests
     loadRecentRequests();
 
-    // Refresh every 3 seconds
-    liveRequestsInterval = setInterval(loadRecentRequests, 3000);
+    // Refresh every 1 second to match real-time chart
+    liveRequestsInterval = setInterval(loadRecentRequests, 1000);
 }
 
 // Load recent requests
