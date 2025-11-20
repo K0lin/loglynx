@@ -293,12 +293,12 @@ function updateRealtimeMetrics(metrics) {
     const now = new Date();
     let metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : now;
 
-    // Check if metrics are stale (older than 3 seconds)
+    // Check if metrics are stale (older than 5 seconds - increased tolerance)
     const metricsAge = (now - metricsTimestamp) / 1000; // in seconds
-    const isStale = metricsAge > 3;
+    const isStale = metricsAge > 5;
 
-    // If same timestamp as before and stale, skip update to avoid showing old data
-    if (lastMetricsTimestamp && metricsTimestamp.getTime() === lastMetricsTimestamp.getTime() && isStale) {
+    // Skip if truly stale (but allow duplicate timestamps from same second)
+    if (isStale && lastMetricsTimestamp && metricsTimestamp.getTime() === lastMetricsTimestamp.getTime()) {
         console.debug('Skipping stale metrics update', {age: metricsAge, timestamp: metricsTimestamp});
         return;
     }
@@ -314,7 +314,7 @@ function updateRealtimeMetrics(metrics) {
     $('#live4xx').text(metrics.status_4xx || 0);
     $('#live5xx').text(metrics.status_5xx || 0);
 
-    // Update live chart
+    // Update live chart with millisecond precision to avoid duplicate keys
     const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -322,13 +322,29 @@ function updateRealtimeMetrics(metrics) {
         hour12: false
     });
 
-    // Avoid duplicate points for the same timestamp
-    if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
-        // Update the last point instead of adding a new one
-        liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
-        liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+    // Use timestamp millis as unique key internally
+    const uniqueKey = metricsTimestamp.getTime();
+
+    // Check if this exact timestamp was already added
+    if (liveChartLabels.length > 0) {
+        const lastKey = liveChartLabels[liveChartLabels.length - 1]._uniqueKey;
+        if (lastKey === uniqueKey) {
+            // Same exact millisecond - update the last point
+            liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
+            liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+        } else {
+            // New data point
+            const labelWithKey = timeLabel;
+            labelWithKey._uniqueKey = uniqueKey;
+            liveChartLabels.push(labelWithKey);
+            liveRequestRateData.push(metrics.request_rate);
+            liveAvgResponseData.push(metrics.avg_response_time);
+        }
     } else {
-        liveChartLabels.push(timeLabel);
+        // First data point
+        const labelWithKey = timeLabel;
+        labelWithKey._uniqueKey = uniqueKey;
+        liveChartLabels.push(labelWithKey);
         liveRequestRateData.push(metrics.request_rate);
         liveAvgResponseData.push(metrics.avg_response_time);
     }
@@ -347,11 +363,15 @@ function updateRealtimeMetrics(metrics) {
         liveChart.update('none'); // No animation for smooth real-time updates
     }
 
-    // Update per-service metrics
-    updatePerServiceMetrics(metrics.per_service);
+    // Update per-service metrics (with null check)
+    if (metrics.per_service !== undefined && metrics.per_service !== null) {
+        updatePerServiceMetrics(metrics.per_service);
+    }
 
-    // Update Top IPs table
-    updateTopIPsTable(metrics.top_ips);
+    // Update Top IPs table (with null check)
+    if (metrics.top_ips !== undefined && metrics.top_ips !== null) {
+        updateTopIPsTable(metrics.top_ips);
+    }
 
     // Update Live Requests Table (Prepend new requests)
     if (metrics.latest_requests && metrics.latest_requests.length > 0) {
