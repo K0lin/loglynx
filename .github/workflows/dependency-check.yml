@@ -74,7 +74,7 @@ jobs:
           gosec -no-fail -fmt json -out gosec-report.json ./...
           
       - name: Upload security scan results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gosec-report
