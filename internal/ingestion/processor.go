@@ -90,7 +90,7 @@ func NewSourceProcessor(
 		logger:              logger,
 		batchSize:           batchSize,       // Configurable via BATCH_SIZE env var
 		workerPoolSize:      workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
-		batchTimeout:        30 * time.Second, // OPTIMIZED: Longer timeout for larger batches (was 2s)
+		batchTimeout:        1 * time.Second, // OPTIMIZED: Short timeout for near-realtime updates (was 30s)
 		pollInterval:        100 * time.Millisecond, // OPTIMIZED: Poll more frequently during initial load (was 1s)
 		ctx:                 ctx,
 		cancel:              cancel,
