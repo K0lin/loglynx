@@ -55,7 +55,7 @@ info:
     - `hours`: Time range in hours (1-8760, default varies by endpoint)
     - `days`: Time range in days (1-365, default varies by endpoint)
 
-  version: 1.0.2
+  version: 1.0.3
   contact:
     name: LogLynx Support
     url: https://github.com/k0lin/loglynx
@@ -107,6 +107,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -226,6 +227,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -255,6 +257,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -291,6 +294,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -320,6 +324,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -349,6 +354,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -378,6 +384,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -407,6 +414,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -436,6 +444,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -465,6 +474,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -501,6 +511,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -536,6 +547,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -565,6 +577,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -594,6 +607,7 @@ paths:
         - $ref: '#/components/parameters/ServicesArray'
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
+        - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
@@ -1377,10 +1391,10 @@ components:
     HoursParam:
       name: hours
       in: query
-      description: Number of hours to look back (1-8760 for up to 1 year, default 168 for 7 days)
+      description: Number of hours to look back (1-8760 for up to 1 year, 0 for all time, default 168 for 7 days)
       schema:
         type: integer
-        minimum: 1
+        minimum: 0
         maximum: 8760
         default: 168
 

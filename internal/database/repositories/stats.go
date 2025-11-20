@@ -17,32 +17,34 @@ import (
 const (
 	// DefaultQueryTimeout is the default timeout for analytics queries (30 seconds)
 	DefaultQueryTimeout = 30 * time.Second
+	// SQLiteTimeFormat is the format used by SQLite for timestamps
+	SQLiteTimeFormat = "2006-01-02 15:04:05.999999999-07:00"
 )
 
 // StatsRepository provides dashboard statistics
 // All methods accept optional []ServiceFilter parameter for filtering multiple services
 // serviceType can be: "backend_name", "backend_url", "host", or "auto"
 type StatsRepository interface {
-	GetSummary(filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*StatsSummary, error)
+	GetSummary(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*StatsSummary, error)
 	GetTimelineStats(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TimelineData, error)
 	GetStatusCodeTimeline(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeTimelineData, error)
 	GetTrafficHeatmap(days int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TrafficHeatmapData, error)
-	GetTopPaths(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*PathStats, error)
-	GetTopCountries(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*CountryStats, error)
-	GetTopIPAddresses(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error)
-	GetStatusCodeDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeStats, error)
-	GetMethodDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*MethodStats, error)
-	GetProtocolDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error)
-	GetTLSVersionDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TLSVersionStats, error)
-	GetTopUserAgents(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*UserAgentStats, error)
-	GetTopBrowsers(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BrowserStats, error)
-	GetTopOperatingSystems(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*OSStats, error)
-	GetDeviceTypeDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*DeviceTypeStats, error)
-	GetTopASNs(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ASNStats, error)
-	GetTopBackends(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error)
-	GetTopReferrers(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerStats, error)
-	GetTopReferrerDomains(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerDomainStats, error)
-	GetResponseTimeStats(filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*ResponseTimeStats, error)
+	GetTopPaths(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*PathStats, error)
+	GetTopCountries(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*CountryStats, error)
+	GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error)
+	GetStatusCodeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeStats, error)
+	GetMethodDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*MethodStats, error)
+	GetProtocolDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error)
+	GetTLSVersionDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TLSVersionStats, error)
+	GetTopUserAgents(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*UserAgentStats, error)
+	GetTopBrowsers(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BrowserStats, error)
+	GetTopOperatingSystems(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*OSStats, error)
+	GetDeviceTypeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*DeviceTypeStats, error)
+	GetTopASNs(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ASNStats, error)
+	GetTopBackends(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error)
+	GetTopReferrers(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerStats, error)
+	GetTopReferrerDomains(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerDomainStats, error)
+	GetResponseTimeStats(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*ResponseTimeStats, error)
 	GetLogProcessingStats() ([]*LogProcessingStats, error)
 	GetDomains() ([]*DomainStats, error)
 	GetServices() ([]*ServiceInfo, error)
@@ -387,15 +389,12 @@ type ServiceInfo struct {
 
 // GetSummary returns overall statistics
 // OPTIMIZED: Single aggregated query instead of 12 separate queries (30x performance improvement)
-func (r *statsRepo) GetSummary(filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*StatsSummary, error) {
+func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*StatsSummary, error) {
 	summary := &StatsSummary{}
 
 	// Create context with timeout
 	ctx, cancel := r.withTimeout()
 	defer cancel()
-
-	// Get time range (last 7 days by default)
-	since := r.getTimeRange()
 
 	// Single aggregated query for all counts and metrics
 	type aggregatedResult struct {
@@ -425,8 +424,12 @@ func (r *statsRepo) GetSummary(filters []ServiceFilter, excludeIP *ExcludeIPFilt
 			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
 			COUNT(CASE WHEN status_code = 404 THEN 1 END) as not_found_count,
 			COUNT(CASE WHEN status_code >= 500 AND status_code < 600 THEN 1 END) as server_error_count
-		`).
-		Where("timestamp > ?", since)
+		`)
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 
@@ -452,16 +455,72 @@ func (r *statsRepo) GetSummary(filters []ServiceFilter, excludeIP *ExcludeIPFilt
 		summary.ServerErrorRate = float64(result.ServerErrorCount) / float64(summary.TotalRequests) * 100
 	}
 
-	// Requests per hour (based on 7 days = 168 hours)
-	summary.RequestsPerHour = float64(summary.TotalRequests) / float64(DefaultLookbackHours)
+	// Requests per hour
+	if hours > 0 {
+		summary.RequestsPerHour = float64(summary.TotalRequests) / float64(hours)
+	} else {
+		// For all time, calculate based on actual data range
+		var timeRange struct {
+			First string
+			Last  string
+		}
+		
+		rangeQuery := r.db.Table("http_requests").Select("MIN(timestamp) as first, MAX(timestamp) as last")
+		rangeQuery = r.applyServiceFilters(rangeQuery, filters)
+		
+		if err := rangeQuery.Scan(&timeRange).Error; err == nil && timeRange.First != "" && timeRange.Last != "" {
+			// Parse timestamps (try RFC3339Nano first, then standard format)
+			var firstTime, lastTime time.Time
+
+			// Parse First timestamp
+			if t, err := time.Parse(SQLiteTimeFormat, timeRange.First); err == nil {
+				firstTime = t
+			} else if t, err := time.Parse(time.DateTime, timeRange.First); err == nil {
+				firstTime = t
+			} else {
+				// Fallback to Unix epoch if parsing fails
+				firstTime = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+			}
+
+			// Parse Last timestamp
+			if t, err := time.Parse(SQLiteTimeFormat, timeRange.Last); err == nil {
+				lastTime = t
+			} else if t, err := time.Parse(time.DateTime, timeRange.Last); err == nil {
+				lastTime = t
+			} else {
+				// Use current time if parsing fails
+				lastTime = time.Now()
+			}
+
+			if !firstTime.IsZero() && !lastTime.IsZero() {
+				durationHours := lastTime.Sub(firstTime).Hours()
+				if durationHours < 1 {
+					durationHours = 1 // Avoid division by zero or very small numbers
+				}
+				summary.RequestsPerHour = float64(summary.TotalRequests) / durationHours
+			} else {
+				summary.RequestsPerHour = 0
+			}
+		} else {
+			summary.RequestsPerHour = 0
+		}
+	}
 
 	// Top country (separate query - minimal overhead)
-	query = r.db.Table("http_requests").Select("geo_country").Where("timestamp > ? AND geo_country != ''", since)
+	query = r.db.Table("http_requests").Select("geo_country").Where("geo_country != ''")
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 	query = r.applyServiceFilters(query, filters)
 	query.Group("geo_country").Order("COUNT(*) DESC").Limit(1).Pluck("geo_country", &summary.TopCountry)
 
 	// Top path (separate query - minimal overhead)
-	query = r.db.Table("http_requests").Select("path").Where("timestamp > ?", since)
+	query = r.db.Table("http_requests").Select("path")
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 	query = r.applyServiceFilters(query, filters)
 	query.Group("path").Order("COUNT(*) DESC").Limit(1).Pluck("path", &summary.TopPath)
 
@@ -472,21 +531,20 @@ func (r *statsRepo) GetSummary(filters []ServiceFilter, excludeIP *ExcludeIPFilt
 // GetTimelineStats returns time-based statistics with adaptive granularity
 func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TimelineData, error) {
 	var timeline []*TimelineData
-	since := time.Now().Add(-time.Duration(hours) * time.Hour)
 
 	// Adaptive grouping based on time range
 	var timeFormat string
 	var groupBy string
 
-	if hours <= 24 {
+	if hours > 0 && hours <= 24 {
 		// For 1 hour or 24 hours: group by hour
 		timeFormat = "strftime('%Y-%m-%d %H:00', timestamp)"
 		groupBy = timeFormat
-	} else if hours <= 168 {
+	} else if hours > 0 && hours <= 168 {
 		// For 7 days: group by 6-hour blocks
 		timeFormat = "strftime('%Y-%m-%d %H', timestamp)"
 		groupBy = "strftime('%Y-%m-%d', timestamp) || ' ' || CAST((CAST(strftime('%H', timestamp) AS INTEGER) / 6) * 6 AS TEXT) || ':00'"
-	} else if hours <= 720 {
+	} else if hours > 0 && hours <= 720 {
 		// For 30 days: group by day
 		timeFormat = "strftime('%Y-%m-%d', timestamp)"
 		groupBy = timeFormat
@@ -497,8 +555,12 @@ func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, exclude
 	}
 
 	query := r.db.Model(&models.HTTPRequest{}).
-		Select(groupBy+" as hour, COUNT(*) as requests, COUNT(DISTINCT client_ip) as unique_visitors, COALESCE(SUM(response_size), 0) as bandwidth, COALESCE(AVG(response_time_ms), 0) as avg_response_time").
-		Where("timestamp > ?", since)
+		Select(groupBy + " as hour, COUNT(*) as requests, COUNT(DISTINCT client_ip) as unique_visitors, COALESCE(SUM(response_size), 0) as bandwidth, COALESCE(AVG(response_time_ms), 0) as avg_response_time")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	query = query.Group(groupBy).Order("hour")
@@ -517,17 +579,16 @@ func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, exclude
 // GetStatusCodeTimeline returns status code distribution over time
 func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeTimelineData, error) {
 	var timeline []*StatusCodeTimelineData
-	since := time.Now().Add(-time.Duration(hours) * time.Hour)
 
 	// Simplified grouping - use only simple expressions that work in SQLite
 	var groupBy string
-	if hours <= 24 {
+	if hours > 0 && hours <= 24 {
 		// Group by hour for last 24 hours
 		groupBy = "strftime('%Y-%m-%d %H:00', timestamp)"
-	} else if hours <= 168 {
+	} else if hours > 0 && hours <= 168 {
 		// Group by day for last 7 days (simpler, works reliably)
 		groupBy = "strftime('%Y-%m-%d', timestamp)"
-	} else if hours <= 720 {
+	} else if hours > 0 && hours <= 720 {
 		// Group by day for last 30 days
 		groupBy = "strftime('%Y-%m-%d', timestamp)"
 	} else {
@@ -539,19 +600,27 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 	// Use COUNT instead of SUM(CASE WHEN) for better reliability
 	// Note: In SQLite, we need to be careful with type comparisons
 	query := r.db.Table("http_requests").
-		Select(groupBy+" as hour, "+
-			"COUNT(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 END) as status_2xx, "+
-			"COUNT(CASE WHEN status_code >= 300 AND status_code < 400 THEN 1 END) as status_3xx, "+
-			"COUNT(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 END) as status_4xx, "+
-			"COUNT(CASE WHEN status_code >= 500 THEN 1 END) as status_5xx").
-		Where("timestamp > ?", since)
+		Select(groupBy + " as hour, " +
+			"COUNT(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 END) as status_2xx, " +
+			"COUNT(CASE WHEN status_code >= 300 AND status_code < 400 THEN 1 END) as status_3xx, " +
+			"COUNT(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 END) as status_4xx, " +
+			"COUNT(CASE WHEN status_code >= 500 THEN 1 END) as status_5xx")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	query = query.Group(groupBy).Order("hour")
 
 	// Log the query for debugging
+	sinceStr := "all time"
+	if hours > 0 {
+		sinceStr = time.Now().Add(-time.Duration(hours) * time.Hour).Format(time.DateTime)
+	}
 	r.logger.Debug("Executing status code timeline query",
-		r.logger.Args("hours", hours, "since", since.Format("2006-01-02 15:04:05"), "groupBy", groupBy, "service_filters", filters))
+		r.logger.Args("hours", hours, "since", sinceStr, "groupBy", groupBy, "service_filters", filters))
 
 	err := query.Scan(&timeline).Error
 	if err != nil {
@@ -561,7 +630,7 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 
 	if len(timeline) == 0 {
 		r.logger.Warn("Status code timeline returned 0 data points",
-			r.logger.Args("hours", hours, "since", since.Format("2006-01-02 15:04:05"), "service_filters", filters))
+			r.logger.Args("hours", hours, "since", sinceStr, "service_filters", filters))
 	} else {
 		r.logger.Info("Generated status code timeline",
 			r.logger.Args("hours", hours, "data_points", len(timeline), "service_filters", filters))
@@ -600,13 +669,16 @@ func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, exclude
 }
 
 // GetTopPaths returns most accessed paths
-func (r *statsRepo) GetTopPaths(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*PathStats, error) {
+func (r *statsRepo) GetTopPaths(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*PathStats, error) {
 	var paths []*PathStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
-		Select("path, COUNT(*) as hits, COUNT(DISTINCT client_ip) as unique_visitors, COALESCE(AVG(response_time_ms), 0) as avg_response_time, COALESCE(SUM(response_size), 0) as total_bandwidth").
-		Where("timestamp > ?", since)
+		Select("path, COUNT(*) as hits, COUNT(DISTINCT client_ip) as unique_visitors, COALESCE(AVG(response_time_ms), 0) as avg_response_time, COALESCE(SUM(response_size), 0) as total_bandwidth")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("path").Order("hits DESC").Limit(limit).Scan(&paths).Error
@@ -620,13 +692,17 @@ func (r *statsRepo) GetTopPaths(limit int, filters []ServiceFilter, excludeIP *E
 }
 
 // GetTopCountries returns top countries by requests
-func (r *statsRepo) GetTopCountries(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*CountryStats, error) {
+func (r *statsRepo) GetTopCountries(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*CountryStats, error) {
 	var countries []*CountryStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("geo_country as country, '' as country_name, COUNT(*) as hits, COUNT(DISTINCT client_ip) as unique_visitors, COALESCE(SUM(response_size), 0) as bandwidth").
-		Where("timestamp > ? AND geo_country != ''", since)
+		Where("geo_country != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 
@@ -646,13 +722,16 @@ func (r *statsRepo) GetTopCountries(limit int, filters []ServiceFilter, excludeI
 }
 
 // GetTopIPAddresses returns most active IP addresses
-func (r *statsRepo) GetTopIPAddresses(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error) {
+func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error) {
 	var ips []*IPStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
-		Select("client_ip as ip_address, MAX(geo_country) as country, MAX(geo_city) as city, MAX(geo_lat) as latitude, MAX(geo_lon) as longitude, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth").
-		Where("timestamp > ?", since)
+		Select("client_ip as ip_address, MAX(geo_country) as country, MAX(geo_city) as city, MAX(geo_lat) as latitude, MAX(geo_lon) as longitude, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("client_ip").Order("hits DESC").Limit(limit).Scan(&ips).Error
@@ -666,13 +745,16 @@ func (r *statsRepo) GetTopIPAddresses(limit int, filters []ServiceFilter, exclud
 }
 
 // GetStatusCodeDistribution returns status code distribution
-func (r *statsRepo) GetStatusCodeDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeStats, error) {
+func (r *statsRepo) GetStatusCodeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeStats, error) {
 	var stats []*StatusCodeStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
-		Select("status_code, COUNT(*) as count").
-		Where("timestamp > ?", since)
+		Select("status_code, COUNT(*) as count")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("status_code").Order("count DESC").Scan(&stats).Error
@@ -686,13 +768,16 @@ func (r *statsRepo) GetStatusCodeDistribution(filters []ServiceFilter, excludeIP
 }
 
 // GetMethodDistribution returns HTTP method distribution
-func (r *statsRepo) GetMethodDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*MethodStats, error) {
+func (r *statsRepo) GetMethodDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*MethodStats, error) {
 	var stats []*MethodStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
-		Select("method, COUNT(*) as count").
-		Where("timestamp > ?", since)
+		Select("method, COUNT(*) as count")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("method").Order("count DESC").Scan(&stats).Error
@@ -706,13 +791,17 @@ func (r *statsRepo) GetMethodDistribution(filters []ServiceFilter, excludeIP *Ex
 }
 
 // GetProtocolDistribution returns HTTP protocol distribution
-func (r *statsRepo) GetProtocolDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error) {
+func (r *statsRepo) GetProtocolDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error) {
 	var stats []*ProtocolStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("protocol, COUNT(*) as count").
-		Where("timestamp > ? AND protocol != ''", since)
+		Where("protocol != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("protocol").Order("count DESC").Scan(&stats).Error
@@ -726,13 +815,17 @@ func (r *statsRepo) GetProtocolDistribution(filters []ServiceFilter, excludeIP *
 }
 
 // GetTLSVersionDistribution returns TLS version distribution
-func (r *statsRepo) GetTLSVersionDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TLSVersionStats, error) {
+func (r *statsRepo) GetTLSVersionDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TLSVersionStats, error) {
 	var stats []*TLSVersionStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("tls_version, COUNT(*) as count").
-		Where("timestamp > ? AND tls_version != ''", since)
+		Where("tls_version != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("tls_version").Order("count DESC").Scan(&stats).Error
@@ -746,13 +839,17 @@ func (r *statsRepo) GetTLSVersionDistribution(filters []ServiceFilter, excludeIP
 }
 
 // GetTopUserAgents returns most common user agents
-func (r *statsRepo) GetTopUserAgents(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*UserAgentStats, error) {
+func (r *statsRepo) GetTopUserAgents(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*UserAgentStats, error) {
 	var agents []*UserAgentStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("user_agent, COUNT(*) as count").
-		Where("timestamp > ? AND user_agent != ''", since)
+		Where("user_agent != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("user_agent").Order("count DESC").Limit(limit).Scan(&agents).Error
@@ -766,14 +863,18 @@ func (r *statsRepo) GetTopUserAgents(limit int, filters []ServiceFilter, exclude
 }
 
 // GetTopReferrers returns most common referrers
-func (r *statsRepo) GetTopReferrers(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerStats, error) {
+func (r *statsRepo) GetTopReferrers(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerStats, error) {
 	var referrers []*ReferrerStats
-	since := r.getTimeRange()
 
 	// Get actual referer headers with unique visitors
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("referer as referrer, COUNT(*) as hits, COUNT(DISTINCT client_ip) as unique_visitors").
-		Where("timestamp > ? AND referer != ''", since)
+		Where("referer != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("referer").Order("hits DESC").Limit(limit).Scan(&referrers).Error
@@ -787,13 +888,17 @@ func (r *statsRepo) GetTopReferrers(limit int, filters []ServiceFilter, excludeI
 }
 
 // GetTopReferrerDomains returns referrer domains aggregated by host
-func (r *statsRepo) GetTopReferrerDomains(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerDomainStats, error) {
+func (r *statsRepo) GetTopReferrerDomains(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerDomainStats, error) {
 	var referrers []*ReferrerStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("referer as referrer, COUNT(*) as hits, COUNT(DISTINCT client_ip) as unique_visitors").
-		Where("timestamp > ? AND referer != ''", since)
+		Where("referer != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("referer").Order("hits DESC").Scan(&referrers).Error
@@ -918,9 +1023,7 @@ func extractBackendName(backendName string) string {
 }
 
 // GetTopBackends returns backend statistics
-func (r *statsRepo) GetTopBackends(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error) {
-	since := r.getTimeRange()
-
+func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error) {
 	// Query with fallback logic: backend_name > backend_url > host
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select(`
@@ -938,8 +1041,12 @@ func (r *statsRepo) GetTopBackends(limit int, filters []ServiceFilter, excludeIP
 			COALESCE(AVG(response_time_ms), 0) as avg_response_time,
 			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
 		`).
-		Where("timestamp > ?", since).
 		Where("COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host) IS NOT NULL")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 
@@ -990,13 +1097,17 @@ func (r *statsRepo) GetTopBackends(limit int, filters []ServiceFilter, excludeIP
 }
 
 // GetTopASNs returns top ASNs by requests
-func (r *statsRepo) GetTopASNs(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ASNStats, error) {
+func (r *statsRepo) GetTopASNs(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ASNStats, error) {
 	var asns []*ASNStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("asn, MAX(asn_org) as asn_org, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth, MAX(geo_country) as country").
-		Where("timestamp > ? AND asn > 0", since)
+		Where("asn > 0")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("asn").Order("hits DESC").Limit(limit).Scan(&asns).Error
@@ -1012,13 +1123,18 @@ func (r *statsRepo) GetTopASNs(limit int, filters []ServiceFilter, excludeIP *Ex
 // GetResponseTimeStats returns response time statistics
 // OPTIMIZED: Uses SQLite window functions (NTILE) for efficient percentile calculation
 // 3x faster than LIMIT/OFFSET approach, single query instead of 4 separate queries
-func (r *statsRepo) GetResponseTimeStats(filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*ResponseTimeStats, error) {
+func (r *statsRepo) GetResponseTimeStats(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*ResponseTimeStats, error) {
 	stats := &ResponseTimeStats{}
-	since := r.getTimeRange()
 
 	// Build WHERE clause for service filter
-	whereClause := "timestamp > ? AND response_time_ms > 0"
-	args := []interface{}{since}
+	whereClause := "response_time_ms > 0"
+	args := []interface{}{}
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		whereClause += " AND timestamp > ?"
+		args = append(args, since)
+	}
 
 	// Apply service filters
 	if len(filters) > 0 {
@@ -1115,13 +1231,17 @@ func (r *statsRepo) GetLogProcessingStats() ([]*LogProcessingStats, error) {
 }
 
 // GetTopBrowsers returns most common browsers
-func (r *statsRepo) GetTopBrowsers(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BrowserStats, error) {
+func (r *statsRepo) GetTopBrowsers(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BrowserStats, error) {
 	var browsers []*BrowserStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("browser, COUNT(*) as count").
-		Where("timestamp > ? AND browser != '' AND browser != 'Unknown'", since)
+		Where("browser != '' AND browser != 'Unknown'")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("browser").Order("count DESC").Limit(limit).Scan(&browsers).Error
@@ -1135,13 +1255,17 @@ func (r *statsRepo) GetTopBrowsers(limit int, filters []ServiceFilter, excludeIP
 }
 
 // GetTopOperatingSystems returns most common operating systems
-func (r *statsRepo) GetTopOperatingSystems(limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*OSStats, error) {
+func (r *statsRepo) GetTopOperatingSystems(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*OSStats, error) {
 	var osList []*OSStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("os, COUNT(*) as count").
-		Where("timestamp > ? AND os != '' AND os != 'Unknown'", since)
+		Where("os != '' AND os != 'Unknown'")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("os").Order("count DESC").Limit(limit).Scan(&osList).Error
@@ -1155,13 +1279,17 @@ func (r *statsRepo) GetTopOperatingSystems(limit int, filters []ServiceFilter, e
 }
 
 // GetDeviceTypeDistribution returns distribution of device types
-func (r *statsRepo) GetDeviceTypeDistribution(filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*DeviceTypeStats, error) {
+func (r *statsRepo) GetDeviceTypeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*DeviceTypeStats, error) {
 	var devices []*DeviceTypeStats
-	since := r.getTimeRange()
 
 	query := r.db.Model(&models.HTTPRequest{}).
 		Select("device_type, COUNT(*) as count").
-		Where("timestamp > ? AND device_type != ''", since)
+		Where("device_type != ''")
+
+	if hours > 0 {
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		query = query.Where("timestamp > ?", since)
+	}
 
 	query = r.applyServiceFilters(query, filters)
 	err := query.Group("device_type").Order("count DESC").Scan(&devices).Error
@@ -1410,17 +1538,17 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 
 	// Parse timestamps from SQLite string format
 	if result.FirstSeen != "" {
-		if firstSeen, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", result.FirstSeen); err == nil {
+		if firstSeen, err := time.Parse(SQLiteTimeFormat, result.FirstSeen); err == nil {
 			stats.FirstSeen = firstSeen
-		} else if firstSeen, err := time.Parse("2006-01-02 15:04:05", result.FirstSeen); err == nil {
+		} else if firstSeen, err := time.Parse(time.DateTime, result.FirstSeen); err == nil {
 			stats.FirstSeen = firstSeen
 		}
 	}
 
 	if result.LastSeen != "" {
-		if lastSeen, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", result.LastSeen); err == nil {
+		if lastSeen, err := time.Parse(SQLiteTimeFormat, result.LastSeen); err == nil {
 			stats.LastSeen = lastSeen
-		} else if lastSeen, err := time.Parse("2006-01-02 15:04:05", result.LastSeen); err == nil {
+		} else if lastSeen, err := time.Parse(time.DateTime, result.LastSeen); err == nil {
 			stats.LastSeen = lastSeen
 		}
 	}
@@ -1720,8 +1848,8 @@ func (r *statsRepo) SearchIPs(query string, limit int) ([]*IPSearchResult, error
 		if temp.LastSeen != "" {
 			// Try parsing with different formats
 			formats := []string{
-				"2006-01-02 15:04:05.999999999-07:00",
-				"2006-01-02 15:04:05",
+				SQLiteTimeFormat,
+				time.DateTime,
 				time.RFC3339,
 			}
 			for _, format := range formats {
@@ -1793,7 +1921,7 @@ func (r *statsRepo) GetRecordTimeRange() (oldest time.Time, newest time.Time, er
 		oldest, err = time.Parse(time.RFC3339, result.Oldest)
 		if err != nil {
 			// Try alternative parsing if RFC3339 fails
-			oldest, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", result.Oldest)
+			oldest, err = time.Parse(SQLiteTimeFormat, result.Oldest)
 			if err != nil {
 				r.logger.WithCaller().Warn("Failed to parse oldest timestamp", r.logger.Args("value", result.Oldest, "error", err))
 				oldest = time.Time{}
@@ -1805,7 +1933,7 @@ func (r *statsRepo) GetRecordTimeRange() (oldest time.Time, newest time.Time, er
 		newest, err = time.Parse(time.RFC3339, result.Newest)
 		if err != nil {
 			// Try alternative parsing if RFC3339 fails
-			newest, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", result.Newest)
+			newest, err = time.Parse(SQLiteTimeFormat, result.Newest)
 			if err != nil {
 				r.logger.WithCaller().Warn("Failed to parse newest timestamp", r.logger.Args("value", result.Newest, "error", err))
 				newest = time.Time{}

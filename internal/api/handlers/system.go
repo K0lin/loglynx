@@ -173,13 +173,13 @@ func (h *SystemHandler) collectSystemStats() (*SystemStats, error) {
 	// Cleanup schedule info
 	if h.cleanupService != nil && h.retentionDays > 0 {
 		cleanupStats := h.cleanupService.GetStats()
-		stats.NextCleanupTime = cleanupStats.NextScheduledRun.Format("2006-01-02 15:04:05")
+		stats.NextCleanupTime = cleanupStats.NextScheduledRun.Format(time.DateTime)
 
 		timeUntilCleanup := time.Until(cleanupStats.NextScheduledRun)
 		stats.NextCleanupCountdown = formatDuration(timeUntilCleanup)
 
 		if !cleanupStats.LastRunTime.IsZero() {
-			stats.LastCleanupTime = cleanupStats.LastRunTime.Format("2006-01-02 15:04:05")
+			stats.LastCleanupTime = cleanupStats.LastRunTime.Format(time.DateTime)
 		} else {
 			stats.LastCleanupTime = "Never"
 		}

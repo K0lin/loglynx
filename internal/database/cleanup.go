@@ -108,7 +108,7 @@ func (s *CleanupService) scheduledCleanupLoop() {
 
 			waitDuration := time.Until(targetTime)
 			s.logger.Debug("Next cleanup scheduled",
-				s.logger.Args("next_run", targetTime.Format("2006-01-02 15:04:05"), "wait_duration", waitDuration.Round(time.Minute)))
+				s.logger.Args("next_run", targetTime.Format(time.DateTime), "wait_duration", waitDuration.Round(time.Minute)))
 
 			// Wait until target time or check interval
 			select {

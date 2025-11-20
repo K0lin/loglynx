@@ -380,7 +380,7 @@ const LogLynxCharts = {
      * Format timeline labels based on time range
      */
     formatTimelineLabels(dataPoints, hours) {
-        if (hours <= 24) {
+        if (hours > 0 && hours <= 24) {
             // Hourly labels (HH:MM format)
             return dataPoints.map(d => {
                 const date = new Date(d.hour);
@@ -390,7 +390,7 @@ const LogLynxCharts = {
                     hour12: false
                 });
             });
-        } else if (hours <= 168) {
+        } else if (hours > 0 && hours <= 168) {
             // Daily labels with day of week
             return dataPoints.map(d => {
                 const date = new Date(d.hour);
@@ -400,7 +400,7 @@ const LogLynxCharts = {
                     day: 'numeric'
                 });
             });
-        } else if (hours <= 720) {
+        } else if (hours > 0 && hours <= 720) {
             // Daily labels for 30-day range
             return dataPoints.map(d => {
                 const date = new Date(d.hour);
