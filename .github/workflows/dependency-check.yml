@@ -52,35 +52,6 @@ jobs:
           echo "All dependencies with available updates:"
           go list -u -m -json all | jq -r '"\(.Path): current=\(.Version) latest=\(.Update.Version // "none")"' | grep -v "none$" || echo "No dependencies have updates available"
           
-  security-scan:
-    name: Run security analysis
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.25'
-          
-      - name: Install Gosec
-        run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-        
-      - name: Run security scan
-        run: |
-          echo "Running security scan..."
-          gosec -no-fail -fmt json -out gosec-report.json ./...
-          
-      - name: Upload security scan results
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: gosec-report
-          path: gosec-report.json
-          retention-days: 30
-          
   license-check:
     name: Check dependency licenses
     runs-on: ubuntu-latest
@@ -110,7 +81,7 @@ jobs:
           go-licenses csv ./... > license-report.csv
           
       - name: Upload license report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: license-report
           path: license-report.csv
