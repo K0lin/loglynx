@@ -65,6 +65,7 @@ type RealtimeMetrics struct {
 	Timestamp         time.Time        `json:"timestamp"`
 	TopIPs            []IPMetrics      `json:"top_ips"`
 	LatestRequests    []RequestSummary `json:"latest_requests"`
+	PerService        []ServiceMetrics `json:"per_service"`
 }
 
 // RequestSummary is a lightweight representation of a request for the real-time table
@@ -303,6 +304,7 @@ func (m *MetricsCollector) collectMetrics() {
 		Timestamp:         now,
 		TopIPs:            topIPs,
 		LatestRequests:    latestRequests,
+		PerService:        perServiceMetrics,
 	}
 
 	// Marshal to JSON immediately for caching
@@ -345,6 +347,7 @@ func (m *MetricsCollector) GetMetrics() *RealtimeMetrics {
 		Status4xx:         m.last4xxCount,
 		Status5xx:         m.last5xxCount,
 		Timestamp:         m.lastUpdate,
+		PerService:        m.perServiceMetrics,
 	}
 }
 
@@ -516,6 +519,9 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	// Get Latest Requests (last 20 from filtered)
 	latestRequests := m.getLatestRequests(filteredRequests, 20)
 
+	// Calculate per service metrics for filtered view
+	perServiceMetrics := m.calculatePerServiceMetrics(m.requestBuffer, repoFilters, repoExcludeIP)
+
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
 		ErrorRate:         errorRate,
@@ -527,6 +533,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		Timestamp:         now,
 		TopIPs:            topIPs,
 		LatestRequests:    latestRequests,
+		PerService:        perServiceMetrics,
 	}
 }
 

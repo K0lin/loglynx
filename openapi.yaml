@@ -2021,6 +2021,11 @@ components:
           description: List of most recent requests
           items:
             $ref: '#/components/schemas/RequestSummary'
+        per_service:
+          type: array
+          description: Metrics per service
+          items:
+            $ref: '#/components/schemas/ServiceMetrics'
 
     IPMetrics:
       type: object

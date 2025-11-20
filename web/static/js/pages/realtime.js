@@ -341,7 +341,7 @@ function updateRealtimeMetrics(metrics) {
     }
 
     // Update per-service metrics
-    updatePerServiceMetrics();
+    updatePerServiceMetrics(metrics.per_service);
 
     // Update Top IPs table
     updateTopIPsTable(metrics.top_ips);
@@ -453,15 +453,11 @@ function updateTopIPsTable(topIPs) {
 }
 
 // Update per-service metrics
-async function updatePerServiceMetrics() {
-    const result = await LogLynxAPI.getPerServiceMetrics();
-
+function updatePerServiceMetrics(services) {
     // Always keep the section visible
     $('#perServiceSection').show();
 
-    if (result.success && result.data && result.data.length > 0) {
-        const services = result.data;
-
+    if (services && services.length > 0) {
         // Sort by request rate descending
         services.sort((a, b) => b.request_rate - a.request_rate);
 
