@@ -551,6 +551,8 @@ function updateLiveRequestsTable(requests) {
 function updateMiniMonitor(metrics) {
     // Update value
     $('#miniRequestRate').text(metrics.request_rate.toFixed(1));
+    $('#miniErrorRate').text(metrics.error_rate.toFixed(2));
+    $('#miniAvgResponse').text(metrics.avg_response_time.toFixed(0));
 
     // Update chart
     if (miniLiveChart) {
@@ -582,7 +584,11 @@ function toggleStreamPause() {
         indicator.addClass('paused').html('<i class="fas fa-pause" style="font-size: 0.7em; margin-right: 4px;"></i> PAUSED');
         
         // Show mini monitor
-        miniMonitor.fadeIn(300);
+        if (!isMiniMonitorHidden) {
+            miniMonitor.fadeIn(300);
+        } else {
+            $('#miniMonitorRestore').css('display', 'flex');
+        }
         
         // Clear buffer when starting pause
         pausedMetricsBuffer = [];
@@ -597,6 +603,7 @@ function toggleStreamPause() {
         
         // Hide mini monitor
         miniMonitor.fadeOut(300);
+        $('#miniMonitorRestore').fadeOut(300);
         
         // Process buffered data
         if (pausedMetricsBuffer.length > 0) {
@@ -743,6 +750,115 @@ function initEventListeners() {
     });
 }
 
+// Mini Monitor State
+let isMiniMonitorHidden = false;
+let isDragging = false;
+let dragStartX, dragStartY;
+let initialLeft, initialTop;
+
+// Hide Mini Monitor
+function hideMiniMonitor() {
+    isMiniMonitorHidden = true;
+    const monitor = $('#miniLiveMonitor');
+    
+    // Calculate distance to move off-screen to the right
+    const rect = monitor[0].getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const moveDistance = viewportWidth - rect.left;
+    
+    monitor.css('transform', `translateX(${moveDistance}px)`);
+    monitor.addClass('hidden');
+    
+    // Show restore tab after animation
+    setTimeout(() => {
+        if (isStreamPaused && isMiniMonitorHidden) {
+            const restoreTab = $('#miniMonitorRestore');
+            restoreTab.css('display', 'flex').hide().fadeIn(200);
+            
+            // Position restore tab at the same vertical level
+            restoreTab.css('top', rect.top + 'px').css('bottom', 'auto');
+        }
+    }, 300);
+}
+
+// Show Mini Monitor
+function showMiniMonitor() {
+    isMiniMonitorHidden = false;
+    $('#miniMonitorRestore').fadeOut(200, () => {
+        const monitor = $('#miniLiveMonitor');
+        monitor.css('transform', ''); // Clear inline transform
+        monitor.removeClass('hidden');
+    });
+}
+
+// Initialize Draggable Mini Monitor
+function initDraggableMonitor() {
+    const monitor = document.getElementById('miniLiveMonitor');
+    const header = document.getElementById('miniMonitorHeader');
+    
+    if (!monitor || !header) return;
+
+    header.addEventListener('mousedown', dragStart);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', dragEnd);
+
+    function dragStart(e) {
+        // Ignore clicks on buttons
+        if (e.target.closest('button') || e.target.closest('.mini-monitor-btn')) return;
+        
+        initialLeft = monitor.offsetLeft;
+        initialTop = monitor.offsetTop;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        
+        // If it was positioned with bottom/right, convert to top/left for dragging
+        const rect = monitor.getBoundingClientRect();
+        monitor.style.bottom = 'auto';
+        monitor.style.right = 'auto';
+        monitor.style.left = rect.left + 'px';
+        monitor.style.top = rect.top + 'px';
+        
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        isDragging = true;
+        monitor.classList.add('dragging');
+    }
+
+    function drag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        const currentX = e.clientX - dragStartX;
+        const currentY = e.clientY - dragStartY;
+
+        let newLeft = initialLeft + currentX;
+        let newTop = initialTop + currentY;
+        
+        // Boundary checks
+        const maxLeft = window.innerWidth - monitor.offsetWidth;
+        const maxTop = window.innerHeight - monitor.offsetHeight;
+        
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        monitor.style.left = newLeft + 'px';
+        monitor.style.top = newTop + 'px';
+    }
+
+    function dragEnd(e) {
+        if (!isDragging) return;
+        initialLeft = monitor.offsetLeft;
+        initialTop = monitor.offsetTop;
+        isDragging = false;
+        monitor.classList.remove('dragging');
+    }
+}
+
+// Make available globally
+window.hideMiniMonitor = hideMiniMonitor;
+window.showMiniMonitor = showMiniMonitor;
+
 // Initialize page
 // Initialize hide my traffic filter with reconnect callback
 function initHideTrafficFilterWithReconnect() {
@@ -770,6 +886,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize event listeners
     initEventListeners();
+    
+    // Initialize draggable monitor
+    initDraggableMonitor();
 
     // Connect to real-time stream
     connectRealtimeStream();

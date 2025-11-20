@@ -204,10 +204,26 @@
 
 <!-- Mini Live Monitor (Visible only when paused) -->
 <div id="miniLiveMonitor" class="mini-monitor-card" style="display: none;">
-    <div class="mini-monitor-header">
-        <span class="text-uppercase fw-bold text-success" style="font-size: 0.75rem;">
-            <span class="live-indicator-dot bg-success"></span> Live Traffic
-        </span>
+    <div class="mini-monitor-header d-flex justify-content-between align-items-center" id="miniMonitorHeader">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-grip-vertical text-muted" style="font-size: 0.8rem;"></i>
+            <span class="text-uppercase fw-bold text-success" style="font-size: 0.75rem;">
+                <span class="live-indicator-dot bg-success"></span> Live
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+             <div style="font-size: 0.75rem; display: flex; gap: 6px;">
+                 <span class="text-danger" title="Error Rate">
+                    <i class="fas fa-exclamation-triangle"></i> <span id="miniErrorRate">0.00</span>
+                </span>
+                <span class="text-info" title="Avg Response Time">
+                    <i class="fas fa-clock"></i> <span id="miniAvgResponse">0</span>
+                </span>
+            </div>
+            <button class="mini-monitor-btn" onclick="hideMiniMonitor()" title="Hide">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
     </div>
     <div class="mini-monitor-body">
         <div class="d-flex justify-content-between align-items-end mb-2">
@@ -221,6 +237,13 @@
             <i class="fas fa-play me-1"></i> Resume
         </button>
     </div>
+</div>
+
+<!-- Restore Tab (Visible when mini monitor is hidden) -->
+<div id="miniMonitorRestore" class="mini-monitor-restore" onclick="showMiniMonitor()">
+    <i class="fas fa-chevron-left"></i>
+    <span class="live-indicator-dot bg-success"></span>
+    <span>Live Monitor</span>
 </div>
             </main>
             {{template "footer" .}}

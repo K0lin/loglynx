@@ -679,11 +679,19 @@ canvas {
     z-index: 1050;
     animation: slideInRight 0.3s ease-out;
     backdrop-filter: blur(10px);
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
-@keyframes slideInRight {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+.mini-monitor-card.hidden {
+    /* Transform is calculated in JS to ensure it slides off-screen from any position */
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mini-monitor-card.dragging {
+    opacity: 0.9;
+    cursor: grabbing;
+    transition: none; /* Disable transition during drag for responsiveness */
 }
 
 .mini-monitor-header {
@@ -693,6 +701,57 @@ canvas {
     margin-bottom: 10px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border-color);
+    cursor: grab; /* Drag handle cursor */
+}
+
+.mini-monitor-header:active {
+    cursor: grabbing;
+}
+
+.mini-monitor-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.mini-monitor-btn {
+    background: none;
+    border: none;
+    color: var(--loglynx-text-muted);
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.8rem;
+    transition: color 0.2s;
+}
+
+.mini-monitor-btn:hover {
+    color: var(--loglynx-text);
+}
+
+/* Restore Tab */
+.mini-monitor-restore {
+    position: fixed;
+    right: 0;
+    bottom: 100px; /* Default position */
+    background: var(--loglynx-card);
+    border: 1px solid var(--border-color);
+    border-right: none;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+    padding: 8px 12px;
+    cursor: pointer;
+    z-index: 1049;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+    display: none; /* Hidden by default */
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--loglynx-text);
+    transition: transform 0.2s;
+}
+
+.mini-monitor-restore:hover {
+    transform: translateX(-5px);
+    color: var(--loglynx-primary);
 }
 
 .mini-chart-wrapper {
