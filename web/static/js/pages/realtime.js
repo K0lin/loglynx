@@ -391,7 +391,7 @@ function prependLatestRequests(requests) {
                 <td><code>${LogLynxUtils.truncate(req.path, 40)}</code></td>
                 <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
                 <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
-                <td>${req.geo_country || '-'}</td>
+                <td>${req.GeoCountry ? `<span>${countryCodeToFlag(req.GeoCountry, req.GeoCountry)} ${countryToContinentMap[req.GeoCountry]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.GeoCountry]?.continent || 'Unknown'}</small>` : '-'}</td>
                 <td>${req.client_ip}</td>
             </tr>
         `;
