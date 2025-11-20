@@ -9,6 +9,8 @@ let updateCount = 0;
 let isStreamPaused = false;
 let liveRequestsInterval = null;
 let reconnectTimeout = null;
+let pausedMetricsBuffer = []; // Buffer for metrics when paused
+const MAX_BUFFER_SIZE = 300; // Max 5 minutes of data
 
 // Mini chart data
 const miniChartMaxPoints = 30;
@@ -215,6 +217,11 @@ function connectRealtimeStream() {
                 updateRealtimeMetrics(metrics);
                 updateCount++;
                 $('#updateCount').text(updateCount);
+            } else {
+                // Buffer metrics when stream is paused
+                if (pausedMetricsBuffer.length < MAX_BUFFER_SIZE) {
+                    pausedMetricsBuffer.push(metrics);
+                }
             }
         },
         // On error callback
@@ -577,7 +584,10 @@ function toggleStreamPause() {
         // Show mini monitor
         miniMonitor.fadeIn(300);
         
-        LogLynxUtils.showNotification('Stream paused', 'info', 2000);
+        // Clear buffer when starting pause
+        pausedMetricsBuffer = [];
+        
+        LogLynxUtils.showNotification('Stream paused - buffering data in background', 'info', 2000);
     } else {
         btns.html('<i class="fas fa-pause"></i> Pause');
         btns.removeClass('btn-primary').addClass('btn-outline');
@@ -588,8 +598,93 @@ function toggleStreamPause() {
         // Hide mini monitor
         miniMonitor.fadeOut(300);
         
-        LogLynxUtils.showNotification('Stream resumed', 'success', 2000);
+        // Process buffered data
+        if (pausedMetricsBuffer.length > 0) {
+            LogLynxUtils.showNotification(`Resumed - catching up ${pausedMetricsBuffer.length} seconds of data...`, 'success', 2000);
+            processBufferedMetrics();
+        } else {
+            LogLynxUtils.showNotification('Stream resumed', 'success', 2000);
+        }
     }
+}
+
+// Process buffered metrics to fill gaps
+function processBufferedMetrics() {
+    if (pausedMetricsBuffer.length === 0) return;
+
+    // 1. Update Charts Data Arrays (History)
+    pausedMetricsBuffer.forEach(metrics => {
+        const metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : new Date();
+        const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        // Logic to add to arrays
+        if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
+             liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
+             liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+        } else {
+            liveChartLabels.push(timeLabel);
+            liveRequestRateData.push(metrics.request_rate);
+            liveAvgResponseData.push(metrics.avg_response_time);
+        }
+        
+        // Maintain max points
+        if (liveChartLabels.length > maxDataPoints) {
+            liveChartLabels.shift();
+            liveRequestRateData.shift();
+            liveAvgResponseData.shift();
+        }
+    });
+
+    // 2. Update Live Chart (Once)
+    if (liveChart) {
+        liveChart.data.labels = liveChartLabels;
+        liveChart.data.datasets[0].data = liveRequestRateData;
+        liveChart.data.datasets[1].data = liveAvgResponseData;
+        liveChart.update('none');
+    }
+
+    // 3. Process Requests (All buffered packets)
+    pausedMetricsBuffer.forEach(metrics => {
+        if (metrics.latest_requests && metrics.latest_requests.length > 0) {
+            prependLatestRequests(metrics.latest_requests);
+        }
+    });
+
+    // 4. Update Current State (KPIs, PerService, TopIPs) using the LAST metric
+    const lastMetric = pausedMetricsBuffer[pausedMetricsBuffer.length - 1];
+    
+    // Update KPIs
+    $('#liveRequestRate').text(lastMetric.request_rate.toFixed(2));
+    $('#liveErrorRate').text(lastMetric.error_rate.toFixed(2));
+    $('#liveAvgResponse').text(lastMetric.avg_response_time.toFixed(1) + 'ms');
+    $('#live2xx').text(lastMetric.status_2xx || 0);
+    $('#live4xx').text(lastMetric.status_4xx || 0);
+    $('#live5xx').text(lastMetric.status_5xx || 0);
+
+    // Update Per Service
+    if (lastMetric.per_service) {
+        updatePerServiceMetrics(lastMetric.per_service);
+    }
+    
+    // Update Top IPs
+    updateTopIPsTable(lastMetric.top_ips);
+    
+    // Update timestamp
+    if (lastMetric.timestamp) {
+        lastMetricsTimestamp = new Date(lastMetric.timestamp);
+    }
+    
+    // Update count
+    updateCount += pausedMetricsBuffer.length;
+    $('#updateCount').text(updateCount);
+    
+    // Clear buffer
+    pausedMetricsBuffer = [];
 }
 
 // Clear live data
