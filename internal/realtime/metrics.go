@@ -101,10 +101,29 @@ func NewMetricsCollector(db *gorm.DB, logger *pterm.Logger) *MetricsCollector {
 }
 
 // Ingest adds a new request to the in-memory buffer
+// Maintains chronological order by timestamp using optimized insertion
 func (m *MetricsCollector) Ingest(req *models.HTTPRequest) {
 	m.bufferMu.Lock()
-	m.requestBuffer = append(m.requestBuffer, req)
-	m.bufferMu.Unlock()
+	defer m.bufferMu.Unlock()
+
+	bufLen := len(m.requestBuffer)
+
+	// Fast path: empty buffer or new request is newest
+	if bufLen == 0 || !req.Timestamp.Before(m.requestBuffer[bufLen-1].Timestamp) {
+		m.requestBuffer = append(m.requestBuffer, req)
+		return
+	}
+
+	// Slow path: need to insert in correct position
+	// Binary search for insertion point
+	insertIdx := sort.Search(bufLen, func(i int) bool {
+		return !m.requestBuffer[i].Timestamp.Before(req.Timestamp)
+	})
+
+	// Insert at correct position
+	m.requestBuffer = append(m.requestBuffer, nil)           // Expand slice
+	copy(m.requestBuffer[insertIdx+1:], m.requestBuffer[insertIdx:]) // Shift right
+	m.requestBuffer[insertIdx] = req                         // Insert
 }
 
 // Start begins collecting metrics at regular intervals
