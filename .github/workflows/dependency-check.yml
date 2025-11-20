@@ -110,7 +110,7 @@ jobs:
           go-licenses csv ./... > license-report.csv
           
       - name: Upload license report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: license-report
           path: license-report.csv
