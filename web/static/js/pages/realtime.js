@@ -368,10 +368,8 @@ function updateRealtimeMetrics(metrics) {
         updatePerServiceMetrics(metrics.per_service);
     }
 
-    // Update Top IPs table (with null check)
-    if (metrics.top_ips !== undefined && metrics.top_ips !== null) {
-        updateTopIPsTable(metrics.top_ips);
-    }
+    // Update Top IPs table (always update, even if empty/null to clear stale data)
+    updateTopIPsTable(metrics.top_ips || []);
 
     // Update Live Requests Table (Prepend new requests)
     if (metrics.latest_requests && metrics.latest_requests.length > 0) {

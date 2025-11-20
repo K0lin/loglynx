@@ -282,7 +282,9 @@ func (m *MetricsCollector) collectMetrics() {
 	var topIPs []IPMetrics
 	for ip, count := range ipCounts {
 		rate := float64(count) / windowDuration.Seconds()
-		if rate > 0 {
+		// Only include IPs with meaningful activity (> 0.1 req/s)
+		// This prevents showing nearly-inactive IPs that are about to expire from window
+		if rate > 0.1 {
 			topIPs = append(topIPs, IPMetrics{
 				IP:          ip,
 				Country:     ipCountries[ip],
@@ -542,7 +544,9 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	var topIPs []IPMetrics
 	for ip, count := range ipCounts {
 		rate := float64(count) / windowDuration.Seconds()
-		if rate > 0 {
+		// Only include IPs with meaningful activity (> 0.1 req/s)
+		// This prevents showing nearly-inactive IPs that are about to expire from window
+		if rate > 0.1 {
 			topIPs = append(topIPs, IPMetrics{
 				IP:          ip,
 				Country:     ipCountries[ip],
