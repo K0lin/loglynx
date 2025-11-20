@@ -274,6 +274,9 @@ func (sp *SourceProcessor) processLoop() {
 			lastReadInode = newInode
 			lastReadLine = newLastLine
 
+			// Update reader position immediately to prevent re-reading the same lines
+			sp.reader.UpdatePosition(newPos, newInode, newLastLine)
+
 			// Flush if batch is full AND update position only after successful flush
 			if len(batch) >= sp.batchSize {
 				sp.logger.Trace("Batch full, flushing",
@@ -363,11 +366,6 @@ func (sp *SourceProcessor) parseAndEnrichParallel(lines []string) []*models.HTTP
 				}
 
 				results <- dbRequest
-
-				// Send to real-time metrics collector
-				if sp.metricsCollector != nil {
-					sp.metricsCollector.Ingest(dbRequest)
-				}
 			}
 		}()
 	}
@@ -413,6 +411,13 @@ func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
 		sp.totalErrors += int64(len(batch))
 		sp.statsMu.Unlock()
 		return
+	}
+
+	// Send to real-time metrics collector (now that we have IDs)
+	if sp.metricsCollector != nil {
+		for _, req := range batch {
+			sp.metricsCollector.Ingest(req)
+		}
 	}
 
 	// Update stats

@@ -381,7 +381,7 @@ function prependLatestRequests(requests) {
         // Populate from existing rows
         tbody.find('tr').each(function() {
             const id = $(this).data('id');
-            if (id) window.seenRequestIds.add(parseInt(id));
+            if (id !== undefined && id !== null) window.seenRequestIds.add(parseInt(id));
         });
     }
 
@@ -398,7 +398,7 @@ function prependLatestRequests(requests) {
                 <td><code>${LogLynxUtils.truncate(req.path, 40)}</code></td>
                 <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
                 <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
-                <td>${req.GeoCountry ? `<span>${countryCodeToFlag(req.GeoCountry, req.GeoCountry)} ${countryToContinentMap[req.GeoCountry]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.GeoCountry]?.continent || 'Unknown'}</small>` : '-'}</td>
+                <td>${req.geo_country ? `<span>${countryCodeToFlag(req.geo_country, req.geo_country)} ${countryToContinentMap[req.geo_country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.geo_country]?.continent || 'Unknown'}</small>` : '-'}</td>
                 <td>${req.client_ip}</td>
             </tr>
         `;
@@ -413,7 +413,7 @@ function prependLatestRequests(requests) {
         window.seenRequestIds.clear();
         tbody.find('tr').each(function() {
             const id = $(this).data('id');
-            if (id) window.seenRequestIds.add(parseInt(id));
+            if (id !== undefined && id !== null) window.seenRequestIds.add(parseInt(id));
         });
     }
 }
