@@ -405,9 +405,11 @@ function prependLatestRequests(requests) {
         });
     }
 
-    // Process requests
-    requests.forEach(req => {
-        if (window.seenRequestIds.has(req.id)) return;
+    // Process requests (received in newest-first order from backend)
+    // Iterate in reverse to maintain correct chronological order when prepending
+    for (let i = requests.length - 1; i >= 0; i--) {
+        const req = requests[i];
+        if (window.seenRequestIds.has(req.id)) continue;
         window.seenRequestIds.add(req.id);
 
         const row = `
@@ -423,7 +425,7 @@ function prependLatestRequests(requests) {
             </tr>
         `;
         tbody.prepend(row);
-    });
+    }
 
     // Limit to 50 rows
     const rows = tbody.find('tr');
