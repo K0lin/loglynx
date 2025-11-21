@@ -65,6 +65,7 @@ type RealtimeMetrics struct {
 	Timestamp         time.Time        `json:"timestamp"`
 	TopIPs            []IPMetrics      `json:"top_ips"`
 	LatestRequests    []RequestSummary `json:"latest_requests"`
+	PerService        []ServiceMetrics `json:"per_service"`
 }
 
 // RequestSummary is a lightweight representation of a request for the real-time table
@@ -100,10 +101,29 @@ func NewMetricsCollector(db *gorm.DB, logger *pterm.Logger) *MetricsCollector {
 }
 
 // Ingest adds a new request to the in-memory buffer
+// Maintains chronological order by timestamp using optimized insertion
 func (m *MetricsCollector) Ingest(req *models.HTTPRequest) {
 	m.bufferMu.Lock()
-	m.requestBuffer = append(m.requestBuffer, req)
-	m.bufferMu.Unlock()
+	defer m.bufferMu.Unlock()
+
+	bufLen := len(m.requestBuffer)
+
+	// Fast path: empty buffer or new request is newest
+	if bufLen == 0 || !req.Timestamp.Before(m.requestBuffer[bufLen-1].Timestamp) {
+		m.requestBuffer = append(m.requestBuffer, req)
+		return
+	}
+
+	// Slow path: need to insert in correct position
+	// Binary search for insertion point
+	insertIdx := sort.Search(bufLen, func(i int) bool {
+		return !m.requestBuffer[i].Timestamp.Before(req.Timestamp)
+	})
+
+	// Insert at correct position
+	m.requestBuffer = append(m.requestBuffer, nil)           // Expand slice
+	copy(m.requestBuffer[insertIdx+1:], m.requestBuffer[insertIdx:]) // Shift right
+	m.requestBuffer[insertIdx] = req                         // Insert
 }
 
 // Start begins collecting metrics at regular intervals
@@ -154,8 +174,9 @@ func (m *MetricsCollector) GetCachedJSON() []byte {
 func (m *MetricsCollector) collectMetrics() {
 	now := time.Now()
 
-	// Use a 2-second sliding window for immediate real-time responsiveness
-	twoSecondsAgo := now.Add(-2 * time.Second)
+	// Use a 5-second sliding window for smoother rates and latency tolerance
+	windowDuration := 5 * time.Second
+	windowStart := now.Add(-windowDuration)
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	m.bufferMu.Lock()
@@ -170,7 +191,7 @@ func (m *MetricsCollector) collectMetrics() {
 		}
 	}
 
-	if validIndex > 0 {
+	if validIndex >= 0 {
 		// Create a new slice to allow GC to collect the old array backing
 		newBuffer := make([]*models.HTTPRequest, len(m.requestBuffer)-validIndex)
 		copy(newBuffer, m.requestBuffer[validIndex:])
@@ -182,23 +203,23 @@ func (m *MetricsCollector) collectMetrics() {
 
 	// 2. Calculate metrics from buffer
 	var (
-		totalCount2s    int64
-		errorCount2s    int64
-		totalRespTime2s float64
-		status2xx       int64
-		status4xx       int64
-		status5xx       int64
-		count1m         int64
-		lastRequestTime time.Time
+		totalCountWindow int64
+		errorCountWindow int64
+		totalRespTime    float64
+		status2xx        int64
+		status4xx        int64
+		status5xx        int64
+		count1m          int64
+		lastRequestTime  time.Time
 	)
 
 	for _, req := range m.requestBuffer {
-		// For rates (last 2s)
-		if req.Timestamp.After(twoSecondsAgo) {
-			totalCount2s++
-			totalRespTime2s += req.ResponseTimeMs
+		// For rates (last 5s)
+		if req.Timestamp.After(windowStart) {
+			totalCountWindow++
+			totalRespTime += req.ResponseTimeMs
 			if req.StatusCode >= 400 {
-				errorCount2s++
+				errorCountWindow++
 			}
 			if req.Timestamp.After(lastRequestTime) {
 				lastRequestTime = req.Timestamp
@@ -216,27 +237,41 @@ func (m *MetricsCollector) collectMetrics() {
 		}
 	}
 
-	// Calculate averages (Instant - last 2s)
+	// Calculate averages (Instant - last 5s)
 	avgRespTime := 0.0
-	if totalCount2s > 0 {
-		avgRespTime = totalRespTime2s / float64(totalCount2s)
+	if totalCountWindow > 0 {
+		avgRespTime = totalRespTime / float64(totalCountWindow)
 	}
 
-	// Calculate rates per second based on 2-second window
-	requestRate := float64(totalCount2s) / 2.0
-	errorRate := float64(errorCount2s) / 2.0
+	// Calculate rates per second
+	// Use fixed window duration if traffic is active, zero if traffic stopped
+	requestRate := 0.0
+	errorRate := 0.0
 
-	// Calculate Top IPs (last 2s)
+	if totalCountWindow > 0 && !lastRequestTime.IsZero() {
+		// Check if traffic is still active (last request within window)
+		timeSinceLastRequest := now.Sub(lastRequestTime)
+
+		if timeSinceLastRequest <= windowDuration {
+			// Traffic is active - calculate rate over the full window
+			// This gives accurate req/s even for bursty traffic
+			requestRate = float64(totalCountWindow) / windowDuration.Seconds()
+			errorRate = float64(errorCountWindow) / windowDuration.Seconds()
+		}
+		// else: timeSinceLastRequest > windowDuration means traffic stopped, rates stay 0
+	}
+
+	// Calculate Top IPs (last 5s)
 	ipCounts := make(map[string]int)
 	ipCountries := make(map[string]string)
 
 	for _, req := range m.requestBuffer {
-		if req.Timestamp.After(twoSecondsAgo) {
+		if req.Timestamp.After(windowStart) {
 			// Check filters if any (this logic is shared with GetMetricsWithFilters)
 			// But here we are in collectMetrics which is global.
 			// Wait, collectMetrics is global. GetMetricsWithFilters is per-request.
 			// We should calculate TopIPs here for the global cache.
-			
+
 			ipCounts[req.ClientIP]++
 			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
 				ipCountries[req.ClientIP] = req.GeoCountry
@@ -246,8 +281,10 @@ func (m *MetricsCollector) collectMetrics() {
 
 	var topIPs []IPMetrics
 	for ip, count := range ipCounts {
-		rate := float64(count) / 2.0
-		if rate > 0 {
+		rate := float64(count) / windowDuration.Seconds()
+		// Only include IPs with meaningful activity (> 0.1 req/s)
+		// This prevents showing nearly-inactive IPs that are about to expire from window
+		if rate > 0.1 {
 			topIPs = append(topIPs, IPMetrics{
 				IP:          ip,
 				Country:     ipCountries[ip],
@@ -266,19 +303,26 @@ func (m *MetricsCollector) collectMetrics() {
 		topIPs = topIPs[:10]
 	}
 
-	// If no recent requests (>2 seconds old), force rates to zero immediately
+	// If no recent requests (>windowDuration old), force all metrics to zero immediately
 	if !lastRequestTime.IsZero() {
 		timeSinceLastRequest := now.Sub(lastRequestTime)
-		if timeSinceLastRequest > 2*time.Second {
+		if timeSinceLastRequest > windowDuration {
 			requestRate = 0.0
 			errorRate = 0.0
-			topIPs = nil // Clear top IPs if no traffic
+			topIPs = nil
+			// Also reset status counts for zero-state
+			status2xx = 0
+			status4xx = 0
+			status5xx = 0
 		}
 	} else {
-		// No requests in window
+		// No requests in window at all
 		requestRate = 0.0
 		errorRate = 0.0
 		topIPs = nil
+		status2xx = 0
+		status4xx = 0
+		status5xx = 0
 		// Use previous lastRequestTime if available
 		m.mu.RLock()
 		lastRequestTime = m.lastRequestTime
@@ -303,6 +347,7 @@ func (m *MetricsCollector) collectMetrics() {
 		Timestamp:         now,
 		TopIPs:            topIPs,
 		LatestRequests:    latestRequests,
+		PerService:        perServiceMetrics,
 	}
 
 	// Marshal to JSON immediately for caching
@@ -344,7 +389,8 @@ func (m *MetricsCollector) GetMetrics() *RealtimeMetrics {
 		Status2xx:         m.last2xxCount,
 		Status4xx:         m.last4xxCount,
 		Status5xx:         m.last5xxCount,
-		Timestamp:         m.lastUpdate,
+		Timestamp:         time.Now(), // Use current time, not lastUpdate
+		PerService:        m.perServiceMetrics,
 	}
 }
 
@@ -369,7 +415,8 @@ func (m *MetricsCollector) GetMetricsWithHost(host string) *RealtimeMetrics {
 // GetMetricsWithFilters returns real-time metrics with service and IP exclusion filters
 func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []ServiceFilter, excludeIPFilter *ExcludeIPFilter) *RealtimeMetrics {
 	now := time.Now()
-	twoSecondsAgo := now.Add(-2 * time.Second)
+	windowDuration := 5 * time.Second
+	windowStart := now.Add(-windowDuration)
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	// If no filters specified, return global metrics
@@ -381,14 +428,14 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	defer m.bufferMu.RUnlock()
 
 	var (
-		totalCount2s    int64
-		errorCount2s    int64
-		totalRespTime2s float64
-		status2xx       int64
-		status4xx       int64
-		status5xx       int64
-		count1m         int64
-		lastRequestTime time.Time
+		totalCountWindow int64
+		errorCountWindow int64
+		totalRespTime    float64
+		status2xx        int64
+		status4xx        int64
+		status5xx        int64
+		count1m          int64
+		lastRequestTime  time.Time
 		filteredRequests []*models.HTTPRequest
 	)
 
@@ -424,12 +471,12 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		// Collect matching requests for latest list
 		filteredRequests = append(filteredRequests, req)
 
-		// For rates (last 2s)
-		if req.Timestamp.After(twoSecondsAgo) {
-			totalCount2s++
-			totalRespTime2s += req.ResponseTimeMs
+		// For rates (last 5s)
+		if req.Timestamp.After(windowStart) {
+			totalCountWindow++
+			totalRespTime += req.ResponseTimeMs
 			if req.StatusCode >= 400 {
-				errorCount2s++
+				errorCountWindow++
 			}
 			if req.Timestamp.After(lastRequestTime) {
 				lastRequestTime = req.Timestamp
@@ -451,14 +498,27 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 
 	// Calculate averages
 	avgRespTime := 0.0
-	if totalCount2s > 0 {
-		avgRespTime = totalRespTime2s / float64(totalCount2s)
+	if totalCountWindow > 0 {
+		avgRespTime = totalRespTime / float64(totalCountWindow)
 	}
 
-	requestRate := float64(totalCount2s) / 2.0
-	errorRate := float64(errorCount2s) / 2.0
+	// Calculate rates similar to global metrics for consistency
+	requestRate := 0.0
+	errorRate := 0.0
 
-	// Calculate Top IPs (last 2s)
+	if totalCountWindow > 0 && !lastRequestTime.IsZero() {
+		// Check if traffic is still active (last request within window)
+		timeSinceLastRequest := now.Sub(lastRequestTime)
+
+		if timeSinceLastRequest <= windowDuration {
+			// Traffic is active - calculate rate over the full window
+			requestRate = float64(totalCountWindow) / windowDuration.Seconds()
+			errorRate = float64(errorCountWindow) / windowDuration.Seconds()
+		}
+		// else: traffic stopped, rates stay 0
+	}
+
+	// Calculate Top IPs (last 5s)
 	ipCounts := make(map[string]int)
 	ipCountries := make(map[string]string)
 
@@ -473,7 +533,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 			continue
 		}
 
-		if req.Timestamp.After(twoSecondsAgo) {
+		if req.Timestamp.After(windowStart) {
 			ipCounts[req.ClientIP]++
 			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
 				ipCountries[req.ClientIP] = req.GeoCountry
@@ -483,8 +543,10 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 
 	var topIPs []IPMetrics
 	for ip, count := range ipCounts {
-		rate := float64(count) / 2.0
-		if rate > 0 {
+		rate := float64(count) / windowDuration.Seconds()
+		// Only include IPs with meaningful activity (> 0.1 req/s)
+		// This prevents showing nearly-inactive IPs that are about to expire from window
+		if rate > 0.1 {
 			topIPs = append(topIPs, IPMetrics{
 				IP:          ip,
 				Country:     ipCountries[ip],
@@ -503,18 +565,32 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		topIPs = topIPs[:10]
 	}
 
-	// If no recent requests (>2 seconds old), force rates to zero immediately
+	// If no recent requests (>windowDuration old), force all metrics to zero immediately
 	if !lastRequestTime.IsZero() {
 		timeSinceLastRequest := now.Sub(lastRequestTime)
-		if timeSinceLastRequest > 2*time.Second {
+		if timeSinceLastRequest > windowDuration {
 			requestRate = 0.0
 			errorRate = 0.0
 			topIPs = nil
+			status2xx = 0
+			status4xx = 0
+			status5xx = 0
 		}
+	} else {
+		// No requests at all
+		requestRate = 0.0
+		errorRate = 0.0
+		topIPs = nil
+		status2xx = 0
+		status4xx = 0
+		status5xx = 0
 	}
 
 	// Get Latest Requests (last 20 from filtered)
 	latestRequests := m.getLatestRequests(filteredRequests, 20)
+
+	// Calculate per service metrics for filtered view
+	perServiceMetrics := m.calculatePerServiceMetrics(m.requestBuffer, repoFilters, repoExcludeIP)
 
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
@@ -527,6 +603,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		Timestamp:         now,
 		TopIPs:            topIPs,
 		LatestRequests:    latestRequests,
+		PerService:        perServiceMetrics,
 	}
 }
 
@@ -552,14 +629,17 @@ func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFi
 
 // calculatePerServiceMetrics calculates per-service metrics from the buffer
 func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPRequest, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
-	// Use 2-second window for accurate real-time rates
-	twoSecondsAgo := time.Now().Add(-2 * time.Second)
+	// Use 5-second window for accurate real-time rates
+	// Use parent's now timestamp for consistency
+	now := time.Now()
+	windowDuration := 5 * time.Second
+	windowStart := now.Add(-windowDuration)
 
 	// Map to aggregate counts by service
 	serviceCounts := make(map[string]int64)
 
 	for _, req := range buffer {
-		if !req.Timestamp.After(twoSecondsAgo) {
+		if !req.Timestamp.After(windowStart) {
 			continue
 		}
 
@@ -588,7 +668,7 @@ func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPReque
 	for name, count := range serviceCounts {
 		metrics = append(metrics, ServiceMetrics{
 			ServiceName: name,
-			RequestRate: float64(count) / 2.0,
+			RequestRate: float64(count) / windowDuration.Seconds(),
 		})
 	}
 
@@ -669,6 +749,7 @@ func extractServiceName(backendName string) string {
 }
 
 // getLatestRequests returns the last N requests from the buffer as summaries
+// Returns in reverse chronological order (newest first)
 func (m *MetricsCollector) getLatestRequests(requests []*models.HTTPRequest, limit int) []RequestSummary {
 	count := len(requests)
 	if count == 0 {
@@ -681,7 +762,8 @@ func (m *MetricsCollector) getLatestRequests(requests []*models.HTTPRequest, lim
 	}
 
 	summary := make([]RequestSummary, 0, count-start)
-	for i := start; i < count; i++ {
+	// Iterate backwards to get newest first
+	for i := count - 1; i >= start; i-- {
 		req := requests[i]
 		summary = append(summary, RequestSummary{
 			ID:             req.ID,

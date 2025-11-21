@@ -341,9 +341,10 @@ const LogLynxAPI = {
 
     /**
      * Get summary statistics
+     * @param {number} hours - Number of hours to fetch (1-8760)
      */
-    async getSummary() {
-        return this.get('/stats/summary');
+    async getSummary(hours = 168) {
+        return this.get('/stats/summary', { hours });
     },
 
     /**
@@ -373,123 +374,139 @@ const LogLynxAPI = {
     /**
      * Get top paths
      * @param {number} limit - Number of results (1-100)
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopPaths(limit = 10) {
-        return this.get('/stats/top/paths', { limit });
+    async getTopPaths(limit = 10, hours = 168) {
+        return this.get('/stats/top/paths', { limit, hours });
     },
 
     /**
      * Get top countries
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopCountries(limit = 10) {
-        return this.get('/stats/top/countries', { limit });
+    async getTopCountries(limit = 10, hours = 168) {
+        return this.get('/stats/top/countries', { limit, hours });
     },
 
     /**
      * Get top IP addresses
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopIPs(limit = 10) {
-        return this.get('/stats/top/ips', { limit });
+    async getTopIPs(limit = 10, hours = 168) {
+        return this.get('/stats/top/ips', { limit, hours });
     },
 
     /**
      * Get top user agents
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopUserAgents(limit = 10) {
-        return this.get('/stats/top/user-agents', { limit });
+    async getTopUserAgents(limit = 10, hours = 168) {
+        return this.get('/stats/top/user-agents', { limit, hours });
     },
 
     /**
      * Get top browsers
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopBrowsers(limit = 10) {
-        return this.get('/stats/top/browsers', { limit });
+    async getTopBrowsers(limit = 10, hours = 168) {
+        return this.get('/stats/top/browsers', { limit, hours });
     },
 
     /**
      * Get top operating systems
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopOperatingSystems(limit = 10) {
-        return this.get('/stats/top/operating-systems', { limit });
+    async getTopOperatingSystems(limit = 10, hours = 168) {
+        return this.get('/stats/top/operating-systems', { limit, hours });
     },
 
     /**
      * Get top ASNs
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopASNs(limit = 10) {
-        return this.get('/stats/top/asns', { limit });
+    async getTopASNs(limit = 10, hours = 168) {
+        return this.get('/stats/top/asns', { limit, hours });
     },
 
     /**
      * Get top backends
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopBackends(limit = 10) {
-        return this.get('/stats/top/backends', { limit });
+    async getTopBackends(limit = 10, hours = 168) {
+        return this.get('/stats/top/backends', { limit, hours });
     },
 
     /**
      * Get top referrers
      * @param {number} limit - Number of results
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopReferrers(limit = 10) {
-        return this.get('/stats/top/referrers', { limit });
+    async getTopReferrers(limit = 10, hours = 168) {
+        return this.get('/stats/top/referrers', { limit, hours });
     },
 
     /**
      * Get top referrer domains
      * @param {number} limit - Number of results (0 = unlimited)
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTopReferrerDomains(limit = 10) {
-        return this.get('/stats/top/referrer-domains', { limit });
+    async getTopReferrerDomains(limit = 10, hours = 168) {
+        return this.get('/stats/top/referrer-domains', { limit, hours });
     },
 
     /**
      * Get status code distribution
+     * @param {number} hours - Number of hours to fetch
      */
-    async getStatusCodeDistribution() {
-        return this.get('/stats/distribution/status-codes');
+    async getStatusCodeDistribution(hours = 168) {
+        return this.get('/stats/distribution/status-codes', { hours });
     },
 
     /**
      * Get HTTP method distribution
+     * @param {number} hours - Number of hours to fetch
      */
-    async getMethodDistribution() {
-        return this.get('/stats/distribution/methods');
+    async getMethodDistribution(hours = 168) {
+        return this.get('/stats/distribution/methods', { hours });
     },
 
     /**
      * Get protocol distribution
+     * @param {number} hours - Number of hours to fetch
      */
-    async getProtocolDistribution() {
-        return this.get('/stats/distribution/protocols');
+    async getProtocolDistribution(hours = 168) {
+        return this.get('/stats/distribution/protocols', { hours });
     },
 
     /**
      * Get TLS version distribution
+     * @param {number} hours - Number of hours to fetch
      */
-    async getTLSVersionDistribution() {
-        return this.get('/stats/distribution/tls-versions');
+    async getTLSVersionDistribution(hours = 168) {
+        return this.get('/stats/distribution/tls-versions', { hours });
     },
 
     /**
      * Get device type distribution
+     * @param {number} hours - Number of hours to fetch
      */
-    async getDeviceTypeDistribution() {
-        return this.get('/stats/distribution/device-types');
+    async getDeviceTypeDistribution(hours = 168) {
+        return this.get('/stats/distribution/device-types', { hours });
     },
 
     /**
      * Get response time statistics
+     * @param {number} hours - Number of hours to fetch
      */
-    async getResponseTimeStats() {
-        return this.get('/stats/performance/response-time');
+    async getResponseTimeStats(hours = 168) {
+        return this.get('/stats/performance/response-time', { hours });
     },
 
     /**

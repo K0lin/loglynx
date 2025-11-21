@@ -8,39 +8,40 @@ let currentTimeRange = 168; // Default 7 days
 // Load all dashboard data
 async function loadDashboardData() {
     try {
+        const hours = currentTimeRange;
+
         // Load summary stats
-        const summaryResult = await LogLynxAPI.getSummary();
+        const summaryResult = await LogLynxAPI.getSummary(hours);
         if (summaryResult.success) {
             updateSummaryCards(summaryResult.data);
         }
 
         // Load timeline data
-        const timelineHours = currentTimeRange === 'all' ? 8760 : currentTimeRange;
-        const timelineResult = await LogLynxAPI.getTimeline(timelineHours);
+        const timelineResult = await LogLynxAPI.getTimeline(hours);
         if (timelineResult.success) {
             updateTimelineChart(timelineResult.data);
         }
 
         // Load status code timeline
-        const statusTimelineResult = await LogLynxAPI.getStatusCodeTimeline(timelineHours);
+        const statusTimelineResult = await LogLynxAPI.getStatusCodeTimeline(hours);
         if (statusTimelineResult.success) {
             updateStatusTimelineChart(statusTimelineResult.data);
         }
 
         // Load status code distribution
-        const statusDistResult = await LogLynxAPI.getStatusCodeDistribution();
+        const statusDistResult = await LogLynxAPI.getStatusCodeDistribution(hours);
         if (statusDistResult.success) {
             updateStatusChart(statusDistResult.data);
         }
 
         // Load top countries
-        const countriesResult = await LogLynxAPI.getTopCountries(5);
+        const countriesResult = await LogLynxAPI.getTopCountries(5, hours);
         if (countriesResult.success) {
             updateTopCountriesTable(countriesResult.data);
         }
 
         // Load top paths
-        const pathsResult = await LogLynxAPI.getTopPaths(5);
+        const pathsResult = await LogLynxAPI.getTopPaths(5, hours);
         if (pathsResult.success) {
             updateTopPathsTable(pathsResult.data);
         }
@@ -76,6 +77,19 @@ function updateSummaryCards(data) {
     $('#errorRate').text(errorRate + '%');
 
     $('#requestsPerHour').text(LogLynxUtils.formatNumber(Math.round(data.requests_per_hour || 0)));
+
+    // Update subtitles based on time range
+    let timeLabel = 'Last 7 days';
+    if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
+    else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
+    else if (currentTimeRange === 0) timeLabel = 'All time';
+    
+    $('.stat-card .stat-subtitle').each(function() {
+        const text = $(this).text();
+        if (text.includes('Last') || text === 'All time') {
+            $(this).text(timeLabel);
+        }
+    });
 }
 
 // Initialize timeline chart
@@ -354,37 +368,49 @@ function initDataTable() {
 
 // Initialize time range selector
 function initTimeRangeSelector() {
+    // Handle global dropdown selector
+    const selector = document.getElementById('timeframeSelector');
+    if (selector) {
+        selector.addEventListener('change', function() {
+            const range = parseInt(this.value);
+            currentTimeRange = range;
+            
+            // Update chart buttons if they exist (for visual consistency)
+            document.querySelectorAll('.time-range-btn').forEach(btn => {
+                const btnRange = parseInt(btn.getAttribute('data-range'));
+                if (btnRange === range) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Reload all dashboard data
+            loadDashboardData();
+        });
+    }
+
+    // Handle chart-specific buttons (legacy support or if kept)
     document.querySelectorAll('.time-range-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
 
-            const range = this.getAttribute('data-range');
-            currentTimeRange = range === 'all' ? 'all' : parseInt(range);
+            const range = parseInt(this.getAttribute('data-range'));
+            currentTimeRange = range;
 
-            // Reload timeline data
-            loadTimelineData();
+            // Sync dropdown if exists
+            if (selector) {
+                selector.value = range.toString();
+            }
+
+            // Reload all dashboard data
+            loadDashboardData();
         });
     });
 }
 
-// Load only timeline-related data
-async function loadTimelineData() {
-    const hours = currentTimeRange === 'all' ? 8760 : currentTimeRange;
 
-    const [timelineResult, statusTimelineResult] = await Promise.all([
-        LogLynxAPI.getTimeline(hours),
-        LogLynxAPI.getStatusCodeTimeline(hours)
-    ]);
-
-    if (timelineResult.success) {
-        updateTimelineChart(timelineResult.data);
-    }
-
-    if (statusTimelineResult.success) {
-        updateStatusTimelineChart(statusTimelineResult.data);
-    }
-}
 
 // Initialize service filter with reload callback
 function initServiceFilterWithReload() {

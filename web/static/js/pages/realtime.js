@@ -9,6 +9,8 @@ let updateCount = 0;
 let isStreamPaused = false;
 let liveRequestsInterval = null;
 let reconnectTimeout = null;
+let pausedMetricsBuffer = []; // Buffer for metrics when paused
+const MAX_BUFFER_SIZE = 300; // Max 5 minutes of data
 
 // Mini chart data
 const miniChartMaxPoints = 30;
@@ -215,6 +217,11 @@ function connectRealtimeStream() {
                 updateRealtimeMetrics(metrics);
                 updateCount++;
                 $('#updateCount').text(updateCount);
+            } else {
+                // Buffer metrics when stream is paused
+                if (pausedMetricsBuffer.length < MAX_BUFFER_SIZE) {
+                    pausedMetricsBuffer.push(metrics);
+                }
             }
         },
         // On error callback
@@ -286,12 +293,12 @@ function updateRealtimeMetrics(metrics) {
     const now = new Date();
     let metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : now;
 
-    // Check if metrics are stale (older than 3 seconds)
+    // Check if metrics are stale (older than 5 seconds - increased tolerance)
     const metricsAge = (now - metricsTimestamp) / 1000; // in seconds
-    const isStale = metricsAge > 3;
+    const isStale = metricsAge > 5;
 
-    // If same timestamp as before and stale, skip update to avoid showing old data
-    if (lastMetricsTimestamp && metricsTimestamp.getTime() === lastMetricsTimestamp.getTime() && isStale) {
+    // Skip if truly stale (but allow duplicate timestamps from same second)
+    if (isStale && lastMetricsTimestamp && metricsTimestamp.getTime() === lastMetricsTimestamp.getTime()) {
         console.debug('Skipping stale metrics update', {age: metricsAge, timestamp: metricsTimestamp});
         return;
     }
@@ -307,7 +314,7 @@ function updateRealtimeMetrics(metrics) {
     $('#live4xx').text(metrics.status_4xx || 0);
     $('#live5xx').text(metrics.status_5xx || 0);
 
-    // Update live chart
+    // Update live chart with millisecond precision to avoid duplicate keys
     const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -315,13 +322,29 @@ function updateRealtimeMetrics(metrics) {
         hour12: false
     });
 
-    // Avoid duplicate points for the same timestamp
-    if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
-        // Update the last point instead of adding a new one
-        liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
-        liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+    // Use timestamp millis as unique key internally
+    const uniqueKey = metricsTimestamp.getTime();
+
+    // Check if this exact timestamp was already added
+    if (liveChartLabels.length > 0) {
+        const lastKey = liveChartLabels[liveChartLabels.length - 1]._uniqueKey;
+        if (lastKey === uniqueKey) {
+            // Same exact millisecond - update the last point
+            liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
+            liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+        } else {
+            // New data point
+            const labelWithKey = timeLabel;
+            labelWithKey._uniqueKey = uniqueKey;
+            liveChartLabels.push(labelWithKey);
+            liveRequestRateData.push(metrics.request_rate);
+            liveAvgResponseData.push(metrics.avg_response_time);
+        }
     } else {
-        liveChartLabels.push(timeLabel);
+        // First data point
+        const labelWithKey = timeLabel;
+        labelWithKey._uniqueKey = uniqueKey;
+        liveChartLabels.push(labelWithKey);
         liveRequestRateData.push(metrics.request_rate);
         liveAvgResponseData.push(metrics.avg_response_time);
     }
@@ -340,11 +363,13 @@ function updateRealtimeMetrics(metrics) {
         liveChart.update('none'); // No animation for smooth real-time updates
     }
 
-    // Update per-service metrics
-    updatePerServiceMetrics();
+    // Update per-service metrics (with null check)
+    if (metrics.per_service !== undefined && metrics.per_service !== null) {
+        updatePerServiceMetrics(metrics.per_service);
+    }
 
-    // Update Top IPs table
-    updateTopIPsTable(metrics.top_ips);
+    // Update Top IPs table (always update, even if empty/null to clear stale data)
+    updateTopIPsTable(metrics.top_ips || []);
 
     // Update Live Requests Table (Prepend new requests)
     if (metrics.latest_requests && metrics.latest_requests.length > 0) {
@@ -374,13 +399,15 @@ function prependLatestRequests(requests) {
         // Populate from existing rows
         tbody.find('tr').each(function() {
             const id = $(this).data('id');
-            if (id) window.seenRequestIds.add(parseInt(id));
+            if (id !== undefined && id !== null) window.seenRequestIds.add(parseInt(id));
         });
     }
 
-    // Process requests
-    requests.forEach(req => {
-        if (window.seenRequestIds.has(req.id)) return;
+    // Process requests (received in newest-first order from backend)
+    // Iterate in reverse to maintain correct chronological order when prepending
+    for (let i = requests.length - 1; i >= 0; i--) {
+        const req = requests[i];
+        if (window.seenRequestIds.has(req.id)) continue;
         window.seenRequestIds.add(req.id);
 
         const row = `
@@ -391,12 +418,12 @@ function prependLatestRequests(requests) {
                 <td><code>${LogLynxUtils.truncate(req.path, 40)}</code></td>
                 <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
                 <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
-                <td>${req.geo_country || '-'}</td>
+                <td>${req.geo_country ? `<span>${countryCodeToFlag(req.geo_country, req.geo_country)} ${countryToContinentMap[req.geo_country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.geo_country]?.continent || 'Unknown'}</small>` : '-'}</td>
                 <td>${req.client_ip}</td>
             </tr>
         `;
         tbody.prepend(row);
-    });
+    }
 
     // Limit to 50 rows
     const rows = tbody.find('tr');
@@ -406,7 +433,7 @@ function prependLatestRequests(requests) {
         window.seenRequestIds.clear();
         tbody.find('tr').each(function() {
             const id = $(this).data('id');
-            if (id) window.seenRequestIds.add(parseInt(id));
+            if (id !== undefined && id !== null) window.seenRequestIds.add(parseInt(id));
         });
     }
 }
@@ -453,15 +480,11 @@ function updateTopIPsTable(topIPs) {
 }
 
 // Update per-service metrics
-async function updatePerServiceMetrics() {
-    const result = await LogLynxAPI.getPerServiceMetrics();
-
+function updatePerServiceMetrics(services) {
     // Always keep the section visible
     $('#perServiceSection').show();
 
-    if (result.success && result.data && result.data.length > 0) {
-        const services = result.data;
-
+    if (services && services.length > 0) {
         // Sort by request rate descending
         services.sort((a, b) => b.request_rate - a.request_rate);
 
@@ -548,6 +571,8 @@ function updateLiveRequestsTable(requests) {
 function updateMiniMonitor(metrics) {
     // Update value
     $('#miniRequestRate').text(metrics.request_rate.toFixed(1));
+    $('#miniErrorRate').text(metrics.error_rate.toFixed(2));
+    $('#miniAvgResponse').text(metrics.avg_response_time.toFixed(0));
 
     // Update chart
     if (miniLiveChart) {
@@ -579,9 +604,16 @@ function toggleStreamPause() {
         indicator.addClass('paused').html('<i class="fas fa-pause" style="font-size: 0.7em; margin-right: 4px;"></i> PAUSED');
         
         // Show mini monitor
-        miniMonitor.fadeIn(300);
+        if (!isMiniMonitorHidden) {
+            miniMonitor.fadeIn(300);
+        } else {
+            $('#miniMonitorRestore').css('display', 'flex');
+        }
         
-        LogLynxUtils.showNotification('Stream paused', 'info', 2000);
+        // Clear buffer when starting pause
+        pausedMetricsBuffer = [];
+        
+        LogLynxUtils.showNotification('Stream paused - buffering data in background', 'info', 2000);
     } else {
         btns.html('<i class="fas fa-pause"></i> Pause');
         btns.removeClass('btn-primary').addClass('btn-outline');
@@ -591,9 +623,95 @@ function toggleStreamPause() {
         
         // Hide mini monitor
         miniMonitor.fadeOut(300);
+        $('#miniMonitorRestore').fadeOut(300);
         
-        LogLynxUtils.showNotification('Stream resumed', 'success', 2000);
+        // Process buffered data
+        if (pausedMetricsBuffer.length > 0) {
+            LogLynxUtils.showNotification(`Resumed - catching up ${pausedMetricsBuffer.length} seconds of data...`, 'success', 2000);
+            processBufferedMetrics();
+        } else {
+            LogLynxUtils.showNotification('Stream resumed', 'success', 2000);
+        }
     }
+}
+
+// Process buffered metrics to fill gaps
+function processBufferedMetrics() {
+    if (pausedMetricsBuffer.length === 0) return;
+
+    // 1. Update Charts Data Arrays (History)
+    pausedMetricsBuffer.forEach(metrics => {
+        const metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : new Date();
+        const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        // Logic to add to arrays
+        if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
+             liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
+             liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+        } else {
+            liveChartLabels.push(timeLabel);
+            liveRequestRateData.push(metrics.request_rate);
+            liveAvgResponseData.push(metrics.avg_response_time);
+        }
+        
+        // Maintain max points
+        if (liveChartLabels.length > maxDataPoints) {
+            liveChartLabels.shift();
+            liveRequestRateData.shift();
+            liveAvgResponseData.shift();
+        }
+    });
+
+    // 2. Update Live Chart (Once)
+    if (liveChart) {
+        liveChart.data.labels = liveChartLabels;
+        liveChart.data.datasets[0].data = liveRequestRateData;
+        liveChart.data.datasets[1].data = liveAvgResponseData;
+        liveChart.update('none');
+    }
+
+    // 3. Process Requests (All buffered packets)
+    pausedMetricsBuffer.forEach(metrics => {
+        if (metrics.latest_requests && metrics.latest_requests.length > 0) {
+            prependLatestRequests(metrics.latest_requests);
+        }
+    });
+
+    // 4. Update Current State (KPIs, PerService, TopIPs) using the LAST metric
+    const lastMetric = pausedMetricsBuffer[pausedMetricsBuffer.length - 1];
+    
+    // Update KPIs
+    $('#liveRequestRate').text(lastMetric.request_rate.toFixed(2));
+    $('#liveErrorRate').text(lastMetric.error_rate.toFixed(2));
+    $('#liveAvgResponse').text(lastMetric.avg_response_time.toFixed(1) + 'ms');
+    $('#live2xx').text(lastMetric.status_2xx || 0);
+    $('#live4xx').text(lastMetric.status_4xx || 0);
+    $('#live5xx').text(lastMetric.status_5xx || 0);
+
+    // Update Per Service
+    if (lastMetric.per_service) {
+        updatePerServiceMetrics(lastMetric.per_service);
+    }
+    
+    // Update Top IPs
+    updateTopIPsTable(lastMetric.top_ips);
+    
+    // Update timestamp
+    if (lastMetric.timestamp) {
+        lastMetricsTimestamp = new Date(lastMetric.timestamp);
+    }
+    
+    // Update count
+    updateCount += pausedMetricsBuffer.length;
+    $('#updateCount').text(updateCount);
+    
+    // Clear buffer
+    pausedMetricsBuffer = [];
 }
 
 // Clear live data
@@ -652,6 +770,115 @@ function initEventListeners() {
     });
 }
 
+// Mini Monitor State
+let isMiniMonitorHidden = false;
+let isDragging = false;
+let dragStartX, dragStartY;
+let initialLeft, initialTop;
+
+// Hide Mini Monitor
+function hideMiniMonitor() {
+    isMiniMonitorHidden = true;
+    const monitor = $('#miniLiveMonitor');
+    
+    // Calculate distance to move off-screen to the right
+    const rect = monitor[0].getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const moveDistance = viewportWidth - rect.left;
+    
+    monitor.css('transform', `translateX(${moveDistance}px)`);
+    monitor.addClass('hidden');
+    
+    // Show restore tab after animation
+    setTimeout(() => {
+        if (isStreamPaused && isMiniMonitorHidden) {
+            const restoreTab = $('#miniMonitorRestore');
+            restoreTab.css('display', 'flex').hide().fadeIn(200);
+            
+            // Position restore tab at the same vertical level
+            restoreTab.css('top', rect.top + 'px').css('bottom', 'auto');
+        }
+    }, 300);
+}
+
+// Show Mini Monitor
+function showMiniMonitor() {
+    isMiniMonitorHidden = false;
+    $('#miniMonitorRestore').fadeOut(200, () => {
+        const monitor = $('#miniLiveMonitor');
+        monitor.css('transform', ''); // Clear inline transform
+        monitor.removeClass('hidden');
+    });
+}
+
+// Initialize Draggable Mini Monitor
+function initDraggableMonitor() {
+    const monitor = document.getElementById('miniLiveMonitor');
+    const header = document.getElementById('miniMonitorHeader');
+    
+    if (!monitor || !header) return;
+
+    header.addEventListener('mousedown', dragStart);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', dragEnd);
+
+    function dragStart(e) {
+        // Ignore clicks on buttons
+        if (e.target.closest('button') || e.target.closest('.mini-monitor-btn')) return;
+        
+        initialLeft = monitor.offsetLeft;
+        initialTop = monitor.offsetTop;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        
+        // If it was positioned with bottom/right, convert to top/left for dragging
+        const rect = monitor.getBoundingClientRect();
+        monitor.style.bottom = 'auto';
+        monitor.style.right = 'auto';
+        monitor.style.left = rect.left + 'px';
+        monitor.style.top = rect.top + 'px';
+        
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        isDragging = true;
+        monitor.classList.add('dragging');
+    }
+
+    function drag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        const currentX = e.clientX - dragStartX;
+        const currentY = e.clientY - dragStartY;
+
+        let newLeft = initialLeft + currentX;
+        let newTop = initialTop + currentY;
+        
+        // Boundary checks
+        const maxLeft = window.innerWidth - monitor.offsetWidth;
+        const maxTop = window.innerHeight - monitor.offsetHeight;
+        
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        monitor.style.left = newLeft + 'px';
+        monitor.style.top = newTop + 'px';
+    }
+
+    function dragEnd(e) {
+        if (!isDragging) return;
+        initialLeft = monitor.offsetLeft;
+        initialTop = monitor.offsetTop;
+        isDragging = false;
+        monitor.classList.remove('dragging');
+    }
+}
+
+// Make available globally
+window.hideMiniMonitor = hideMiniMonitor;
+window.showMiniMonitor = showMiniMonitor;
+
 // Initialize page
 // Initialize hide my traffic filter with reconnect callback
 function initHideTrafficFilterWithReconnect() {
@@ -679,6 +906,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize event listeners
     initEventListeners();
+    
+    // Initialize draggable monitor
+    initDraggableMonitor();
 
     // Connect to real-time stream
     connectRealtimeStream();

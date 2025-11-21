@@ -211,7 +211,7 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 				continue
 			}
 
-			// Send SSE event
+			// Send SSE event (always send for heartbeat, frontend handles duplicates)
 			_, err = fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 			if err != nil {
 				h.logger.Debug("Failed to write SSE data", h.logger.Args("error", err))

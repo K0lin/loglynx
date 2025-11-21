@@ -90,7 +90,7 @@ func NewSourceProcessor(
 		logger:              logger,
 		batchSize:           batchSize,       // Configurable via BATCH_SIZE env var
 		workerPoolSize:      workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
-		batchTimeout:        30 * time.Second, // OPTIMIZED: Longer timeout for larger batches (was 2s)
+		batchTimeout:        500 * time.Millisecond, // OPTIMIZED: Very short timeout for realtime updates (was 1s)
 		pollInterval:        100 * time.Millisecond, // OPTIMIZED: Poll more frequently during initial load (was 1s)
 		ctx:                 ctx,
 		cancel:              cancel,
@@ -274,6 +274,9 @@ func (sp *SourceProcessor) processLoop() {
 			lastReadInode = newInode
 			lastReadLine = newLastLine
 
+			// Update reader position immediately to prevent re-reading the same lines
+			sp.reader.UpdatePosition(newPos, newInode, newLastLine)
+
 			// Flush if batch is full AND update position only after successful flush
 			if len(batch) >= sp.batchSize {
 				sp.logger.Trace("Batch full, flushing",
@@ -363,11 +366,6 @@ func (sp *SourceProcessor) parseAndEnrichParallel(lines []string) []*models.HTTP
 				}
 
 				results <- dbRequest
-
-				// Send to real-time metrics collector
-				if sp.metricsCollector != nil {
-					sp.metricsCollector.Ingest(dbRequest)
-				}
 			}
 		}()
 	}
@@ -413,6 +411,13 @@ func (sp *SourceProcessor) flushBatch(batch []*models.HTTPRequest) {
 		sp.totalErrors += int64(len(batch))
 		sp.statsMu.Unlock()
 		return
+	}
+
+	// Send to real-time metrics collector (now that we have IDs)
+	if sp.metricsCollector != nil {
+		for _, req := range batch {
+			sp.metricsCollector.Ingest(req)
+		}
 	}
 
 	// Update stats
