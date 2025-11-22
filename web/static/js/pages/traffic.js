@@ -482,27 +482,36 @@ function initASNDataTable() {
         },
         columns: [
             {
+                title: 'Rank',
                 data: null,
                 render: (data, type, row, meta) => meta.row + 1
             },
             {
+                title: 'ASN',
                 data: 'asn',
                 render: (d) => `<strong>AS${d}</strong>`
             },
             {
+                title: 'Organization',
                 data: 'asn_org',
                 render: (d) => LogLynxUtils.truncate(d || 'Unknown', 50)
             },
-            { data: 'country' },
             {
+                title: 'Country',
+                data: 'country'
+            },
+            {
+                title: 'Hits',
                 data: 'hits',
                 render: (d) => LogLynxUtils.formatNumber(d)
             },
             {
+                title: 'Bandwidth',
                 data: 'bandwidth',
                 render: (d) => LogLynxCharts.formatBytes(d || 0)
             },
             {
+                title: '% of Total',
                 data: null,
                 render: (data, type, row) => {
                     // Calculate percentage based on total (approximate)
@@ -513,6 +522,7 @@ function initASNDataTable() {
                 }
             },
             {
+                title: 'Avg Size',
                 data: null,
                 render: (data, type, row) => {
                     const avgSize = row.hits > 0 ? row.bandwidth / row.hits : 0;
