@@ -182,7 +182,7 @@ const LogLynxCharts = {
     },
 
     /**
-     * Create a stacked area chart
+     * Create an area chart (non-stacked) for status code timeline
      */
     createStackedAreaChart(canvasId, data, options = {}) {
         const ctx = document.getElementById(canvasId);
@@ -201,12 +201,10 @@ const LogLynxCharts = {
                 },
                 scales: {
                     x: {
-                        stacked: true,
                         ticks: { color: '#F3EFF3' },
                         grid: { color: 'rgba(243, 239, 243, 0.08)' }
                     },
                     y: {
-                        stacked: true,
                         beginAtZero: true,
                         ticks: { color: '#F3EFF3' },
                         grid: { color: 'rgba(243, 239, 243, 0.08)' }

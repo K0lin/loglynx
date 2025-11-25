@@ -59,7 +59,15 @@ async function loadDashboardData() {
 
 // Update summary KPI cards
 function updateSummaryCards(data) {
+ // Update subtitles based on time range
+    let timeLabel = 'Last 7 days';
+    if (currentTimeRange === 1) timeLabel = 'Last 1 hour';
+    else if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
+    else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
+    else if (currentTimeRange === 0) timeLabel = 'All time';
+    
     $('#totalRequests').text(LogLynxUtils.formatNumber(data.total_requests || 0));
+    $('#totalRequestsSubtitle').text(timeLabel);
     $('#uniqueVisitors').text(LogLynxUtils.formatNumber(data.unique_visitors || 0));
     $('#avgResponseTime').text(LogLynxUtils.formatMs(data.avg_response_time || 0));
     $('#unique404').text(LogLynxUtils.formatNumber(data.unique_404 || 0));
@@ -78,11 +86,6 @@ function updateSummaryCards(data) {
 
     $('#requestsPerHour').text(LogLynxUtils.formatNumber(Math.round(data.requests_per_hour || 0)));
 
-    // Update subtitles based on time range
-    let timeLabel = 'Last 7 days';
-    if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
-    else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
-    else if (currentTimeRange === 0) timeLabel = 'All time';
     
     $('.stat-card .stat-subtitle').each(function() {
         const text = $(this).text();
@@ -196,37 +199,41 @@ function initStatusTimelineChart() {
                 label: '2xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http2xx,
-                backgroundColor: LogLynxCharts.colors.http2xx + '40',
+                backgroundColor: LogLynxCharts.colors.http2xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: '3xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http3xx,
-                backgroundColor: LogLynxCharts.colors.http3xx + '40',
+                backgroundColor: LogLynxCharts.colors.http3xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: '4xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http4xx,
-                backgroundColor: LogLynxCharts.colors.http4xx + '40',
+                backgroundColor: LogLynxCharts.colors.http4xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: '5xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http5xx,
-                backgroundColor: LogLynxCharts.colors.http5xx + '40',
+                backgroundColor: LogLynxCharts.colors.http5xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             }
         ]
     }, {
@@ -237,6 +244,19 @@ function initStatusTimelineChart() {
                     color: '#F3EFF3',
                     font: { size: 11 }
                 }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' +
+                               LogLynxUtils.formatNumber(context.parsed.y) + ' requests';
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true
             }
         }
     });
