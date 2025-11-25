@@ -196,37 +196,41 @@ function initStatusTimelineChart() {
                 label: '2xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http2xx,
-                backgroundColor: LogLynxCharts.colors.http2xx + '40',
+                backgroundColor: LogLynxCharts.colors.http2xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: '3xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http3xx,
-                backgroundColor: LogLynxCharts.colors.http3xx + '40',
+                backgroundColor: LogLynxCharts.colors.http3xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: '4xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http4xx,
-                backgroundColor: LogLynxCharts.colors.http4xx + '40',
+                backgroundColor: LogLynxCharts.colors.http4xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: '5xx',
                 data: [],
                 borderColor: LogLynxCharts.colors.http5xx,
-                backgroundColor: LogLynxCharts.colors.http5xx + '40',
+                backgroundColor: LogLynxCharts.colors.http5xx + '20',
                 tension: 0.3,
                 fill: true,
-                pointRadius: 0
+                pointRadius: 0,
+                borderWidth: 2
             }
         ]
     }, {
@@ -237,6 +241,19 @@ function initStatusTimelineChart() {
                     color: '#F3EFF3',
                     font: { size: 11 }
                 }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' +
+                               LogLynxUtils.formatNumber(context.parsed.y) + ' requests';
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true
             }
         }
     });
