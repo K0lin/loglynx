@@ -59,7 +59,15 @@ async function loadDashboardData() {
 
 // Update summary KPI cards
 function updateSummaryCards(data) {
+ // Update subtitles based on time range
+    let timeLabel = 'Last 7 days';
+    if (currentTimeRange === 1) timeLabel = 'Last 1 hour';
+    else if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
+    else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
+    else if (currentTimeRange === 0) timeLabel = 'All time';
+    
     $('#totalRequests').text(LogLynxUtils.formatNumber(data.total_requests || 0));
+    $('#totalRequestsSubtitle').text(timeLabel);
     $('#uniqueVisitors').text(LogLynxUtils.formatNumber(data.unique_visitors || 0));
     $('#avgResponseTime').text(LogLynxUtils.formatMs(data.avg_response_time || 0));
     $('#unique404').text(LogLynxUtils.formatNumber(data.unique_404 || 0));
@@ -78,11 +86,6 @@ function updateSummaryCards(data) {
 
     $('#requestsPerHour').text(LogLynxUtils.formatNumber(Math.round(data.requests_per_hour || 0)));
 
-    // Update subtitles based on time range
-    let timeLabel = 'Last 7 days';
-    if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
-    else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
-    else if (currentTimeRange === 0) timeLabel = 'All time';
     
     $('.stat-card .stat-subtitle').each(function() {
         const text = $(this).text();
