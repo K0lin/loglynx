@@ -1400,6 +1400,7 @@ components:
         minimum: 0
         maximum: 8760
         default: 168
+        example: 168
 
     DaysParam:
       name: days

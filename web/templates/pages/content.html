@@ -41,6 +41,13 @@
             <p class="page-description">URLs, paths, referrers, and content performance</p>
         </div>
         <div class="page-actions">
+            <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
+                <option value="1">Last 1 Hour</option>
+                <option value="24">Last 24 Hours</option>
+                <option value="168" selected>Last 7 Days</option>
+                <option value="720">Last 30 Days</option>
+                <option value="0">All Time</option>
+            </select>
             <button class="btn btn-outline btn-sm" onclick="exportContentReport()">
                 <i class="fas fa-file-export"></i> Export Report
             </button>
@@ -185,13 +192,153 @@
     {{template "scripts-common" .}}
 
     <script>
+        let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
+        let topPathsTable;
+        let topReferrersTable;
+        let referrerDomainsTable;
+        let methodChartInstance;
+        let topPathsChartInstance;
+
+        function getTimeLabel(hours) {
+            if (hours === 0) return 'All time';
+            if (hours === 1) return 'Last 1 hour';
+            if (hours === 24) return 'Last 24 hours';
+            if (hours === 720) return 'Last 30 days';
+            return 'Last 7 days';
+        }
+
+        function applyTimeLabel() {
+            const label = getTimeLabel(currentTimeRange);
+            document.querySelectorAll('.stat-card .stat-subtitle').forEach(el => {
+                if (el.textContent.includes('Last') || el.textContent === 'All time') {
+                    el.textContent = label;
+                }
+            });
+        }
+
+        function initTimeRangeSelector() {
+            const selector = document.getElementById('timeframeSelector');
+            if (!selector) return;
+
+            selector.value = currentTimeRange.toString();
+
+            selector.addEventListener('change', () => {
+                const val = parseInt(selector.value, 10);
+                if (Number.isNaN(val)) return;
+                currentTimeRange = val;
+                LogLynxUtils.setPreferredTimeRangeHours(val);
+                reloadContentData(true);
+            });
+        }
+
+        function reloadTables() {
+            if (topPathsTable) {
+                topPathsTable.ajax.url(LogLynxAPI.buildURL('/stats/top/paths', { limit: 100, hours: currentTimeRange })).load();
+            }
+            if (topReferrersTable) {
+                topReferrersTable.ajax.url(LogLynxAPI.buildURL('/stats/top/referrers', { limit: 50, hours: currentTimeRange })).load();
+            }
+            if (referrerDomainsTable) {
+                referrerDomainsTable.ajax.url(LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 30, hours: currentTimeRange })).load();
+            }
+        }
+
+        function loadMethodDistribution() {
+            fetch(LogLynxAPI.buildURL('/stats/distribution/methods', { hours: currentTimeRange }))
+                .then(response => response.json())
+                .then(data => {
+                    const ctx = document.getElementById('methodChart');
+                    if (methodChartInstance) {
+                        methodChartInstance.destroy();
+                    }
+                    methodChartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.map(item => `${item.method} (${item.count.toLocaleString()})`),
+                            datasets: [{
+                                data: data.map(item => item.count),
+                                backgroundColor: ['#F46319', '#17a2b8', '#28a745', '#ffc107', '#dc3545']
+                            }]
+                        },
+                        options: LogLynxCharts.defaultOptions
+                    });
+                });
+        }
+
+        function loadTopPathsChart() {
+            fetch(LogLynxAPI.buildURL('/stats/top/paths', { limit: 10, hours: currentTimeRange }))
+                .then(response => response.json())
+                .then(data => {
+                    const ctx = document.getElementById('topPathsChart');
+                    if (topPathsChartInstance) {
+                        topPathsChartInstance.destroy();
+                    }
+                    topPathsChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.map(item => {
+                                const path = item.path;
+                                return path.length > 30 ? path.substring(0, 30) + '...' : path;
+                            }),
+                            datasets: [{
+                                label: 'Requests',
+                                data: data.map(item => item.hits),
+                                backgroundColor: '#F46319'
+                            }]
+                        },
+                        options: {
+                            ...LogLynxCharts.defaultOptions,
+                            indexAxis: 'y'
+                        }
+                    });
+
+                    if (data.length > 0) {
+                        const topPath = data[0].path;
+                        document.getElementById('topPath').textContent = topPath.length > 30 ? topPath.substring(0, 30) + '...' : topPath;
+                        document.getElementById('topPath').title = topPath;
+                        document.getElementById('topPathHits').textContent = `${data[0].hits.toLocaleString()} requests`;
+                    }
+
+                    const uniquePaths = new Set(data.map(item => item.path)).size;
+                    document.getElementById('uniquePaths').textContent = uniquePaths.toLocaleString();
+                });
+        }
+
+        function loadSummary() {
+            fetch(LogLynxAPI.buildURL('/stats/summary', { hours: currentTimeRange }))
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalRequests').textContent = (data.total_requests || 0).toLocaleString();
+                });
+        }
+
+        function loadReferrerCount() {
+            fetch(LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 1000, hours: currentTimeRange }))
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalReferrers').textContent = (data.length || 0).toLocaleString();
+                });
+        }
+
+        function reloadContentData(includeTables = true) {
+            applyTimeLabel();
+            if (includeTables) {
+                reloadTables();
+            }
+            loadMethodDistribution();
+            loadTopPathsChart();
+            loadSummary();
+            loadReferrerCount();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             LogLynxUtils.setActiveNavItem('content');
+            initTimeRangeSelector();
+            applyTimeLabel();
 
-            // Initialize DataTables
-            const topPathsTable = $('#topPathsTable').DataTable({
+            topPathsTable = $('#topPathsTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/paths', { limit: 100 }),
+                    url: LogLynxAPI.buildURL('/stats/top/paths', { limit: 100, hours: currentTimeRange }),
                     dataSrc: ''
                 },
                 columns: [
@@ -211,9 +358,9 @@
                 pageLength: 25
             });
 
-            const topReferrersTable = $('#topReferrersTable').DataTable({
+            topReferrersTable = $('#topReferrersTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/referrers', { limit: 50 }),
+                    url: LogLynxAPI.buildURL('/stats/top/referrers', { limit: 50, hours: currentTimeRange }),
                     dataSrc: ''
                 },
                 columns: [
@@ -240,7 +387,7 @@
                         data: null,
                         defaultContent: '-',
                         orderable: false,
-                        render: (data, type, row) => {
+                        render: () => {
                             return '-';
                         }
                     }
@@ -254,9 +401,9 @@
                 }
             });
 
-            const referrerDomainsTable = $('#referrerDomainsTable').DataTable({
+            referrerDomainsTable = $('#referrerDomainsTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 30 }),
+                    url: LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 30, hours: currentTimeRange }),
                     dataSrc: ''
                 },
                 columns: [
@@ -279,7 +426,7 @@
                         data: null,
                         defaultContent: '-',
                         orderable: false,
-                        render: (data, type, row) => {
+                        render: () => {
                             return '-';
                         }
                     }
@@ -293,73 +440,7 @@
                 }
             });
 
-            // Load method distribution
-            fetch(LogLynxAPI.buildURL('/stats/distribution/methods'))
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('methodChart');
-                    new Chart(ctx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: data.map(item => `${item.method} (${item.count.toLocaleString()})`),
-                            datasets: [{
-                                data: data.map(item => item.count),
-                                backgroundColor: ['#F46319', '#17a2b8', '#28a745', '#ffc107', '#dc3545']
-                            }]
-                        },
-                        options: LogLynxCharts.defaultOptions
-                    });
-                });
-
-            // Load top paths for chart
-            fetch(LogLynxAPI.buildURL('/stats/top/paths', { limit: 10 }))
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('topPathsChart');
-                    new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.map(item => {
-                                const path = item.path;
-                                return path.length > 30 ? path.substring(0, 30) + '...' : path;
-                            }),
-                            datasets: [{
-                                label: 'Requests',
-                                data: data.map(item => item.hits),
-                                backgroundColor: '#F46319'
-                            }]
-                        },
-                        options: {
-                            ...LogLynxCharts.defaultOptions,
-                            indexAxis: 'y'
-                        }
-                    });
-
-                    // Update KPIs
-                    if (data.length > 0) {
-                        const topPath = data[0].path;
-                        document.getElementById('topPath').textContent = topPath.length > 30 ? topPath.substring(0, 30) + '...' : topPath;
-                        document.getElementById('topPath').title = topPath;
-                        document.getElementById('topPathHits').textContent = `${data[0].hits.toLocaleString()} requests`;
-                    }
-
-                    const uniquePaths = new Set(data.map(item => item.path)).size;
-                    document.getElementById('uniquePaths').textContent = uniquePaths.toLocaleString();
-                });
-
-            // Load summary stats
-            fetch(LogLynxAPI.buildURL('/stats/summary'))
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalRequests').textContent = data.total_requests.toLocaleString();
-                });
-
-            // Load referrer count
-            fetch(LogLynxAPI.buildURL('/stats/top/referrer-domains', { limit: 1000 }))
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalReferrers').textContent = data.length.toLocaleString();
-                });
+            reloadContentData(false);
         });
 
         function exportContentReport() {
