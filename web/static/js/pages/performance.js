@@ -3,14 +3,16 @@
  */
 
 let performanceTimelineChart, responseTimeDistributionChart, percentileChart, volumeVsPerformanceChart;
-let currentTimeRange = 168; // Default 7 days
+let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168); // Default 7 days
 let allPerformanceData = {};
 
 // Load all performance data
 async function loadPerformanceData() {
     try {
+        const hours = currentTimeRange;
+
         // Load response time statistics
-        const responseTimeResult = await LogLynxAPI.getResponseTimeStats();
+        const responseTimeResult = await LogLynxAPI.getResponseTimeStats(hours);
         if (responseTimeResult.success) {
             allPerformanceData.responseTime = responseTimeResult.data;
             updatePerformanceKPIs(responseTimeResult.data);
@@ -18,7 +20,7 @@ async function loadPerformanceData() {
         }
 
         // Load timeline data
-        const timelineResult = await LogLynxAPI.getTimeline(currentTimeRange);
+        const timelineResult = await LogLynxAPI.getTimeline(hours);
         if (timelineResult.success) {
             allPerformanceData.timeline = timelineResult.data;
             updatePerformanceTimelineChart(timelineResult.data);
@@ -27,7 +29,7 @@ async function loadPerformanceData() {
         }
 
         // Load top paths
-        const pathsResult = await LogLynxAPI.getTopPaths(100);
+        const pathsResult = await LogLynxAPI.getTopPaths(100, hours);
         if (pathsResult.success) {
             allPerformanceData.paths = pathsResult.data;
             initSlowPathsTable(pathsResult.data);
@@ -35,7 +37,7 @@ async function loadPerformanceData() {
         }
 
         // Load backends
-        const backendsResult = await LogLynxAPI.getTopBackends(30);
+        const backendsResult = await LogLynxAPI.getTopBackends(30, hours);
         if (backendsResult.success) {
             allPerformanceData.backends = backendsResult.data;
             initBackendPerfTable(backendsResult.data);
@@ -699,23 +701,53 @@ function updateLogProcessingStats(data) {
 
 // Initialize time range selector
 function initTimeRangeSelector() {
+    const selector = document.getElementById('timeframeSelector');
+
+    const applyRange = (range) => {
+        if (Number.isNaN(range)) return;
+        currentTimeRange = range;
+        LogLynxUtils.setPreferredTimeRangeHours(range);
+
+        // Sync dropdown
+        if (selector) {
+            selector.value = range.toString();
+        }
+
+        // Sync buttons
+        document.querySelectorAll('.time-range-btn').forEach(btn => {
+            const btnRange = parseInt(btn.getAttribute('data-range'));
+            if (btnRange === range) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    };
+
+    // Initial sync with stored preference
+    applyRange(currentTimeRange);
+
+    if (selector) {
+        selector.addEventListener('change', function() {
+            const range = parseInt(this.value);
+            applyRange(range);
+            loadPerformanceData();
+        });
+    }
+
     document.querySelectorAll('.time-range-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-
-            const range = this.getAttribute('data-range');
-            currentTimeRange = parseInt(range);
-
-            // Reload timeline data
-            loadTimelineData();
+            const range = parseInt(this.getAttribute('data-range'));
+            applyRange(range);
+            loadPerformanceData();
         });
     });
 }
 
 // Load only timeline data
 async function loadTimelineData() {
-    const result = await LogLynxAPI.getTimeline(currentTimeRange);
+    const hours = currentTimeRange;
+    const result = await LogLynxAPI.getTimeline(hours);
 
     if (result.success) {
         allPerformanceData.timeline = result.data;

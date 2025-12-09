@@ -11,6 +11,35 @@ const LogLynxUtils = {
     _hideTrafficChangeDebounceTimer: null,
 
     /**
+     * Persisted time range helpers (shared across pages)
+     */
+    getPreferredTimeRangeHours(defaultHours = 168) {
+        try {
+            const stored = localStorage.getItem('loglynx_time_range_hours');
+            const parsed = parseInt(stored, 10);
+            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 8760) {
+                return parsed;
+            }
+        } catch (error) {
+            // Ignore storage errors and fall back to default
+            console.debug('Time range preference unavailable:', error);
+        }
+        return defaultHours;
+    },
+
+    setPreferredTimeRangeHours(hours) {
+        const parsed = parseInt(hours, 10);
+        if (Number.isNaN(parsed) || parsed < 0 || parsed > 8760) {
+            return;
+        }
+        try {
+            localStorage.setItem('loglynx_time_range_hours', parsed.toString());
+        } catch (error) {
+            console.debug('Unable to persist time range preference:', error);
+        }
+    },
+
+    /**
      * Show notification
      */
     showNotification(message, type = 'info', duration = 5000) {

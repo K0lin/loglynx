@@ -3,7 +3,7 @@
  */
 
 let timelineChart, statusChart, statusTimelineChart;
-let currentTimeRange = 168; // Default 7 days
+let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
 
 // Load all dashboard data
 async function loadDashboardData() {
@@ -59,13 +59,13 @@ async function loadDashboardData() {
 
 // Update summary KPI cards
 function updateSummaryCards(data) {
- // Update subtitles based on time range
+    // Update subtitles based on time range
     let timeLabel = 'Last 7 days';
     if (currentTimeRange === 1) timeLabel = 'Last 1 hour';
     else if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
     else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
     else if (currentTimeRange === 0) timeLabel = 'All time';
-    
+
     $('#totalRequests').text(LogLynxUtils.formatNumber(data.total_requests || 0));
     $('#totalRequestsSubtitle').text(timeLabel);
     $('#uniqueVisitors').text(LogLynxUtils.formatNumber(data.unique_visitors || 0));
@@ -388,24 +388,37 @@ function initDataTable() {
 
 // Initialize time range selector
 function initTimeRangeSelector() {
-    // Handle global dropdown selector
     const selector = document.getElementById('timeframeSelector');
+
+    const applyRange = (range) => {
+        if (Number.isNaN(range)) return;
+        currentTimeRange = range;
+        LogLynxUtils.setPreferredTimeRangeHours(range);
+
+        // Sync dropdown
+        if (selector) {
+            selector.value = range.toString();
+        }
+
+        // Sync buttons
+        document.querySelectorAll('.time-range-btn').forEach(btn => {
+            const btnRange = parseInt(btn.getAttribute('data-range'));
+            if (btnRange === range) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    };
+
+    // Initial sync with stored preference
+    applyRange(currentTimeRange);
+
+    // Handle global dropdown selector
     if (selector) {
         selector.addEventListener('change', function() {
             const range = parseInt(this.value);
-            currentTimeRange = range;
-            
-            // Update chart buttons if they exist (for visual consistency)
-            document.querySelectorAll('.time-range-btn').forEach(btn => {
-                const btnRange = parseInt(btn.getAttribute('data-range'));
-                if (btnRange === range) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-
-            // Reload all dashboard data
+            applyRange(range);
             loadDashboardData();
         });
     }
@@ -413,18 +426,8 @@ function initTimeRangeSelector() {
     // Handle chart-specific buttons (legacy support or if kept)
     document.querySelectorAll('.time-range-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-
             const range = parseInt(this.getAttribute('data-range'));
-            currentTimeRange = range;
-
-            // Sync dropdown if exists
-            if (selector) {
-                selector.value = range.toString();
-            }
-
-            // Reload all dashboard data
+            applyRange(range);
             loadDashboardData();
         });
     });
