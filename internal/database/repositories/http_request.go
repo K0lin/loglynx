@@ -43,6 +43,32 @@ var oldIndexes = []string{
 	"idx_timestamp_cleanup",
 }
 
+// New optimized indexes that should exist after optimization
+var newIndexes = []string{
+	"idx_timestamp_status",
+	"idx_time_host",
+	"idx_time_backend",
+	"idx_path_agg",
+	"idx_geo_agg",
+	"idx_referer_agg",
+	"idx_service_id",
+	"idx_backend_agg",
+	"idx_backend_url_agg",
+	"idx_host_agg",
+	"idx_client_ip",
+	"idx_status_code",
+	"idx_method",
+	"idx_errors",
+	"idx_slow",
+	"idx_response_time",
+	"idx_ip_agg",
+	"idx_asn_agg",
+	"idx_device_type",
+	"idx_protocol",
+	"idx_tls_version",
+	"idx_cleanup",
+}
+
 // HTTPRequestRepository handles CRUD operations for HTTP requests
 type HTTPRequestRepository interface {
 	Create(request *models.HTTPRequest) error
@@ -98,23 +124,41 @@ func (r *httpRequestRepo) checkFirstLoad() {
 // checkAndUpgradeIndexes checks if the database has the new optimized indexes
 // If not, runs the optimization in the background
 func (r *httpRequestRepo) checkAndUpgradeIndexes() {
-	// Check if any old indexes still exist (indicating upgrade needed)
-	var exists bool
-	// Build query to check if any old indexes still exist
-	query := `SELECT 1 FROM sqlite_master WHERE type='index' AND name IN (`
-	args := make([]interface{}, len(oldIndexes))
-	for i, indexName := range oldIndexes {
+	// Check if all new indexes exist (if any are missing, upgrade is needed)
+	var missingCount int64
+	query := `SELECT COUNT(*) FROM (SELECT 1 FROM sqlite_master WHERE type='index' AND name IN (`
+	args := make([]interface{}, len(newIndexes))
+	for i, indexName := range newIndexes {
 		if i > 0 {
 			query += ","
 		}
 		query += "?"
 		args[i] = indexName
 	}
-	query += ") LIMIT 1"
+	query += ")) WHERE 1 = 0" // This will count how many are missing
 
-	err := r.db.Raw(query, args...).Scan(&exists).Error
-	if err == nil && exists {
-		r.logger.Info("Database indexes need upgrade - applying optimizations in background...")
+	// Actually, let's count how many new indexes exist
+	query = `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN (`
+	args = make([]interface{}, len(newIndexes))
+	for i, indexName := range newIndexes {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args[i] = indexName
+	}
+	query += ")"
+
+	err := r.db.Raw(query, args...).Scan(&missingCount).Error
+	if err != nil {
+		r.logger.Warn("Failed to check database indexes", r.logger.Args("error", err))
+		return
+	}
+
+	// If not all new indexes exist, we need to upgrade
+	if int(missingCount) < len(newIndexes) {
+		r.logger.Info("Database indexes need upgrade - applying optimizations in background...",
+			r.logger.Args("existing_indexes", missingCount, "required_indexes", len(newIndexes)))
 		go func() {
 			if err := r.optimizeDatabase(); err != nil {
 				r.logger.Error("Failed to upgrade database indexes", r.logger.Args("error", err))
