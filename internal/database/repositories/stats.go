@@ -808,19 +808,78 @@ func (r *statsRepo) GetTopCountries(hours int, limit int, filters []ServiceFilte
 }
 
 // GetTopIPAddresses returns most active IP addresses
+// OPTIMIZED: Uses raw SQL with covering index idx_ip_agg for efficient aggregation
 func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error) {
 	var ips []*IPStats
 
-	query := r.db.Model(&models.HTTPRequest{}).
-		Select("client_ip as ip_address, MAX(geo_country) as country, MAX(geo_city) as city, MAX(geo_lat) as latitude, MAX(geo_lon) as longitude, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth")
+	// Build WHERE clause
+	whereClause := "1=1"
+	args := []interface{}{}
 
 	if hours > 0 {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
+		whereClause = "timestamp > ?"
+		args = append(args, since)
 	}
 
-	query = r.applyServiceFilters(query, filters)
-	err := query.Group("client_ip").Order("hits DESC").Limit(limit).Scan(&ips).Error
+	// Apply service filters inline
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
+
+	// Optimized query - uses idx_ip_agg covering index
+	// First get top IPs by count, then join to get geo data (avoids MAX() scan)
+	query := `
+		WITH top_ips AS (
+			SELECT 
+				client_ip,
+				COUNT(*) as hits,
+				COALESCE(SUM(response_size), 0) as bandwidth
+			FROM http_requests
+			WHERE ` + whereClause + `
+			GROUP BY client_ip
+			ORDER BY hits DESC
+			LIMIT ?
+		)
+		SELECT 
+			t.client_ip as ip_address,
+			COALESCE(g.geo_country, '') as country,
+			COALESCE(g.geo_city, '') as city,
+			COALESCE(g.geo_lat, 0) as latitude,
+			COALESCE(g.geo_lon, 0) as longitude,
+			t.hits,
+			t.bandwidth
+		FROM top_ips t
+		LEFT JOIN (
+			SELECT client_ip, geo_country, geo_city, geo_lat, geo_lon
+			FROM http_requests
+			WHERE geo_country != ''
+			GROUP BY client_ip
+		) g ON t.client_ip = g.client_ip
+		ORDER BY t.hits DESC
+	`
+	args = append(args, limit)
+
+	err := r.db.Raw(query, args...).Scan(&ips).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get top IPs", r.logger.Args("error", err))
@@ -877,20 +936,53 @@ func (r *statsRepo) GetMethodDistribution(hours int, filters []ServiceFilter, ex
 }
 
 // GetProtocolDistribution returns HTTP protocol distribution
+// OPTIMIZED: Uses partial index idx_protocol
 func (r *statsRepo) GetProtocolDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error) {
 	var stats []*ProtocolStats
 
-	query := r.db.Model(&models.HTTPRequest{}).
-		Select("protocol, COUNT(*) as count").
-		Where("protocol != ''")
+	// Build WHERE clause - protocol != '' matches the partial index
+	whereClause := "protocol != ''"
+	args := []interface{}{}
 
 	if hours > 0 {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
+		whereClause += " AND timestamp > ?"
+		args = append(args, since)
 	}
 
-	query = r.applyServiceFilters(query, filters)
-	err := query.Group("protocol").Order("count DESC").Scan(&stats).Error
+	// Apply service filters inline
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
+
+	query := `
+		SELECT protocol, COUNT(*) as count
+		FROM http_requests
+		WHERE ` + whereClause + `
+		GROUP BY protocol
+		ORDER BY count DESC
+	`
+
+	err := r.db.Raw(query, args...).Scan(&stats).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get protocol distribution", r.logger.Args("error", err))
@@ -901,20 +993,53 @@ func (r *statsRepo) GetProtocolDistribution(hours int, filters []ServiceFilter, 
 }
 
 // GetTLSVersionDistribution returns TLS version distribution
+// OPTIMIZED: Uses partial index idx_tls_version
 func (r *statsRepo) GetTLSVersionDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TLSVersionStats, error) {
 	var stats []*TLSVersionStats
 
-	query := r.db.Model(&models.HTTPRequest{}).
-		Select("tls_version, COUNT(*) as count").
-		Where("tls_version != ''")
+	// Build WHERE clause - tls_version != '' matches the partial index
+	whereClause := "tls_version != ''"
+	args := []interface{}{}
 
 	if hours > 0 {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
+		whereClause += " AND timestamp > ?"
+		args = append(args, since)
 	}
 
-	query = r.applyServiceFilters(query, filters)
-	err := query.Group("tls_version").Order("count DESC").Scan(&stats).Error
+	// Apply service filters inline
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
+
+	query := `
+		SELECT tls_version, COUNT(*) as count
+		FROM http_requests
+		WHERE ` + whereClause + `
+		GROUP BY tls_version
+		ORDER BY count DESC
+	`
+
+	err := r.db.Raw(query, args...).Scan(&stats).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get TLS version distribution", r.logger.Args("error", err))
@@ -1314,20 +1439,60 @@ func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter
 }
 
 // GetTopASNs returns top ASNs by requests
+// OPTIMIZED: Uses raw SQL with partial index idx_asn_agg
 func (r *statsRepo) GetTopASNs(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ASNStats, error) {
 	var asns []*ASNStats
 
-	query := r.db.Model(&models.HTTPRequest{}).
-		Select("asn, MAX(asn_org) as asn_org, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth, MAX(geo_country) as country").
-		Where("asn > 0")
+	// Build WHERE clause - asn > 0 matches the partial index
+	whereClause := "asn > 0"
+	args := []interface{}{}
 
 	if hours > 0 {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
+		whereClause += " AND timestamp > ?"
+		args = append(args, since)
 	}
 
-	query = r.applyServiceFilters(query, filters)
-	err := query.Group("asn").Order("hits DESC").Limit(limit).Scan(&asns).Error
+	// Apply service filters inline
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
+
+	query := `
+		SELECT 
+			asn,
+			MAX(asn_org) as asn_org,
+			COUNT(*) as hits,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			MAX(geo_country) as country
+		FROM http_requests
+		WHERE ` + whereClause + `
+		GROUP BY asn
+		ORDER BY hits DESC
+		LIMIT ?
+	`
+	args = append(args, limit)
+
+	err := r.db.Raw(query, args...).Scan(&asns).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get top ASNs", r.logger.Args("error", err))
@@ -1496,20 +1661,53 @@ func (r *statsRepo) GetTopOperatingSystems(hours int, limit int, filters []Servi
 }
 
 // GetDeviceTypeDistribution returns distribution of device types
+// OPTIMIZED: Uses partial index idx_device_type
 func (r *statsRepo) GetDeviceTypeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*DeviceTypeStats, error) {
 	var devices []*DeviceTypeStats
 
-	query := r.db.Model(&models.HTTPRequest{}).
-		Select("device_type, COUNT(*) as count").
-		Where("device_type != ''")
+	// Build WHERE clause - device_type != '' matches the partial index
+	whereClause := "device_type != ''"
+	args := []interface{}{}
 
 	if hours > 0 {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
+		whereClause += " AND timestamp > ?"
+		args = append(args, since)
 	}
 
-	query = r.applyServiceFilters(query, filters)
-	err := query.Group("device_type").Order("count DESC").Scan(&devices).Error
+	// Apply service filters inline
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
+
+	query := `
+		SELECT device_type, COUNT(*) as count
+		FROM http_requests
+		WHERE ` + whereClause + `
+		GROUP BY device_type
+		ORDER BY count DESC
+	`
+
+	err := r.db.Raw(query, args...).Scan(&devices).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get device type distribution", r.logger.Args("error", err))

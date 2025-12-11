@@ -169,6 +169,32 @@ func (r *httpRequestRepo) optimizeDatabase() error {
 		 ON http_requests(timestamp DESC, response_time_ms)
 		 WHERE response_time_ms > 0`,
 
+		// ===== IP AND CLIENT AGGREGATION INDEXES =====
+
+		// IP aggregation - CRITICAL for GetTopIPAddresses
+		`CREATE INDEX IF NOT EXISTS idx_ip_agg
+		 ON http_requests(client_ip, geo_country, geo_city, geo_lat, geo_lon, response_size, timestamp)`,
+
+		// ASN aggregation - for GetTopASNs
+		`CREATE INDEX IF NOT EXISTS idx_asn_agg
+		 ON http_requests(asn, asn_org, timestamp, client_ip, response_size)
+		 WHERE asn != ''`,
+
+		// Device type aggregation - for GetBrowserStats
+		`CREATE INDEX IF NOT EXISTS idx_device_type
+		 ON http_requests(device_type, timestamp)
+		 WHERE device_type != ''`,
+
+		// Protocol aggregation
+		`CREATE INDEX IF NOT EXISTS idx_protocol
+		 ON http_requests(protocol, timestamp)
+		 WHERE protocol != ''`,
+
+		// TLS version aggregation
+		`CREATE INDEX IF NOT EXISTS idx_tls_version
+		 ON http_requests(tls_version, timestamp)
+		 WHERE tls_version != ''`,
+
 		// ===== MAINTENANCE INDEX =====
 
 		// Cleanup index - for data retention

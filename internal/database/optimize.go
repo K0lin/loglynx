@@ -72,10 +72,10 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 
 		// ===== LOOKUP INDEXES (for filtering and detail queries) =====
 
-		// Client IP lookup - for IP detail pages and exclusion
-		// Used by: GetIPDetailedStats, exclude_own_ip filter
-		`CREATE INDEX IF NOT EXISTS idx_client_ip
-		 ON http_requests(client_ip, timestamp DESC)`,
+		// Client IP aggregation - CRITICAL for GetTopIPAddresses (was taking 18-20s)
+		// Covering index includes geo data to avoid table lookups
+		`CREATE INDEX IF NOT EXISTS idx_ip_agg
+		 ON http_requests(client_ip, timestamp, geo_country, geo_city, geo_lat, geo_lon, response_size)`,
 
 		// Status code lookup - for distribution queries
 		// Used by: GetStatusCodeDistribution
@@ -86,6 +86,30 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		// Used by: GetMethodDistribution
 		`CREATE INDEX IF NOT EXISTS idx_method
 		 ON http_requests(method, timestamp)`,
+
+		// ASN aggregation - for GetTopASNs
+		// Partial index for records with valid ASN
+		`CREATE INDEX IF NOT EXISTS idx_asn_agg
+		 ON http_requests(asn, timestamp, asn_org, geo_country, response_size)
+		 WHERE asn > 0`,
+
+		// Device type distribution - for GetDeviceTypeDistribution  
+		// Partial index for records with device type
+		`CREATE INDEX IF NOT EXISTS idx_device_type
+		 ON http_requests(device_type, timestamp)
+		 WHERE device_type != ''`,
+
+		// Protocol distribution - for GetProtocolDistribution
+		// Partial index for records with protocol
+		`CREATE INDEX IF NOT EXISTS idx_protocol
+		 ON http_requests(protocol, timestamp)
+		 WHERE protocol != ''`,
+
+		// TLS version distribution - for GetTLSVersionDistribution
+		// Partial index for records with TLS version
+		`CREATE INDEX IF NOT EXISTS idx_tls_version
+		 ON http_requests(tls_version, timestamp)
+		 WHERE tls_version != ''`,
 
 		// ===== PARTIAL INDEXES (for specific filtered queries) =====
 
