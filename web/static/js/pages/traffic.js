@@ -277,7 +277,6 @@ function updateTrafficHeatmapChart(data) {
         // Clear chart data when empty
         trafficHeatmapChart.data.datasets[0].data = [];
         trafficHeatmapChart.update('none');
-        $('#totalCountries').text('0');
         return;
     }
 
@@ -446,6 +445,9 @@ function updateTopCountriesTable(data) {
     }
 
     $('#topCountriesTable').html(html);
+    
+    // Update total countries count
+    $('#totalCountries').text(data && data.length > 0 ? data.length : 0);
 }
 
 // Update top IPs table
@@ -797,6 +799,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initTopCountriesPieChart();
     initTrafficByHourChart();
     initTrafficByDayChart();
+
+    // Initialize counters to 0
+    $('#totalCountries').text('0');
 
     // Initialize controls
     initTimeRangeSelector();
