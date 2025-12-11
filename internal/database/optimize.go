@@ -140,7 +140,7 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		// Dashboard covering index (includes most displayed columns)
 		// Note: Removed datetime() WHERE clause as it's non-deterministic in indexes
 		`CREATE INDEX IF NOT EXISTS idx_dashboard_covering
-		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, method, path)`,
+		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, method, path, response_size, geo_country, backend_name)`,
 
 		// Error analysis covering index
 		// Note: Removed datetime() WHERE clause as it's non-deterministic in indexes
