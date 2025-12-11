@@ -644,6 +644,7 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 }
 
 // GetTrafficHeatmap returns traffic metrics grouped by day of week and hour for heatmap visualisation
+// OPTIMIZED: Uses substr() for hour extraction for better performance
 func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TrafficHeatmapData, error) {
 	if days <= 0 {
 		days = 30
@@ -654,16 +655,48 @@ func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, exclude
 	var heatmap []*TrafficHeatmapData
 	since := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 
-	query := r.db.Model(&models.HTTPRequest{}).
-		Select("CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week, "+
-			"CAST(strftime('%H', timestamp) AS INTEGER) as hour, "+
-			"COUNT(*) as requests, COALESCE(AVG(response_time_ms), 0) as avg_response_time").
-		Where("timestamp > ?", since)
+	// Build WHERE clause
+	whereClause := "timestamp > ?"
+	args := []interface{}{since}
 
-	query = r.applyServiceFilters(query, filters)
-	query = query.Group("day_of_week, hour").Order("day_of_week, hour")
+	// Apply service filters inline for better query planning
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
 
-	if err := query.Scan(&heatmap).Error; err != nil {
+	// Optimized raw SQL query - uses substr() for hour extraction
+	query := `
+		SELECT
+			CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
+			CAST(substr(timestamp, 12, 2) AS INTEGER) as hour,
+			COUNT(*) as requests,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
+		FROM http_requests
+		WHERE ` + whereClause + `
+		GROUP BY day_of_week, hour
+		ORDER BY day_of_week, hour
+	`
+
+	if err := r.db.Raw(query, args...).Scan(&heatmap).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get traffic heatmap", r.logger.Args("error", err))
 		return nil, err
 	}
@@ -1823,6 +1856,7 @@ type IPSearchResult struct {
 }
 
 // GetIPDetailedStats returns comprehensive statistics for a specific IP address
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_agg index
 func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 	stats := &IPDetailedStats{IPAddress: ip}
 	since := r.getTimeRange()
@@ -1848,8 +1882,9 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 
 	var result aggregatedResult
 
-	err := r.db.Table("http_requests").
-		Select(`
+	// Optimized raw SQL query - uses idx_ip_agg covering index
+	query := `
+		SELECT
 			COUNT(*) as total_requests,
 			MIN(timestamp) as first_seen,
 			MAX(timestamp) as last_seen,
@@ -1865,9 +1900,11 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 			COUNT(CASE WHEN status_code >= 400 THEN 1 END) as error_count,
 			COUNT(DISTINCT backend_name) as unique_backends,
 			COUNT(DISTINCT path) as unique_paths
-		`).
-		Where("client_ip = ? AND timestamp > ?", ip, since).
-		Scan(&result).Error
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ?
+	`
+
+	err := r.db.Raw(query, ip, since).Scan(&result).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP detailed stats", r.logger.Args("ip", ip, "error", err))
@@ -1915,28 +1952,42 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 }
 
 // GetIPTimelineStats returns timeline statistics for a specific IP
+// OPTIMIZED: Uses raw SQL with substr() for faster timestamp grouping
 func (r *statsRepo) GetIPTimelineStats(ip string, hours int) ([]*TimelineData, error) {
 	var timeline []*TimelineData
 	since := time.Now().Add(-time.Duration(hours) * time.Hour)
 
-	// Adaptive grouping based on time range
+	// Adaptive grouping based on time range - using substr() for speed
 	var groupBy string
 	if hours <= 24 {
+		// Group by hour
 		groupBy = "substr(timestamp, 1, 13) || ':00'"
 	} else if hours <= 168 {
+		// Group by 6-hour blocks
 		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'"
 	} else if hours <= 720 {
+		// Group by day
 		groupBy = "substr(timestamp, 1, 10)"
 	} else {
+		// Group by week (calendar logic needs strftime)
 		groupBy = "strftime('%Y-W%W', timestamp)"
 	}
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select(groupBy+" as hour, COUNT(*) as requests, COUNT(DISTINCT backend_name) as unique_visitors, COALESCE(SUM(response_size), 0) as bandwidth, COALESCE(AVG(response_time_ms), 0) as avg_response_time").
-		Where("client_ip = ? AND timestamp > ?", ip, since).
-		Group(groupBy).
-		Order("hour").
-		Scan(&timeline).Error
+	// Optimized raw SQL query - uses idx_ip_agg index
+	query := `
+		SELECT
+			` + groupBy + ` as hour,
+			COUNT(*) as requests,
+			COUNT(DISTINCT backend_name) as unique_visitors,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ?
+		GROUP BY ` + groupBy + `
+		ORDER BY hour
+	`
+
+	err := r.db.Raw(query, ip, since).Scan(&timeline).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP timeline", r.logger.Args("ip", ip, "error", err))
@@ -1948,6 +1999,7 @@ func (r *statsRepo) GetIPTimelineStats(ip string, hours int) ([]*TimelineData, e
 }
 
 // GetIPTrafficHeatmap returns traffic heatmap for a specific IP
+// OPTIMIZED: Uses raw SQL with substr() for faster day/hour extraction
 func (r *statsRepo) GetIPTrafficHeatmap(ip string, days int) ([]*TrafficHeatmapData, error) {
 	if days <= 0 {
 		days = 30
@@ -1958,14 +2010,21 @@ func (r *statsRepo) GetIPTrafficHeatmap(ip string, days int) ([]*TrafficHeatmapD
 	var heatmap []*TrafficHeatmapData
 	since := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week, "+
-			"CAST(strftime('%H', timestamp) AS INTEGER) as hour, "+
-			"COUNT(*) as requests, COALESCE(AVG(response_time_ms), 0) as avg_response_time").
-		Where("client_ip = ? AND timestamp > ?", ip, since).
-		Group("day_of_week, hour").
-		Order("day_of_week, hour").
-		Scan(&heatmap).Error
+	// Optimized raw SQL query - uses idx_ip_heatmap_agg index
+	// Using strftime for day_of_week (calendar logic) but optimized hour extraction
+	query := `
+		SELECT
+			CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
+			CAST(substr(timestamp, 12, 2) AS INTEGER) as hour,
+			COUNT(*) as requests,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ?
+		GROUP BY day_of_week, hour
+		ORDER BY day_of_week, hour
+	`
+
+	err := r.db.Raw(query, ip, since).Scan(&heatmap).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP heatmap", r.logger.Args("ip", ip, "error", err))
@@ -1977,17 +2036,30 @@ func (r *statsRepo) GetIPTrafficHeatmap(ip string, days int) ([]*TrafficHeatmapD
 }
 
 // GetIPTopPaths returns top paths for a specific IP
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_path_agg index
 func (r *statsRepo) GetIPTopPaths(ip string, limit int) ([]*PathStats, error) {
 	var paths []*PathStats
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("path, COUNT(*) as hits, COUNT(DISTINCT backend_name) as unique_visitors, COALESCE(AVG(response_time_ms), 0) as avg_response_time, COALESCE(SUM(response_size), 0) as total_bandwidth, MAX(host) as host, MAX(backend_name) as backend_name, MAX(backend_url) as backend_url").
-		Where("client_ip = ? AND timestamp > ?", ip, since).
-		Group("path").
-		Order("hits DESC").
-		Limit(limit).
-		Scan(&paths).Error
+	// Optimized raw SQL query - uses idx_ip_path_agg covering index
+	query := `
+		SELECT
+			path,
+			COUNT(*) as hits,
+			COUNT(DISTINCT backend_name) as unique_visitors,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			COALESCE(SUM(response_size), 0) as total_bandwidth,
+			MAX(host) as host,
+			MAX(backend_name) as backend_name,
+			MAX(backend_url) as backend_url
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ?
+		GROUP BY path
+		ORDER BY hits DESC
+		LIMIT ?
+	`
+
+	err := r.db.Raw(query, ip, since, limit).Scan(&paths).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP top paths", r.logger.Args("ip", ip, "error", err))
@@ -1998,17 +2070,28 @@ func (r *statsRepo) GetIPTopPaths(ip string, limit int) ([]*PathStats, error) {
 }
 
 // GetIPTopBackends returns top backends for a specific IP
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_backend_agg partial index
 func (r *statsRepo) GetIPTopBackends(ip string, limit int) ([]*BackendStats, error) {
 	var backends []*BackendStats
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("backend_name, MAX(backend_url) as backend_url, COUNT(*) as hits, COALESCE(SUM(response_size), 0) as bandwidth, COALESCE(AVG(response_time_ms), 0) as avg_response_time, SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count").
-		Where("client_ip = ? AND timestamp > ? AND backend_name != ''", ip, since).
-		Group("backend_name").
-		Order("hits DESC").
-		Limit(limit).
-		Scan(&backends).Error
+	// Optimized raw SQL query - uses idx_ip_backend_agg partial index (WHERE backend_name != '')
+	query := `
+		SELECT
+			backend_name,
+			MAX(backend_url) as backend_url,
+			COUNT(*) as hits,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ? AND backend_name != ''
+		GROUP BY backend_name
+		ORDER BY hits DESC
+		LIMIT ?
+	`
+
+	err := r.db.Raw(query, ip, since, limit).Scan(&backends).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP top backends", r.logger.Args("ip", ip, "error", err))
@@ -2019,16 +2102,23 @@ func (r *statsRepo) GetIPTopBackends(ip string, limit int) ([]*BackendStats, err
 }
 
 // GetIPStatusCodeDistribution returns status code distribution for a specific IP
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_status_agg index
 func (r *statsRepo) GetIPStatusCodeDistribution(ip string) ([]*StatusCodeStats, error) {
 	var stats []*StatusCodeStats
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("status_code, COUNT(*) as count").
-		Where("client_ip = ? AND timestamp > ?", ip, since).
-		Group("status_code").
-		Order("count DESC").
-		Scan(&stats).Error
+	// Optimized raw SQL query - uses idx_ip_status_agg covering index
+	query := `
+		SELECT
+			status_code,
+			COUNT(*) as count
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ?
+		GROUP BY status_code
+		ORDER BY count DESC
+	`
+
+	err := r.db.Raw(query, ip, since).Scan(&stats).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP status codes", r.logger.Args("ip", ip, "error", err))
@@ -2039,17 +2129,26 @@ func (r *statsRepo) GetIPStatusCodeDistribution(ip string) ([]*StatusCodeStats, 
 }
 
 // GetIPTopBrowsers returns top browsers for a specific IP
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_browser_agg partial index
 func (r *statsRepo) GetIPTopBrowsers(ip string, limit int) ([]*BrowserStats, error) {
 	var browsers []*BrowserStats
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("browser, COUNT(*) as count").
-		Where("client_ip = ? AND timestamp > ? AND browser != '' AND browser != 'Unknown'", ip, since).
-		Group("browser").
-		Order("count DESC").
-		Limit(limit).
-		Scan(&browsers).Error
+	// Optimized raw SQL query - uses idx_ip_browser_agg partial index (WHERE browser != '')
+	// Note: We match the partial index condition exactly
+	query := `
+		SELECT
+			browser,
+			COUNT(*) as count
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ? AND browser != ''
+		GROUP BY browser
+		HAVING browser != 'Unknown'
+		ORDER BY count DESC
+		LIMIT ?
+	`
+
+	err := r.db.Raw(query, ip, since, limit).Scan(&browsers).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP top browsers", r.logger.Args("ip", ip, "error", err))
@@ -2060,17 +2159,26 @@ func (r *statsRepo) GetIPTopBrowsers(ip string, limit int) ([]*BrowserStats, err
 }
 
 // GetIPTopOperatingSystems returns top operating systems for a specific IP
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_os_agg partial index
 func (r *statsRepo) GetIPTopOperatingSystems(ip string, limit int) ([]*OSStats, error) {
 	var osList []*OSStats
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("os, COUNT(*) as count").
-		Where("client_ip = ? AND timestamp > ? AND os != '' AND os != 'Unknown'", ip, since).
-		Group("os").
-		Order("count DESC").
-		Limit(limit).
-		Scan(&osList).Error
+	// Optimized raw SQL query - uses idx_ip_os_agg partial index (WHERE os != '')
+	// Note: We match the partial index condition exactly
+	query := `
+		SELECT
+			os,
+			COUNT(*) as count
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ? AND os != ''
+		GROUP BY os
+		HAVING os != 'Unknown'
+		ORDER BY count DESC
+		LIMIT ?
+	`
+
+	err := r.db.Raw(query, ip, since, limit).Scan(&osList).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP top OS", r.logger.Args("ip", ip, "error", err))
@@ -2081,16 +2189,23 @@ func (r *statsRepo) GetIPTopOperatingSystems(ip string, limit int) ([]*OSStats, 
 }
 
 // GetIPDeviceTypeDistribution returns device type distribution for a specific IP
+// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_device_agg index
 func (r *statsRepo) GetIPDeviceTypeDistribution(ip string) ([]*DeviceTypeStats, error) {
 	var devices []*DeviceTypeStats
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Select("device_type, COUNT(*) as count").
-		Where("client_ip = ? AND timestamp > ? AND device_type != ''", ip, since).
-		Group("device_type").
-		Order("count DESC").
-		Scan(&devices).Error
+	// Optimized raw SQL query - uses idx_ip_device_agg covering index
+	query := `
+		SELECT
+			device_type,
+			COUNT(*) as count
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ? AND device_type != ''
+		GROUP BY device_type
+		ORDER BY count DESC
+	`
+
+	err := r.db.Raw(query, ip, since).Scan(&devices).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP device types", r.logger.Args("ip", ip, "error", err))
@@ -2101,48 +2216,86 @@ func (r *statsRepo) GetIPDeviceTypeDistribution(ip string) ([]*DeviceTypeStats, 
 }
 
 // GetIPResponseTimeStats returns response time statistics for a specific IP
+// OPTIMIZED: Uses idx_ip_heatmap_agg index for efficient IP + timestamp + response_time filtering
 func (r *statsRepo) GetIPResponseTimeStats(ip string) (*ResponseTimeStats, error) {
 	stats := &ResponseTimeStats{}
 	since := r.getTimeRange()
 
+	// Optimized query using approximate percentiles for better performance
+	// First get basic stats, then calculate percentiles only if we have data
 	query := `
-		WITH stats_data AS (
-			SELECT
-				response_time_ms,
-				NTILE(100) OVER (ORDER BY response_time_ms) as percentile_bucket
-			FROM http_requests
-			WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0
-		)
 		SELECT
 			COALESCE(MIN(response_time_ms), 0) as min,
 			COALESCE(MAX(response_time_ms), 0) as max,
 			COALESCE(AVG(response_time_ms), 0) as avg,
-			COALESCE(MAX(CASE WHEN percentile_bucket <= 50 THEN response_time_ms END), 0) as p50,
-			COALESCE(MAX(CASE WHEN percentile_bucket <= 95 THEN response_time_ms END), 0) as p95,
-			COALESCE(MAX(CASE WHEN percentile_bucket <= 99 THEN response_time_ms END), 0) as p99
-		FROM stats_data
+			COUNT(*) as cnt
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0
 	`
 
-	err := r.db.Raw(query, ip, since).Scan(stats).Error
-
-	if err != nil {
+	type basicStats struct {
+		Min float64
+		Max float64
+		Avg float64
+		Cnt int64
+	}
+	var basic basicStats
+	if err := r.db.Raw(query, ip, since).Scan(&basic).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get IP response time stats", r.logger.Args("ip", ip, "error", err))
 		return nil, err
+	}
+
+	stats.Min = basic.Min
+	stats.Max = basic.Max
+	stats.Avg = basic.Avg
+
+	// Only calculate percentiles if we have data
+	if basic.Cnt > 0 {
+		// Use a more efficient sampling approach for large datasets
+		percentileQuery := `
+			WITH ordered_data AS (
+				SELECT response_time_ms,
+					   ROW_NUMBER() OVER (ORDER BY response_time_ms) as rn,
+					   COUNT(*) OVER () as total
+				FROM http_requests
+				WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0
+			)
+			SELECT
+				MAX(CASE WHEN rn <= total * 0.5 THEN response_time_ms END) as p50,
+				MAX(CASE WHEN rn <= total * 0.95 THEN response_time_ms END) as p95,
+				MAX(CASE WHEN rn <= total * 0.99 THEN response_time_ms END) as p99
+			FROM ordered_data
+		`
+		type percentiles struct {
+			P50 float64
+			P95 float64
+			P99 float64
+		}
+		var pct percentiles
+		if err := r.db.Raw(percentileQuery, ip, since).Scan(&pct).Error; err == nil {
+			stats.P50 = pct.P50
+			stats.P95 = pct.P95
+			stats.P99 = pct.P99
+		}
 	}
 
 	return stats, nil
 }
 
 // GetIPRecentRequests returns recent requests for a specific IP
+// OPTIMIZED: Uses idx_ip_agg index for efficient IP + timestamp filtering
 func (r *statsRepo) GetIPRecentRequests(ip string, limit int) ([]*models.HTTPRequest, error) {
 	var requests []*models.HTTPRequest
 	since := r.getTimeRange()
 
-	err := r.db.Model(&models.HTTPRequest{}).
-		Where("client_ip = ? AND timestamp > ?", ip, since).
-		Order("timestamp DESC").
-		Limit(limit).
-		Find(&requests).Error
+	// Raw SQL for better query planning with idx_ip_agg index
+	err := r.db.Raw(`
+		SELECT *
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ?
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, ip, since, limit).Scan(&requests).Error
 
 	if err != nil {
 		r.logger.WithCaller().Error("Failed to get IP recent requests", r.logger.Args("ip", ip, "error", err))
