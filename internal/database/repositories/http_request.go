@@ -56,8 +56,32 @@ func (r *httpRequestRepo) checkFirstLoad() {
 
 		if r.isFirstLoad {
 			r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
+		} else {
+			// For existing databases, check if they need index upgrade
+			r.checkAndUpgradeIndexes()
 		}
 	})
+}
+
+// checkAndUpgradeIndexes checks if the database has the new optimized indexes
+// If not, runs the optimization in the background
+func (r *httpRequestRepo) checkAndUpgradeIndexes() {
+	// Check if old indexes still exist (indicating upgrade needed)
+	var exists bool
+	query := `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_dashboard_covering' LIMIT 1`
+	err := r.db.Raw(query).Scan(&exists).Error
+	if err == nil && exists {
+		r.logger.Info("Database indexes need upgrade - applying optimizations in background...")
+		go func() {
+			if err := r.optimizeDatabase(); err != nil {
+				r.logger.Error("Failed to upgrade database indexes", r.logger.Args("error", err))
+			} else {
+				r.logger.Info("Database indexes upgraded successfully")
+			}
+		}()
+	} else {
+		r.logger.Debug("Database indexes are up to date")
+	}
 }
 
 // DisableFirstLoadMode disables first-load optimization
@@ -101,91 +125,147 @@ func (r *httpRequestRepo) createDeferredIndexes() {
 
 // optimizeDatabase creates all performance indexes
 // This is a copy of OptimizeDatabase function to avoid circular dependencies
+// INDEX STRATEGY: ~15 optimized indexes for read-heavy analytics workload
 func (r *httpRequestRepo) optimizeDatabase() error {
+	// Drop old indexes that are no longer used or have been replaced
+	oldIndexes := []string{
+		"idx_source_name",
+		"idx_timestamp",
+		"idx_partition_key",
+		"idx_client_ip", // Will be recreated with different definition
+		"idx_host",
+		"idx_status",
+		"idx_response_time",
+		"idx_retry_attempts",
+		"idx_browser",
+		"idx_os",
+		"idx_device_type", // Will be recreated
+		"idx_router_name",
+		"idx_request_id",
+		"idx_trace_id",
+		"idx_geo_country",
+		"idx_created_at",
+		"idx_time_status",
+		"idx_ip_time",
+		"idx_status_host",
+		"idx_timestamp_response_time",
+		"idx_summary_query",
+		"idx_errors_only",
+		"idx_slow_requests",
+		"idx_server_errors",
+		"idx_retried_requests",
+		"idx_dashboard_covering",
+		"idx_error_analysis",
+		"idx_timestamp_cleanup",
+	}
+
+	r.logger.Debug("Dropping old indexes", r.logger.Args("count", len(oldIndexes)))
+	for _, indexName := range oldIndexes {
+		dropSQL := "DROP INDEX IF EXISTS " + indexName
+		if err := r.db.Exec(dropSQL).Error; err != nil {
+			r.logger.Warn("Failed to drop old index", r.logger.Args("index", indexName, "error", err))
+			// Continue with other drops
+		} else {
+			r.logger.Trace("Dropped old index", r.logger.Args("index", indexName))
+		}
+	}
+
 	indexes := []string{
-		// ===== BASIC SINGLE-COLUMN INDEXES =====
-		// These were removed from GORM tags to defer creation until after first load
+		// ===== PRIMARY COMPOSITE INDEXES (for time-range queries) =====
 
-		`CREATE INDEX IF NOT EXISTS idx_source_name ON http_requests(source_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_timestamp ON http_requests(timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_partition_key ON http_requests(partition_key)`,
-		`CREATE INDEX IF NOT EXISTS idx_client_ip ON http_requests(client_ip)`,
-		`CREATE INDEX IF NOT EXISTS idx_host ON http_requests(host)`,
-		`CREATE INDEX IF NOT EXISTS idx_status ON http_requests(status_code)`,
-		`CREATE INDEX IF NOT EXISTS idx_response_time ON http_requests(response_time_ms) WHERE response_time_ms > 0`,
-		`CREATE INDEX IF NOT EXISTS idx_retry_attempts ON http_requests(retry_attempts) WHERE retry_attempts > 0`,
-		`CREATE INDEX IF NOT EXISTS idx_browser ON http_requests(browser)`,
-		`CREATE INDEX IF NOT EXISTS idx_os ON http_requests(os)`,
-		`CREATE INDEX IF NOT EXISTS idx_device_type ON http_requests(device_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_router_name ON http_requests(router_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_request_id ON http_requests(request_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_trace_id ON http_requests(trace_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_geo_country ON http_requests(geo_country)`,
-		`CREATE INDEX IF NOT EXISTS idx_created_at ON http_requests(created_at DESC)`,
-
-		// ===== COMPOSITE INDEXES (for common query patterns) =====
-
-		// Time + Status (error analysis over time)
-		`CREATE INDEX IF NOT EXISTS idx_time_status
+		// Main timeline index - covers most dashboard queries
+		`CREATE INDEX IF NOT EXISTS idx_timestamp_status
 		 ON http_requests(timestamp DESC, status_code)`,
 
-		// Time + Host (per-service time-range queries)
+		// Time + Host - for per-service filtering
 		`CREATE INDEX IF NOT EXISTS idx_time_host
 		 ON http_requests(timestamp DESC, host)`,
 
-		// ClientIP + Time (IP activity timeline)
-		`CREATE INDEX IF NOT EXISTS idx_ip_time
+		// Time + Backend - for backend analytics
+		`CREATE INDEX IF NOT EXISTS idx_time_backend
+		 ON http_requests(timestamp DESC, backend_name, status_code)`,
+
+		// ===== AGGREGATION INDEXES (for GROUP BY queries) =====
+
+		// Path aggregation - CRITICAL for GetTopPaths
+		`CREATE INDEX IF NOT EXISTS idx_path_agg
+		 ON http_requests(path, timestamp, client_ip, response_time_ms, response_size)`,
+
+		// Country aggregation - CRITICAL for GetTopCountries
+		`CREATE INDEX IF NOT EXISTS idx_geo_agg
+		 ON http_requests(geo_country, timestamp, client_ip, response_size)
+		 WHERE geo_country != ''`,
+
+		// Referrer aggregation - CRITICAL for GetTopReferrerDomains
+		`CREATE INDEX IF NOT EXISTS idx_referer_agg
+		 ON http_requests(referer, timestamp, client_ip)
+		 WHERE referer != ''`,
+
+		// Service identification - for GetServices
+		`CREATE INDEX IF NOT EXISTS idx_service_id
+		 ON http_requests(backend_name, backend_url, host)`,
+
+		// ===== LOOKUP INDEXES (for filtering and detail queries) =====
+
+		// Client IP lookup - for IP detail pages
+		`CREATE INDEX IF NOT EXISTS idx_client_ip
 		 ON http_requests(client_ip, timestamp DESC)`,
 
-		// Status + Host (service error rates)
-		`CREATE INDEX IF NOT EXISTS idx_status_host
-		 ON http_requests(status_code, host)`,
+		// Status code lookup - for distribution queries
+		`CREATE INDEX IF NOT EXISTS idx_status_code
+		 ON http_requests(status_code, timestamp)`,
 
-		// Composite index for timestamp + response_time for optimized percentile queries
-		`CREATE INDEX IF NOT EXISTS idx_timestamp_response_time
+		// Method lookup - for distribution queries
+		`CREATE INDEX IF NOT EXISTS idx_method
+		 ON http_requests(method, timestamp)`,
+
+		// ===== PARTIAL INDEXES (for specific filtered queries) =====
+
+		// Errors only - for error analysis
+		`CREATE INDEX IF NOT EXISTS idx_errors
+		 ON http_requests(timestamp DESC, status_code, path, client_ip)
+		 WHERE status_code >= 400`,
+
+		// Slow requests - for performance analysis
+		`CREATE INDEX IF NOT EXISTS idx_slow
+		 ON http_requests(timestamp DESC, response_time_ms, path, host)
+		 WHERE response_time_ms > 1000`,
+
+		// Response time percentiles
+		`CREATE INDEX IF NOT EXISTS idx_response_time
 		 ON http_requests(timestamp DESC, response_time_ms)
 		 WHERE response_time_ms > 0`,
 
-		// Composite index for summary queries (timestamp, status_code, response_time_ms)
-		`CREATE INDEX IF NOT EXISTS idx_summary_query
-		 ON http_requests(timestamp DESC, status_code, response_time_ms)`,
+		// ===== IP AND CLIENT AGGREGATION INDEXES =====
 
-		// ===== PARTIAL INDEXES (for specific queries) =====
+		// IP aggregation - CRITICAL for GetTopIPAddresses
+		`CREATE INDEX IF NOT EXISTS idx_ip_agg
+		 ON http_requests(client_ip, geo_country, geo_city, geo_lat, geo_lon, response_size, timestamp)`,
 
-		// Errors only (40x and 50x status codes)
-		`CREATE INDEX IF NOT EXISTS idx_errors_only
-		 ON http_requests(timestamp DESC, status_code, path, method, client_ip)
-		 WHERE status_code >= 400`,
+		// ASN aggregation - for GetTopASNs
+		`CREATE INDEX IF NOT EXISTS idx_asn_agg
+		 ON http_requests(asn, asn_org, timestamp, client_ip, response_size)
+		 WHERE asn != ''`,
 
-		// Slow requests only (>1 second)
-		`CREATE INDEX IF NOT EXISTS idx_slow_requests
-		 ON http_requests(timestamp DESC, response_time_ms, path, host, method)
-		 WHERE response_time_ms > 1000`,
+		// Device type aggregation - for GetBrowserStats
+		`CREATE INDEX IF NOT EXISTS idx_device_type
+		 ON http_requests(device_type, timestamp)
+		 WHERE device_type != ''`,
 
-		// Server errors only (50x)
-		`CREATE INDEX IF NOT EXISTS idx_server_errors
-		 ON http_requests(timestamp DESC, status_code, path, backend_name)
-		 WHERE status_code >= 500`,
+		// Protocol aggregation
+		`CREATE INDEX IF NOT EXISTS idx_protocol
+		 ON http_requests(protocol, timestamp)
+		 WHERE protocol != ''`,
 
-		// Requests with retries
-		`CREATE INDEX IF NOT EXISTS idx_retried_requests
-		 ON http_requests(timestamp DESC, retry_attempts, backend_name, status_code)
-		 WHERE retry_attempts > 0`,
+		// TLS version aggregation
+		`CREATE INDEX IF NOT EXISTS idx_tls_version
+		 ON http_requests(tls_version, timestamp)
+		 WHERE tls_version != ''`,
 
-		// ===== COVERING INDEXES (include data columns) =====
+		// ===== MAINTENANCE INDEX =====
 
-		// Dashboard covering index (includes most displayed columns)
-		`CREATE INDEX IF NOT EXISTS idx_dashboard_covering
-		 ON http_requests(timestamp DESC, status_code, response_time_ms, host, client_ip, method, path)`,
-
-		// Error analysis covering index
-		`CREATE INDEX IF NOT EXISTS idx_error_analysis
-		 ON http_requests(timestamp DESC, status_code, path, method, client_ip, response_time_ms, backend_name)
-		 WHERE status_code >= 400`,
-
-		// ===== CLEANUP INDEX =====
-		// Index for cleanup queries (timestamp for deletion)
-		`CREATE INDEX IF NOT EXISTS idx_timestamp_cleanup
+		// Cleanup index - for data retention
+		`CREATE INDEX IF NOT EXISTS idx_cleanup
 		 ON http_requests(timestamp)`,
 	}
 
