@@ -66,11 +66,11 @@ func (r *httpRequestRepo) checkFirstLoad() {
 // checkAndUpgradeIndexes checks if the database has the new optimized indexes
 // If not, runs the optimization in the background
 func (r *httpRequestRepo) checkAndUpgradeIndexes() {
-	// Check if one of the new indexes exists
+	// Check if old indexes still exist (indicating upgrade needed)
 	var exists bool
-	query := `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_path_agg' LIMIT 1`
+	query := `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_dashboard_covering' LIMIT 1`
 	err := r.db.Raw(query).Scan(&exists).Error
-	if err != nil || !exists {
+	if err == nil && exists {
 		r.logger.Info("Database indexes need upgrade - applying optimizations in background...")
 		go func() {
 			if err := r.optimizeDatabase(); err != nil {
