@@ -293,42 +293,43 @@ function updatePercentileChart(data) {
 
 // Initialize volume vs performance chart
 function initVolumeVsPerformanceChart() {
-    volumeVsPerformanceChart = LogLynxCharts.createDualAxisChart('volumeVsPerformanceChart', {
+    volumeVsPerformanceChart = LogLynxCharts.createStackedAreaChart('volumeVsPerformanceChart', {
         labels: [],
         datasets: [
             {
                 label: 'Requests',
                 data: [],
                 borderColor: LogLynxCharts.colors.primary,
-                backgroundColor: LogLynxCharts.colors.primaryLight + '40',
+                backgroundColor: LogLynxCharts.colors.primaryLight + '20',
                 tension: 0.4,
                 fill: true,
-                yAxisID: 'y'
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: 'Avg Response Time (ms)',
                 data: [],
                 borderColor: LogLynxCharts.colors.info,
-                backgroundColor: LogLynxCharts.colors.info + '40',
+                backgroundColor: LogLynxCharts.colors.info + '20',
                 tension: 0.4,
-                fill: false,
-                yAxisID: 'y1'
+                fill: true,
+                pointRadius: 0,
+                borderWidth: 2
             }
         ]
     }, {
         scales: {
             y: {
-                title: {
-                    display: true,
-                    text: 'Requests',
-                    color: LogLynxCharts.colors.primary
-                }
-            },
-            y1: {
-                title: {
-                    display: true,
-                    text: 'Response Time (ms)',
-                    color: LogLynxCharts.colors.info
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' +
+                               LogLynxUtils.formatNumber(context.parsed.y);
+                    }
                 }
             }
         }

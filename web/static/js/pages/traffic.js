@@ -126,45 +126,44 @@ function calculatePeakTraffic(timelineData) {
 
 // Initialize traffic timeline chart
 function initTrafficTimelineChart() {
-    trafficTimelineChart = LogLynxCharts.createDualAxisChart('trafficTimelineChart', {
+    trafficTimelineChart = LogLynxCharts.createStackedAreaChart('trafficTimelineChart', {
         labels: [],
         datasets: [
             {
                 label: 'Requests',
                 data: [],
                 borderColor: LogLynxCharts.colors.primary,
-                backgroundColor: LogLynxCharts.colors.primaryLight + '40',
+                backgroundColor: LogLynxCharts.colors.primaryLight + '20',
                 tension: 0.4,
                 fill: true,
-                yAxisID: 'y'
+                pointRadius: 0,
+                borderWidth: 2
             },
             {
                 label: 'Unique Visitors',
                 data: [],
                 borderColor: LogLynxCharts.colors.info,
-                backgroundColor: LogLynxCharts.colors.info + '40',
+                backgroundColor: LogLynxCharts.colors.info + '20',
                 tension: 0.4,
                 fill: true,
-                yAxisID: 'y1'
+                pointRadius: 0,
+                borderWidth: 2
             }
         ]
     }, {
         scales: {
             y: {
-                title: {
-                    display: true,
-                    text: 'Requests',
-                    color: LogLynxCharts.colors.primary
-                },
-                ticks: { color: LogLynxCharts.colors.primary }
-            },
-            y1: {
-                title: {
-                    display: true,
-                    text: 'Unique Visitors',
-                    color: LogLynxCharts.colors.info
-                },
-                ticks: { color: LogLynxCharts.colors.info }
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' +
+                               LogLynxUtils.formatNumber(context.parsed.y);
+                    }
+                }
             }
         }
     });
