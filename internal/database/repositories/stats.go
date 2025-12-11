@@ -1856,13 +1856,13 @@ type IPSearchResult struct {
 }
 
 // GetIPDetailedStats returns comprehensive statistics for a specific IP address
-// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_agg index
+// OPTIMIZED: Uses raw SQL with separate efficient queries to avoid expensive COUNT DISTINCT
 func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 	stats := &IPDetailedStats{IPAddress: ip}
 	since := r.getTimeRange()
 
-	// Single aggregated query for all basic metrics
-	type aggregatedResult struct {
+	// Query 1: Basic aggregates (fast - uses idx_ip_agg covering index)
+	type basicResult struct {
 		TotalRequests   int64   `gorm:"column:total_requests"`
 		FirstSeen       string  `gorm:"column:first_seen"`
 		LastSeen        string  `gorm:"column:last_seen"`
@@ -1876,14 +1876,12 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 		AvgResponseTime float64 `gorm:"column:avg_response_time"`
 		SuccessCount    int64   `gorm:"column:success_count"`
 		ErrorCount      int64   `gorm:"column:error_count"`
-		UniqueBackends  int64   `gorm:"column:unique_backends"`
-		UniquePaths     int64   `gorm:"column:unique_paths"`
 	}
 
-	var result aggregatedResult
+	var result basicResult
 
-	// Optimized raw SQL query - uses idx_ip_agg covering index
-	query := `
+	// Fast query without COUNT DISTINCT - uses idx_ip_agg covering index
+	basicQuery := `
 		SELECT
 			COUNT(*) as total_requests,
 			MIN(timestamp) as first_seen,
@@ -1896,20 +1894,24 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 			MAX(asn_org) as asn_org,
 			COALESCE(SUM(response_size), 0) as total_bandwidth,
 			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
-			COUNT(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 END) as success_count,
-			COUNT(CASE WHEN status_code >= 400 THEN 1 END) as error_count,
-			COUNT(DISTINCT backend_name) as unique_backends,
-			COUNT(DISTINCT path) as unique_paths
+			SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) as success_count,
+			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
 		FROM http_requests
 		WHERE client_ip = ? AND timestamp > ?
 	`
 
-	err := r.db.Raw(query, ip, since).Scan(&result).Error
-
-	if err != nil {
+	if err := r.db.Raw(basicQuery, ip, since).Scan(&result).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get IP detailed stats", r.logger.Args("ip", ip, "error", err))
 		return nil, err
 	}
+
+	// Query 2: Count unique backends (fast - uses idx_ip_backend_agg partial index)
+	var uniqueBackends int64
+	r.db.Raw(`SELECT COUNT(DISTINCT backend_name) FROM http_requests WHERE client_ip = ? AND timestamp > ? AND backend_name != ''`, ip, since).Scan(&uniqueBackends)
+
+	// Query 3: Count unique paths (uses a subquery with LIMIT for efficiency)
+	var uniquePaths int64
+	r.db.Raw(`SELECT COUNT(*) FROM (SELECT DISTINCT path FROM http_requests WHERE client_ip = ? AND timestamp > ? LIMIT 1000)`, ip, since).Scan(&uniquePaths)
 
 	// Parse timestamps from SQLite string format
 	if result.FirstSeen != "" {
@@ -1938,8 +1940,8 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 	stats.ASNOrg = result.ASNOrg
 	stats.TotalBandwidth = result.TotalBandwidth
 	stats.AvgResponseTime = result.AvgResponseTime
-	stats.UniqueBackends = result.UniqueBackends
-	stats.UniquePaths = result.UniquePaths
+	stats.UniqueBackends = uniqueBackends
+	stats.UniquePaths = uniquePaths
 
 	// Calculate rates
 	if stats.TotalRequests > 0 {
@@ -2042,11 +2044,12 @@ func (r *statsRepo) GetIPTopPaths(ip string, limit int) ([]*PathStats, error) {
 	since := r.getTimeRange()
 
 	// Optimized raw SQL query - uses idx_ip_path_agg covering index
+	// Note: unique_visitors is always 1 for IP-specific queries (it's that one IP)
 	query := `
 		SELECT
 			path,
 			COUNT(*) as hits,
-			COUNT(DISTINCT backend_name) as unique_visitors,
+			1 as unique_visitors,
 			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
 			COALESCE(SUM(response_size), 0) as total_bandwidth,
 			MAX(host) as host,
@@ -2070,13 +2073,19 @@ func (r *statsRepo) GetIPTopPaths(ip string, limit int) ([]*PathStats, error) {
 }
 
 // GetIPTopBackends returns top backends for a specific IP
-// OPTIMIZED: Uses raw SQL for better query planning with idx_ip_backend_agg partial index
+// OPTIMIZED: Uses raw SQL with subquery for better query planning
 func (r *statsRepo) GetIPTopBackends(ip string, limit int) ([]*BackendStats, error) {
 	var backends []*BackendStats
 	since := r.getTimeRange()
 
-	// Optimized raw SQL query - uses idx_ip_backend_agg partial index (WHERE backend_name != '')
+	// Optimized query using a pre-filtered subquery approach
+	// This helps SQLite use the partial index more efficiently
 	query := `
+		WITH filtered_requests AS (
+			SELECT backend_name, backend_url, response_size, response_time_ms, status_code
+			FROM http_requests
+			WHERE client_ip = ? AND timestamp > ? AND backend_name != ''
+		)
 		SELECT
 			backend_name,
 			MAX(backend_url) as backend_url,
@@ -2084,8 +2093,7 @@ func (r *statsRepo) GetIPTopBackends(ip string, limit int) ([]*BackendStats, err
 			COALESCE(SUM(response_size), 0) as bandwidth,
 			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
 			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
-		FROM http_requests
-		WHERE client_ip = ? AND timestamp > ? AND backend_name != ''
+		FROM filtered_requests
 		GROUP BY backend_name
 		ORDER BY hits DESC
 		LIMIT ?
