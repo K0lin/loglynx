@@ -529,29 +529,30 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 }
 
 // GetTimelineStats returns time-based statistics with adaptive granularity
+// OPTIMIZED: Uses substr() instead of strftime() for faster grouping on string timestamps
 func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TimelineData, error) {
 	var timeline []*TimelineData
 
 	// Adaptive grouping based on time range
-	var timeFormat string
 	var groupBy string
 
 	if hours > 0 && hours <= 24 {
 		// For 1 hour or 24 hours: group by hour
-		timeFormat = "strftime('%Y-%m-%d %H:00', timestamp)"
-		groupBy = timeFormat
+		// Optimize: substr(timestamp, 1, 13) extracts "YYYY-MM-DD HH"
+		groupBy = "substr(timestamp, 1, 13) || ':00'"
 	} else if hours > 0 && hours <= 168 {
 		// For 7 days: group by 6-hour blocks
-		timeFormat = "strftime('%Y-%m-%d %H', timestamp)"
-		groupBy = "strftime('%Y-%m-%d', timestamp) || ' ' || CAST((CAST(strftime('%H', timestamp) AS INTEGER) / 6) * 6 AS TEXT) || ':00'"
+		// Optimize: use substr for date and hour extraction
+		// "YYYY-MM-DD" || " " || (hour/6)*6 || ":00"
+		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'"
 	} else if hours > 0 && hours <= 720 {
 		// For 30 days: group by day
-		timeFormat = "strftime('%Y-%m-%d', timestamp)"
-		groupBy = timeFormat
+		// Optimize: substr(timestamp, 1, 10) extracts "YYYY-MM-DD"
+		groupBy = "substr(timestamp, 1, 10)"
 	} else {
 		// For longer periods: group by week
-		timeFormat = "strftime('%Y-W%W', timestamp)"
-		groupBy = timeFormat
+		// We still use strftime for weeks as it involves calendar logic
+		groupBy = "strftime('%Y-W%W', timestamp)"
 	}
 
 	query := r.db.Model(&models.HTTPRequest{}).
@@ -584,13 +585,16 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 	var groupBy string
 	if hours > 0 && hours <= 24 {
 		// Group by hour for last 24 hours
-		groupBy = "strftime('%Y-%m-%d %H:00', timestamp)"
+		// Optimize: substr(timestamp, 1, 13) || ':00'
+		groupBy = "substr(timestamp, 1, 13) || ':00'"
 	} else if hours > 0 && hours <= 168 {
 		// Group by day for last 7 days (simpler, works reliably)
-		groupBy = "strftime('%Y-%m-%d', timestamp)"
+		// Optimize: substr(timestamp, 1, 10)
+		groupBy = "substr(timestamp, 1, 10)"
 	} else if hours > 0 && hours <= 720 {
 		// Group by day for last 30 days
-		groupBy = "strftime('%Y-%m-%d', timestamp)"
+		// Optimize: substr(timestamp, 1, 10)
+		groupBy = "substr(timestamp, 1, 10)"
 	} else {
 		// Group by week for longer periods
 		groupBy = "strftime('%Y-W%W', timestamp)"
@@ -1355,99 +1359,37 @@ func (r *statsRepo) GetDomains() ([]*DomainStats, error) {
 
 // GetServices returns all unique services with their type and request counts
 // Priority: backend_name -> backend_url -> host
-// Removes empty values and duplicates
+// OPTIMIZED: Uses single pass query instead of 3 separate queries
 func (r *statsRepo) GetServices() ([]*ServiceInfo, error) {
-	serviceMap := make(map[string]*ServiceInfo)
+	var services []*ServiceInfo
 
-	// Step 1: Query backend_name field
-	var backendNames []struct {
-		Value string
-		Count int64
-	}
-	err := r.db.Table("http_requests").
-		Select("backend_name as value, COUNT(*) as count").
-		Where("backend_name != ?", "").
-		Group("backend_name").
-		Scan(&backendNames).Error
+	// Single query to aggregate all services with priority logic
+	// We group by the calculated name and type directly in the database
+	query := `
+		SELECT
+			CASE
+				WHEN backend_name != '' THEN backend_name
+				WHEN backend_url != '' THEN backend_url
+				ELSE host
+			END as name,
+			CASE
+				WHEN backend_name != '' THEN 'backend_name'
+				WHEN backend_url != '' THEN 'backend_url'
+				ELSE 'host'
+			END as type,
+			COUNT(*) as count
+		FROM http_requests
+		WHERE backend_name != '' OR backend_url != '' OR host != ''
+		GROUP BY 1, 2
+		ORDER BY count DESC
+	`
 
-	if err != nil {
-		r.logger.WithCaller().Error("Failed to get backend names", r.logger.Args("error", err))
+	if err := r.db.Raw(query).Scan(&services).Error; err != nil {
+		r.logger.WithCaller().Error("Failed to get services", r.logger.Args("error", err))
 		return nil, err
 	}
 
-	for _, bn := range backendNames {
-		if bn.Value != "" {
-			serviceMap[bn.Value] = &ServiceInfo{
-				Name:  bn.Value,
-				Type:  "backend_name",
-				Count: bn.Count,
-			}
-		}
-	}
-
-	// Step 2: Query backend_url field (only for records without backend_name)
-	var backendURLs []struct {
-		Value string
-		Count int64
-	}
-	err = r.db.Table("http_requests").
-		Select("backend_url as value, COUNT(*) as count").
-		Where("backend_url != ? AND (backend_name = ? OR backend_name IS NULL)", "", "").
-		Group("backend_url").
-		Scan(&backendURLs).Error
-
-	if err != nil {
-		r.logger.WithCaller().Error("Failed to get backend URLs", r.logger.Args("error", err))
-		return nil, err
-	}
-
-	for _, bu := range backendURLs {
-		if bu.Value != "" && serviceMap[bu.Value] == nil {
-			serviceMap[bu.Value] = &ServiceInfo{
-				Name:  bu.Value,
-				Type:  "backend_url",
-				Count: bu.Count,
-			}
-		}
-	}
-
-	// Step 3: Query host field (only for records without backend_name and backend_url)
-	var hosts []struct {
-		Value string
-		Count int64
-	}
-	err = r.db.Table("http_requests").
-		Select("host as value, COUNT(*) as count").
-		Where("host != ? AND (backend_name = ? OR backend_name IS NULL) AND (backend_url = ? OR backend_url IS NULL)", "", "", "").
-		Group("host").
-		Scan(&hosts).Error
-
-	if err != nil {
-		r.logger.WithCaller().Error("Failed to get hosts", r.logger.Args("error", err))
-		return nil, err
-	}
-
-	for _, h := range hosts {
-		if h.Value != "" && serviceMap[h.Value] == nil {
-			serviceMap[h.Value] = &ServiceInfo{
-				Name:  h.Value,
-				Type:  "host",
-				Count: h.Count,
-			}
-		}
-	}
-
-	// Convert map to slice and sort by count
-	services := make([]*ServiceInfo, 0, len(serviceMap))
-	for _, service := range serviceMap {
-		services = append(services, service)
-	}
-
-	sort.Slice(services, func(i, j int) bool {
-		return services[i].Count > services[j].Count
-	})
-
-	r.logger.Debug("Retrieved services list", r.logger.Args("count", len(services)))
+	r.logger.Debug("Retrieved services list (optimized)", r.logger.Args("count", len(services)))
 	return services, nil
 }
 
@@ -1584,11 +1526,11 @@ func (r *statsRepo) GetIPTimelineStats(ip string, hours int) ([]*TimelineData, e
 	// Adaptive grouping based on time range
 	var groupBy string
 	if hours <= 24 {
-		groupBy = "strftime('%Y-%m-%d %H:00', timestamp)"
+		groupBy = "substr(timestamp, 1, 13) || ':00'"
 	} else if hours <= 168 {
-		groupBy = "strftime('%Y-%m-%d', timestamp) || ' ' || CAST((CAST(strftime('%H', timestamp) AS INTEGER) / 6) * 6 AS TEXT) || ':00'"
+		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'"
 	} else if hours <= 720 {
-		groupBy = "strftime('%Y-%m-%d', timestamp)"
+		groupBy = "substr(timestamp, 1, 10)"
 	} else {
 		groupBy = "strftime('%Y-W%W', timestamp)"
 	}
