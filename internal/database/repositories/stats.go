@@ -1299,119 +1299,96 @@ func extractBackendName(backendName string) string {
 // GetTopBackends returns backend statistics
 // OPTIMIZED: Uses UNION ALL with indexed subqueries instead of COALESCE/CASE in WHERE
 func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error) {
-	// Build WHERE clause for time filter
-	timeClause := ""
-	args := []interface{}{}
+	// OPTIMIZED: Uses dedicated covering indexes (idx_backend_agg, idx_backend_url_agg, idx_host_agg)
+	// Removed AVG(response_time_ms) - not essential for top backends and causes table scans
 	
-	if hours > 0 {
-		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		timeClause = " AND timestamp > ?"
-		args = append(args, since)
-	}
-
-	// Build service filter clause
-	serviceClause := ""
-	if len(filters) > 0 {
-		filterConds := []string{}
-		for _, filter := range filters {
-			switch filter.Type {
-			case "backend_name":
-				filterConds = append(filterConds, "backend_name = ?")
-				args = append(args, filter.Name)
-			case "backend_url":
-				filterConds = append(filterConds, "backend_url = ?")
-				args = append(args, filter.Name)
-			case "host":
-				filterConds = append(filterConds, "host = ?")
-				args = append(args, filter.Name)
-			case "auto", "":
-				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
-				args = append(args, filter.Name, filter.Name, filter.Name)
-			}
-		}
-		if len(filterConds) > 0 {
-			serviceClause = " AND (" + strings.Join(filterConds, " OR ") + ")"
-		}
+	// Build time filter for each UNION part
+	var timeFilter string
+	var since time.Time
+	hasTimeFilter := hours > 0
+	
+	if hasTimeFilter {
+		since = time.Now().Add(-time.Duration(hours) * time.Hour)
+		timeFilter = " AND timestamp > ?"
 	}
 
 	// Build exclude IP clause
-	excludeClause := ""
-	if excludeIP != nil && excludeIP.ClientIP != "" {
-		if len(excludeIP.ExcludeServices) == 0 {
-			excludeClause = " AND client_ip != ?"
-			args = append(args, excludeIP.ClientIP)
-		}
+	var excludeFilter string
+	var excludeIP_val string
+	hasExcludeIP := excludeIP != nil && excludeIP.ClientIP != "" && len(excludeIP.ExcludeServices) == 0
+	if hasExcludeIP {
+		excludeFilter = " AND client_ip != ?"
+		excludeIP_val = excludeIP.ClientIP
 	}
 
-	// UNION ALL approach is faster because each subquery can use dedicated indexes
+	// UNION ALL with minimal columns - each uses dedicated partial index
+	// idx_backend_agg covers: backend_name, timestamp, backend_url, host, response_size, status_code
 	query := `
-		SELECT 
-			backend_name as backend_name,
-			backend_name as backend_name_original,
-			MAX(backend_url) as backend_url,
-			MAX(host) as host,
-			'backend_name' as service_type,
-			COUNT(*) as hits,
-			COALESCE(SUM(response_size), 0) as bandwidth,
-			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
-			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
-		FROM http_requests
-		WHERE backend_name != ''` + timeClause + serviceClause + excludeClause + `
-		GROUP BY backend_name
-		
-		UNION ALL
-		
-		SELECT 
-			backend_url as backend_name,
-			'' as backend_name_original,
-			backend_url,
-			MAX(host) as host,
-			'backend_url' as service_type,
-			COUNT(*) as hits,
-			COALESCE(SUM(response_size), 0) as bandwidth,
-			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
-			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
-		FROM http_requests
-		WHERE backend_name = '' AND backend_url != ''` + timeClause + serviceClause + excludeClause + `
-		GROUP BY backend_url
-		
-		UNION ALL
-		
-		SELECT 
-			host as backend_name,
-			'' as backend_name_original,
-			'' as backend_url,
-			host,
-			'host' as service_type,
-			COUNT(*) as hits,
-			COALESCE(SUM(response_size), 0) as bandwidth,
-			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
-			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
-		FROM http_requests
-		WHERE backend_name = '' AND backend_url = '' AND host != ''` + timeClause + serviceClause + excludeClause + `
-		GROUP BY host
-		
+		SELECT * FROM (
+			SELECT 
+				backend_name as name,
+				MAX(backend_url) as backend_url,
+				MAX(host) as host,
+				'backend_name' as service_type,
+				COUNT(*) as hits,
+				COALESCE(SUM(response_size), 0) as bandwidth,
+				SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
+			FROM http_requests INDEXED BY idx_backend_agg
+			WHERE backend_name != ''` + timeFilter + excludeFilter + `
+			GROUP BY backend_name
+			
+			UNION ALL
+			
+			SELECT 
+				backend_url as name,
+				backend_url,
+				MAX(host) as host,
+				'backend_url' as service_type,
+				COUNT(*) as hits,
+				COALESCE(SUM(response_size), 0) as bandwidth,
+				SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
+			FROM http_requests INDEXED BY idx_backend_url_agg
+			WHERE backend_name = '' AND backend_url != ''` + timeFilter + excludeFilter + `
+			GROUP BY backend_url
+			
+			UNION ALL
+			
+			SELECT 
+				host as name,
+				'' as backend_url,
+				host,
+				'host' as service_type,
+				COUNT(*) as hits,
+				COALESCE(SUM(response_size), 0) as bandwidth,
+				SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
+			FROM http_requests INDEXED BY idx_host_agg
+			WHERE backend_name = '' AND backend_url = '' AND host != ''` + timeFilter + excludeFilter + `
+			GROUP BY host
+		)
 		ORDER BY hits DESC
 		LIMIT ?
 	`
 
-	// Triplicate args for the three UNION parts (except limit)
-	fullArgs := make([]interface{}, 0, len(args)*3+1)
-	fullArgs = append(fullArgs, args...)
-	fullArgs = append(fullArgs, args...)
-	fullArgs = append(fullArgs, args...)
+	// Build args - each UNION part needs time filter and optionally exclude IP
+	fullArgs := make([]interface{}, 0, 10)
+	for i := 0; i < 3; i++ {
+		if hasTimeFilter {
+			fullArgs = append(fullArgs, since)
+		}
+		if hasExcludeIP {
+			fullArgs = append(fullArgs, excludeIP_val)
+		}
+	}
 	fullArgs = append(fullArgs, limit)
 
 	var results []struct {
-		BackendName         string  `gorm:"column:backend_name"`
-		BackendNameOriginal string  `gorm:"column:backend_name_original"`
-		BackendURL          string  `gorm:"column:backend_url"`
-		Host                string  `gorm:"column:host"`
-		ServiceType         string  `gorm:"column:service_type"`
-		Hits                int64   `gorm:"column:hits"`
-		Bandwidth           int64   `gorm:"column:bandwidth"`
-		AvgResponseTime     float64 `gorm:"column:avg_response_time"`
-		ErrorCount          int64   `gorm:"column:error_count"`
+		Name        string `gorm:"column:name"`
+		BackendURL  string `gorm:"column:backend_url"`
+		Host        string `gorm:"column:host"`
+		ServiceType string `gorm:"column:service_type"`
+		Hits        int64  `gorm:"column:hits"`
+		Bandwidth   int64  `gorm:"column:bandwidth"`
+		ErrorCount  int64  `gorm:"column:error_count"`
 	}
 
 	err := r.db.Raw(query, fullArgs...).Scan(&results).Error
@@ -1424,13 +1401,13 @@ func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter
 	backends := make([]*BackendStats, len(results))
 	for i, result := range results {
 		backends[i] = &BackendStats{
-			BackendName:     result.BackendName,
+			BackendName:     result.Name,
 			BackendURL:      result.BackendURL,
 			Host:            result.Host,
 			ServiceType:     result.ServiceType,
 			Hits:            result.Hits,
 			Bandwidth:       result.Bandwidth,
-			AvgResponseTime: result.AvgResponseTime,
+			AvgResponseTime: 0, // Removed from query for performance - calculate separately if needed
 			ErrorCount:      result.ErrorCount,
 		}
 	}
