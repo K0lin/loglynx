@@ -103,13 +103,29 @@ function initTimelineChart() {
             label: 'Requests',
             data: [],
             borderColor: LogLynxCharts.colors.primary,
-            backgroundColor: LogLynxCharts.colors.primaryLight + '40',
+            backgroundColor: LogLynxCharts.colors.primaryLight + '20',
             tension: 0.4,
-            fill: true
+            fill: true,
+            pointRadius: 0,
+            pointHitRadius: 20,
+            borderWidth: 2
         }]
     }, {
+        interaction: {
+            mode: 'index',
+            intersect: false,
+            axis: 'x'
+        },
         plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' +
+                               LogLynxUtils.formatNumber(context.parsed.y);
+                    }
+                }
+            }
         },
         scales: {
             x: {
@@ -203,6 +219,7 @@ function initStatusTimelineChart() {
                 tension: 0.3,
                 fill: true,
                 pointRadius: 0,
+                pointHitRadius: 20,
                 borderWidth: 2
             },
             {
@@ -213,6 +230,7 @@ function initStatusTimelineChart() {
                 tension: 0.3,
                 fill: true,
                 pointRadius: 0,
+                pointHitRadius: 20,
                 borderWidth: 2
             },
             {
@@ -223,6 +241,7 @@ function initStatusTimelineChart() {
                 tension: 0.3,
                 fill: true,
                 pointRadius: 0,
+                pointHitRadius: 20,
                 borderWidth: 2
             },
             {
@@ -233,10 +252,16 @@ function initStatusTimelineChart() {
                 tension: 0.3,
                 fill: true,
                 pointRadius: 0,
+                pointHitRadius: 20,
                 borderWidth: 2
             }
         ]
     }, {
+        interaction: {
+            mode: 'index',
+            intersect: false,
+            axis: 'x'
+        },
         plugins: {
             legend: {
                 position: 'top',

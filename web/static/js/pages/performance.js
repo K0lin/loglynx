@@ -141,13 +141,29 @@ function initPerformanceTimelineChart() {
             label: 'Avg Response Time (ms)',
             data: [],
             borderColor: LogLynxCharts.colors.info,
-            backgroundColor: LogLynxCharts.colors.info + '40',
+            backgroundColor: LogLynxCharts.colors.info + '20',
             tension: 0.4,
-            fill: true
+            fill: true,
+            pointRadius: 0,
+            pointHitRadius: 20,
+            borderWidth: 2
         }]
     }, {
+        interaction: {
+            mode: 'index',
+            intersect: false,
+            axis: 'x'
+        },
         plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' +
+                               LogLynxUtils.formatMs(context.parsed.y);
+                    }
+                }
+            }
         }
     });
 }
