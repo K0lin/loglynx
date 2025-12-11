@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.title}} - LogLynx</title>
+    <title>{{.Title}} - LogLynx</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
@@ -33,8 +33,8 @@
     <div class="page-header-top">
         <div>
             <h2 class="page-title">
-                <i class="fas fa-server"></i>
-                System Statistics
+                <i class="{{.PageIcon}}"></i>
+                {{.PageTitle}}
             </h2>
             <p class="page-description">System health, performance metrics, and database statistics</p>
         </div>

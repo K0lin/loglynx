@@ -70,6 +70,22 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		`CREATE INDEX IF NOT EXISTS idx_service_id
 		 ON http_requests(backend_name, backend_url, host)`,
 
+		// Backend aggregation - CRITICAL for GetTopBackends (was taking 3s)
+		// Covering index for backend_name grouping with all aggregation columns
+		`CREATE INDEX IF NOT EXISTS idx_backend_agg
+		 ON http_requests(backend_name, timestamp, backend_url, host, response_size, status_code)
+		 WHERE backend_name != ''`,
+
+		// Backend URL fallback aggregation - for requests without backend_name
+		`CREATE INDEX IF NOT EXISTS idx_backend_url_agg
+		 ON http_requests(backend_url, timestamp, host, response_size, status_code)
+		 WHERE backend_name = '' AND backend_url != ''`,
+
+		// Host fallback aggregation - for requests without backend_name or backend_url
+		`CREATE INDEX IF NOT EXISTS idx_host_agg
+		 ON http_requests(host, timestamp, response_size, status_code)
+		 WHERE backend_name = '' AND backend_url = '' AND host != ''`,
+
 		// ===== LOOKUP INDEXES (for filtering and detail queries) =====
 
 		// Client IP aggregation - CRITICAL for GetTopIPAddresses (was taking 18-20s)

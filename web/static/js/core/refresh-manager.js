@@ -2,6 +2,9 @@ const RefreshManager = (() => {
     const STORAGE_KEY = 'loglynx_refresh_global';
     const DEFAULT_INTERVAL = 30;
     const DEFAULT_AUTO_START = true;
+    
+    // Run the check on script load
+    checkAndHideFilters();   
 
     // Session-only state (cleared on navigation)
     let pageOverride = null;
@@ -15,6 +18,30 @@ const RefreshManager = (() => {
         if (path === '/' || path === '/index' || path === '/overview') return 'overview';
         return path.replace(/^\//, '').replace(/\//g, '-') || 'overview';
     }
+
+    /**
+     * Check current path and hide refresh filters if needed
+     */
+    function checkAndHideFilters() {
+        const currentPath = window.location.pathname;
+
+        const shouldHideFilters =
+        currentPath === '/system' ||
+        currentPath === '/backends' ||
+        currentPath === '/content' ||
+        currentPath === '/security' ||
+        currentPath === '/realtime' ||
+        currentPath.startsWith('/ip/');
+        
+        if (shouldHideFilters) {
+            // Hide the entire refresh-controls container
+            const refreshControls = document.querySelector('.header-refresh-controls');
+                if (refreshControls) {
+                    refreshControls.style.display = 'none';
+                }
+        }
+    }
+
 
     /**
      * Load global settings from localStorage

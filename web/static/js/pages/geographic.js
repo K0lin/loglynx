@@ -29,6 +29,7 @@ async function loadGeographicData() {
             initIPGeoTable(ipsResult.data);
             initCityTable(ipsResult.data);
             initializeMap(ipsResult.data, countriesResult.data);
+            updateCitiesCounter(); // Update cities counter after IPs are loaded
         }
 
         // Load ASNs
@@ -50,15 +51,6 @@ function updateGeoKPIs(countriesData) {
 
     $('#totalCountries').text(countriesData.length);
 
-    // Count unique cities
-    const cities = new Set();
-    if (allGeoData.ips) {
-        allGeoData.ips.forEach(ip => {
-            if (ip.city) cities.add(`${ip.city}-${ip.country}`);
-        });
-    }
-    $('#totalCities').text(cities.size);
-
     // Count continents
     const continents = new Set();
     countriesData.forEach(country => {
@@ -73,6 +65,17 @@ function updateGeoKPIs(countriesData) {
         $('#topCountry').text(top.country_name || top.country);
         $('#topCountryHits').text(LogLynxUtils.formatNumber(top.hits) + ' hits');
     }
+}
+
+// Update cities counter
+function updateCitiesCounter() {
+    const cities = new Set();
+    if (allGeoData.ips) {
+        allGeoData.ips.forEach(ip => {
+            if (ip.city) cities.add(`${ip.city}-${ip.country}`);
+        });
+    }
+    $('#totalCities').text(cities.size);
 }
 
 // Initialize Leaflet map
@@ -816,6 +819,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize charts
     initContinentChart();
     initTopCountriesBarChart();
+
+    // Initialize counters to 0
+    $('#totalCities').text('0');
 
     // Initialize controls
     initServiceFilterWithReload();

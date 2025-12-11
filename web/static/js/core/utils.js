@@ -722,7 +722,13 @@ const LogLynxUtils = {
      */
     initRefreshControls(loadDataCallback, defaultInterval = 30) {
         // Initialize RefreshManager for this page
-        RefreshManager.init();
+    
+        //check if RefreshManager is defined (before calling init)
+        if (typeof RefreshManager === 'undefined') {
+            document.querySelector('.header-refresh-controls').style.display = 'none';
+        }else{
+            RefreshManager.init();
+        }
 
         // Load settings from RefreshManager
         const settings = RefreshManager.getCurrentSettings();

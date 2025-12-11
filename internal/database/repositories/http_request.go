@@ -11,6 +11,64 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// Old indexes that need to be dropped during database optimization
+var oldIndexes = []string{
+	"idx_source_name",
+	"idx_timestamp",
+	"idx_partition_key",
+	"idx_client_ip", // Will be recreated with different definition
+	"idx_host",
+	"idx_status",
+	"idx_response_time",
+	"idx_retry_attempts",
+	"idx_browser",
+	"idx_os",
+	"idx_device_type", // Will be recreated
+	"idx_router_name",
+	"idx_request_id",
+	"idx_trace_id",
+	"idx_geo_country",
+	"idx_created_at",
+	"idx_time_status",
+	"idx_ip_time",
+	"idx_status_host",
+	"idx_timestamp_response_time",
+	"idx_summary_query",
+	"idx_errors_only",
+	"idx_slow_requests",
+	"idx_server_errors",
+	"idx_retried_requests",
+	"idx_dashboard_covering",
+	"idx_error_analysis",
+	"idx_timestamp_cleanup",
+}
+
+// New optimized indexes that should exist after optimization
+var newIndexes = []string{
+	"idx_timestamp_status",
+	"idx_time_host",
+	"idx_time_backend",
+	"idx_path_agg",
+	"idx_geo_agg",
+	"idx_referer_agg",
+	"idx_service_id",
+	"idx_backend_agg",
+	"idx_backend_url_agg",
+	"idx_host_agg",
+	"idx_client_ip",
+	"idx_status_code",
+	"idx_method",
+	"idx_errors",
+	"idx_slow",
+	"idx_response_time",
+	"idx_ip_agg",
+	"idx_asn_agg",
+	"idx_device_type",
+	"idx_protocol",
+	"idx_tls_version",
+	"idx_cleanup",
+}
+
 // HTTPRequestRepository handles CRUD operations for HTTP requests
 type HTTPRequestRepository interface {
 	Create(request *models.HTTPRequest) error
@@ -66,12 +124,41 @@ func (r *httpRequestRepo) checkFirstLoad() {
 // checkAndUpgradeIndexes checks if the database has the new optimized indexes
 // If not, runs the optimization in the background
 func (r *httpRequestRepo) checkAndUpgradeIndexes() {
-	// Check if old indexes still exist (indicating upgrade needed)
-	var exists bool
-	query := `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_dashboard_covering' LIMIT 1`
-	err := r.db.Raw(query).Scan(&exists).Error
-	if err == nil && exists {
-		r.logger.Info("Database indexes need upgrade - applying optimizations in background...")
+	// Check if all new indexes exist (if any are missing, upgrade is needed)
+	var missingCount int64
+	query := `SELECT COUNT(*) FROM (SELECT 1 FROM sqlite_master WHERE type='index' AND name IN (`
+	args := make([]interface{}, len(newIndexes))
+	for i, indexName := range newIndexes {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args[i] = indexName
+	}
+	query += ")) WHERE 1 = 0" // This will count how many are missing
+
+	// Actually, let's count how many new indexes exist
+	query = `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN (`
+	args = make([]interface{}, len(newIndexes))
+	for i, indexName := range newIndexes {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args[i] = indexName
+	}
+	query += ")"
+
+	err := r.db.Raw(query, args...).Scan(&missingCount).Error
+	if err != nil {
+		r.logger.Warn("Failed to check database indexes", r.logger.Args("error", err))
+		return
+	}
+
+	// If not all new indexes exist, we need to upgrade
+	if int(missingCount) < len(newIndexes) {
+		r.logger.Info("Database indexes need upgrade - applying optimizations in background...",
+			r.logger.Args("existing_indexes", missingCount, "required_indexes", len(newIndexes)))
 		go func() {
 			if err := r.optimizeDatabase(); err != nil {
 				r.logger.Error("Failed to upgrade database indexes", r.logger.Args("error", err))
@@ -128,37 +215,6 @@ func (r *httpRequestRepo) createDeferredIndexes() {
 // INDEX STRATEGY: ~15 optimized indexes for read-heavy analytics workload
 func (r *httpRequestRepo) optimizeDatabase() error {
 	// Drop old indexes that are no longer used or have been replaced
-	oldIndexes := []string{
-		"idx_source_name",
-		"idx_timestamp",
-		"idx_partition_key",
-		"idx_client_ip", // Will be recreated with different definition
-		"idx_host",
-		"idx_status",
-		"idx_response_time",
-		"idx_retry_attempts",
-		"idx_browser",
-		"idx_os",
-		"idx_device_type", // Will be recreated
-		"idx_router_name",
-		"idx_request_id",
-		"idx_trace_id",
-		"idx_geo_country",
-		"idx_created_at",
-		"idx_time_status",
-		"idx_ip_time",
-		"idx_status_host",
-		"idx_timestamp_response_time",
-		"idx_summary_query",
-		"idx_errors_only",
-		"idx_slow_requests",
-		"idx_server_errors",
-		"idx_retried_requests",
-		"idx_dashboard_covering",
-		"idx_error_analysis",
-		"idx_timestamp_cleanup",
-	}
-
 	r.logger.Debug("Dropping old indexes", r.logger.Args("count", len(oldIndexes)))
 	for _, indexName := range oldIndexes {
 		dropSQL := "DROP INDEX IF EXISTS " + indexName
@@ -204,6 +260,22 @@ func (r *httpRequestRepo) optimizeDatabase() error {
 		// Service identification - for GetServices
 		`CREATE INDEX IF NOT EXISTS idx_service_id
 		 ON http_requests(backend_name, backend_url, host)`,
+
+		// Backend aggregation - CRITICAL for GetTopBackends
+		// Covering index for backend_name grouping with all aggregation columns
+		`CREATE INDEX IF NOT EXISTS idx_backend_agg
+		 ON http_requests(backend_name, timestamp, backend_url, host, response_size, status_code)
+		 WHERE backend_name != ''`,
+
+		// Backend URL fallback aggregation - for requests without backend_name
+		`CREATE INDEX IF NOT EXISTS idx_backend_url_agg
+		 ON http_requests(backend_url, timestamp, host, response_size, status_code)
+		 WHERE backend_name = '' AND backend_url != ''`,
+
+		// Host fallback aggregation - for requests without backend_name or backend_url
+		`CREATE INDEX IF NOT EXISTS idx_host_agg
+		 ON http_requests(host, timestamp, response_size, status_code)
+		 WHERE backend_name = '' AND backend_url = '' AND host != ''`,
 
 		// ===== LOOKUP INDEXES (for filtering and detail queries) =====
 
