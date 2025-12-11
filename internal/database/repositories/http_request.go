@@ -56,8 +56,32 @@ func (r *httpRequestRepo) checkFirstLoad() {
 
 		if r.isFirstLoad {
 			r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
+		} else {
+			// For existing databases, check if they need index upgrade
+			r.checkAndUpgradeIndexes()
 		}
 	})
+}
+
+// checkAndUpgradeIndexes checks if the database has the new optimized indexes
+// If not, runs the optimization in the background
+func (r *httpRequestRepo) checkAndUpgradeIndexes() {
+	// Check if one of the new indexes exists
+	var exists bool
+	query := `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_path_agg' LIMIT 1`
+	err := r.db.Raw(query).Scan(&exists).Error
+	if err != nil || !exists {
+		r.logger.Info("Database indexes need upgrade - applying optimizations in background...")
+		go func() {
+			if err := r.optimizeDatabase(); err != nil {
+				r.logger.Error("Failed to upgrade database indexes", r.logger.Args("error", err))
+			} else {
+				r.logger.Info("Database indexes upgraded successfully")
+			}
+		}()
+	} else {
+		r.logger.Debug("Database indexes are up to date")
+	}
 }
 
 // DisableFirstLoadMode disables first-load optimization
@@ -103,6 +127,49 @@ func (r *httpRequestRepo) createDeferredIndexes() {
 // This is a copy of OptimizeDatabase function to avoid circular dependencies
 // INDEX STRATEGY: ~15 optimized indexes for read-heavy analytics workload
 func (r *httpRequestRepo) optimizeDatabase() error {
+	// Drop old indexes that are no longer used or have been replaced
+	oldIndexes := []string{
+		"idx_source_name",
+		"idx_timestamp",
+		"idx_partition_key",
+		"idx_client_ip", // Will be recreated with different definition
+		"idx_host",
+		"idx_status",
+		"idx_response_time",
+		"idx_retry_attempts",
+		"idx_browser",
+		"idx_os",
+		"idx_device_type", // Will be recreated
+		"idx_router_name",
+		"idx_request_id",
+		"idx_trace_id",
+		"idx_geo_country",
+		"idx_created_at",
+		"idx_time_status",
+		"idx_ip_time",
+		"idx_status_host",
+		"idx_timestamp_response_time",
+		"idx_summary_query",
+		"idx_errors_only",
+		"idx_slow_requests",
+		"idx_server_errors",
+		"idx_retried_requests",
+		"idx_dashboard_covering",
+		"idx_error_analysis",
+		"idx_timestamp_cleanup",
+	}
+
+	r.logger.Debug("Dropping old indexes", r.logger.Args("count", len(oldIndexes)))
+	for _, indexName := range oldIndexes {
+		dropSQL := "DROP INDEX IF EXISTS " + indexName
+		if err := r.db.Exec(dropSQL).Error; err != nil {
+			r.logger.Warn("Failed to drop old index", r.logger.Args("index", indexName, "error", err))
+			// Continue with other drops
+		} else {
+			r.logger.Trace("Dropped old index", r.logger.Args("index", indexName))
+		}
+	}
+
 	indexes := []string{
 		// ===== PRIMARY COMPOSITE INDEXES (for time-range queries) =====
 
