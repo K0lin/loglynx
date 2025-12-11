@@ -4,21 +4,36 @@
 
 let trafficTimelineChart, trafficHeatmapChart, deviceTypeChart, topCountriesPieChart;
 let trafficByHourChart, trafficByDayChart;
-let currentTimeRange = 168; // Default 7 days
+let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168); // Default 7 days
 let currentHeatmapDays = 7;
 let allTrafficData = {};
+
+function getHeatmapDaysForRange(hours) {
+    if (hours === 0) return 30; // All time -> cap at 30 days for heatmap
+    const days = Math.ceil(hours / 24);
+    return Math.min(Math.max(days, 1), 30);
+}
 
 // Load all traffic data
 async function loadTrafficData() {
     try {
+        const hours = currentTimeRange;
+
+        // Align heatmap range with selected timeframe (cap to 30 days)
+        currentHeatmapDays = getHeatmapDaysForRange(hours);
+        const heatmapSelect = document.getElementById('heatmapDays');
+        if (heatmapSelect && heatmapSelect.value !== currentHeatmapDays.toString()) {
+            heatmapSelect.value = currentHeatmapDays.toString();
+        }
+
         // Load summary for KPIs
-        const summaryResult = await LogLynxAPI.getSummary();
+        const summaryResult = await LogLynxAPI.getSummary(hours);
         if (summaryResult.success) {
             updateTrafficKPIs(summaryResult.data);
         }
 
         // Load timeline data
-        const timelineResult = await LogLynxAPI.getTimeline(currentTimeRange);
+        const timelineResult = await LogLynxAPI.getTimeline(hours);
         if (timelineResult.success) {
             allTrafficData.timeline = timelineResult.data;
             updateTrafficTimelineChart(timelineResult.data);
@@ -34,7 +49,7 @@ async function loadTrafficData() {
         }
 
         // Load device type distribution
-        const deviceResult = await LogLynxAPI.getDeviceTypeDistribution();
+        const deviceResult = await LogLynxAPI.getDeviceTypeDistribution(hours);
         if (deviceResult.success) {
             allTrafficData.devices = deviceResult.data;
             updateDeviceTypeChart(deviceResult.data);
@@ -42,7 +57,7 @@ async function loadTrafficData() {
         }
 
         // Load top countries
-        const countriesResult = await LogLynxAPI.getTopCountries(20);
+        const countriesResult = await LogLynxAPI.getTopCountries(20, hours);
         if (countriesResult.success) {
             allTrafficData.countries = countriesResult.data;
             updateTopCountriesTable(countriesResult.data);
@@ -50,7 +65,7 @@ async function loadTrafficData() {
         }
 
         // Load top IPs
-        const ipsResult = await LogLynxAPI.getTopIPs(20);
+        const ipsResult = await LogLynxAPI.getTopIPs(20, hours);
         if (ipsResult.success) {
             allTrafficData.ips = ipsResult.data;
             updateTopIPsTable(ipsResult.data);
@@ -69,6 +84,19 @@ async function loadTrafficData() {
 function updateTrafficKPIs(data) {
     $('#totalTraffic').text(LogLynxUtils.formatNumber(data.total_requests || 0));
     $('#uniqueVisitors').text(LogLynxUtils.formatNumber(data.unique_visitors || 0));
+
+    let timeLabel = 'Last 7 days';
+    if (currentTimeRange === 1) timeLabel = 'Last 1 hour';
+    else if (currentTimeRange === 24) timeLabel = 'Last 24 hours';
+    else if (currentTimeRange === 720) timeLabel = 'Last 30 days';
+    else if (currentTimeRange === 0) timeLabel = 'All time';
+
+    $('.stat-card .stat-subtitle').each(function() {
+        const text = $(this).text();
+        if (text.includes('Last') || text === 'All time') {
+            $(this).text(timeLabel);
+        }
+    });
 }
 
 // Calculate peak traffic
@@ -457,7 +485,7 @@ function initASNDataTable() {
     $('#asnTable').DataTable({
         ajax: function(data, callback, settings) {
             // Custom ajax function that rebuilds URL with current filters
-            const url = LogLynxAPI.buildURL('/stats/top/asns', { limit: 50 });
+            const url = LogLynxAPI.buildURL('/stats/top/asns', { limit: 50, hours: currentTimeRange });
 
             fetch(url)
                 .then(response => response.json())
@@ -634,23 +662,53 @@ function updateHourlyAndDailyCharts(heatmapData) {
 
 // Initialize time range selector
 function initTimeRangeSelector() {
+    const selector = document.getElementById('timeframeSelector');
+
+    const applyRange = (range) => {
+        if (Number.isNaN(range)) return;
+        currentTimeRange = range;
+        LogLynxUtils.setPreferredTimeRangeHours(range);
+
+        // Sync dropdown
+        if (selector) {
+            selector.value = range.toString();
+        }
+
+        // Sync buttons
+        document.querySelectorAll('.time-range-btn').forEach(btn => {
+            const btnRange = parseInt(btn.getAttribute('data-range'));
+            if (btnRange === range) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    };
+
+    // Initial sync with stored preference
+    applyRange(currentTimeRange);
+
+    if (selector) {
+        selector.addEventListener('change', function() {
+            const range = parseInt(this.value);
+            applyRange(range);
+            loadTrafficData();
+        });
+    }
+
     document.querySelectorAll('.time-range-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-
-            const range = this.getAttribute('data-range');
-            currentTimeRange = parseInt(range);
-
-            // Reload timeline data
-            loadTimelineData();
+            const range = parseInt(this.getAttribute('data-range'));
+            applyRange(range);
+            loadTrafficData();
         });
     });
 }
 
 // Load only timeline data
 async function loadTimelineData() {
-    const result = await LogLynxAPI.getTimeline(currentTimeRange);
+    const hours = currentTimeRange;
+    const result = await LogLynxAPI.getTimeline(hours);
 
     if (result.success) {
         allTrafficData.timeline = result.data;

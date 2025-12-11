@@ -341,7 +341,7 @@ const LogLynxAPI = {
 
     /**
      * Get summary statistics
-     * @param {number} hours - Number of hours to fetch (1-8760)
+     * @param {number} hours - Number of hours to fetch (0-8760, 0 = all time)
      */
     async getSummary(hours = 168) {
         return this.get('/stats/summary', { hours });

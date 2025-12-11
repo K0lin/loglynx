@@ -41,6 +41,13 @@
             <p class="page-description">Geographic distribution, traffic patterns, and visitor insights</p>
         </div>
         <div class="page-actions">
+            <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
+                <option value="1">Last 1 Hour</option>
+                <option value="24">Last 24 Hours</option>
+                <option value="168" selected>Last 7 Days</option>
+                <option value="720">Last 30 Days</option>
+                <option value="0">All Time</option>
+            </select>
             <button class="btn btn-outline btn-sm" onclick="exportTrafficReport()">
                 <i class="fas fa-file-export"></i> Export Report
             </button>
@@ -93,6 +100,7 @@
             <button class="time-range-btn" data-range="24">24h</button>
             <button class="time-range-btn active" data-range="168">7d</button>
             <button class="time-range-btn" data-range="720">30d</button>
+            <button class="time-range-btn" data-range="0">All</button>
         </div>
     </div>
     <canvas id="trafficTimelineChart"></canvas>

@@ -41,6 +41,13 @@
             <p class="page-description">Backend service performance, health status, and response metrics</p>
         </div>
         <div class="page-actions">
+            <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
+                <option value="1">Last 1 Hour</option>
+                <option value="24">Last 24 Hours</option>
+                <option value="168" selected>Last 7 Days</option>
+                <option value="720">Last 30 Days</option>
+                <option value="0">All Time</option>
+            </select>
             <button class="btn btn-outline btn-sm" onclick="exportBackendReport()">
                 <i class="fas fa-file-export"></i> Export Report
             </button>
@@ -148,13 +155,125 @@
     {{template "scripts-common" .}}
 
     <script>
+        let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
+        let backendTable;
+        let backendRequestsChart;
+        let backendResponseTimeChart;
+
+        function getTimeLabel(hours) {
+            if (hours === 0) return 'All time';
+            if (hours === 1) return 'Last 1 hour';
+            if (hours === 24) return 'Last 24 hours';
+            if (hours === 720) return 'Last 30 days';
+            return 'Last 7 days';
+        }
+
+        function applyTimeLabel() {
+            const label = getTimeLabel(currentTimeRange);
+            document.querySelectorAll('.stat-card .stat-subtitle').forEach(el => {
+                if (el.textContent.includes('Last') || el.textContent === 'All time') {
+                    el.textContent = label;
+                }
+            });
+        }
+
+        function loadBackendCharts() {
+            const url = LogLynxAPI.buildURL('/stats/top/backends', { limit: 15, hours: currentTimeRange });
+
+            return fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    // Update KPIs
+                    document.getElementById('totalBackends').textContent = data.length.toLocaleString();
+
+                    const totalRequests = data.reduce((sum, item) => sum + item.hits, 0);
+                    document.getElementById('totalRequests').textContent = totalRequests.toLocaleString();
+
+                    const avgResponse = data.reduce((sum, item) => sum + (item.avg_response_time || 0), 0) / (data.length || 1);
+                    document.getElementById('avgResponseTime').textContent = Math.round(avgResponse);
+
+                    const totalErrors = data.reduce((sum, item) => sum + (item.error_count || 0), 0);
+                    const errorRate = totalRequests > 0 ? (totalErrors / totalRequests * 100) : 0;
+                    document.getElementById('errorRate').textContent = errorRate.toFixed(1) + '%';
+
+                    const labels = data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access'));
+
+                    if (backendRequestsChart) backendRequestsChart.destroy();
+                    if (backendResponseTimeChart) backendResponseTimeChart.destroy();
+
+                    const ctx1 = document.getElementById('backendRequestsChart');
+                    backendRequestsChart = new Chart(ctx1, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [{
+                                label: 'Requests',
+                                data: data.map(item => item.hits),
+                                backgroundColor: '#F46319'
+                            }]
+                        },
+                        options: {
+                            ...LogLynxCharts.defaultOptions,
+                            indexAxis: 'y'
+                        }
+                    });
+
+                    const ctx2 = document.getElementById('backendResponseTimeChart');
+                    backendResponseTimeChart = new Chart(ctx2, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [{
+                                label: 'Avg Response Time (ms)',
+                                data: data.map(item => Math.round(item.avg_response_time || 0)),
+                                backgroundColor: data.map(item => {
+                                    const time = item.avg_response_time || 0;
+                                    if (time < 100) return '#28a745';
+                                    if (time < 500) return '#ffc107';
+                                    return '#dc3545';
+                                })
+                            }]
+                        },
+                        options: {
+                            ...LogLynxCharts.defaultOptions,
+                            indexAxis: 'y'
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading backend data:', error);
+                    document.getElementById('totalBackends').textContent = 'N/A';
+                });
+        }
+
+        function reloadBackendData() {
+            applyTimeLabel();
+            if (backendTable) {
+                backendTable.ajax.url(LogLynxAPI.buildURL('/stats/top/backends', { limit: 100, hours: currentTimeRange })).load();
+            }
+            loadBackendCharts();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             LogLynxUtils.setActiveNavItem('backends');
 
+            const selector = document.getElementById('timeframeSelector');
+            if (selector) {
+                selector.value = currentTimeRange.toString();
+                selector.addEventListener('change', () => {
+                    const val = parseInt(selector.value, 10);
+                    if (Number.isNaN(val)) return;
+                    currentTimeRange = val;
+                    LogLynxUtils.setPreferredTimeRangeHours(val);
+                    reloadBackendData();
+                });
+            }
+            applyTimeLabel();
+
             // Initialize Backends DataTable
-            const backendTable = $('#backendTable').DataTable({
+            backendTable = $('#backendTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/backends', { limit: 100 }),
+                    url: LogLynxAPI.buildURL('/stats/top/backends', { limit: 100, hours: currentTimeRange }),
                     dataSrc: ''
                 },
                 columns: [
@@ -227,68 +346,7 @@
                 pageLength: 25
             });
 
-            // Load backend request distribution chart
-            fetch(LogLynxAPI.buildURL('/stats/top/backends', { limit: 15 }))
-                .then(response => response.json())
-                .then(data => {
-                    // Update KPIs
-                    document.getElementById('totalBackends').textContent = data.length.toLocaleString();
-
-                    const totalRequests = data.reduce((sum, item) => sum + item.hits, 0);
-                    document.getElementById('totalRequests').textContent = totalRequests.toLocaleString();
-
-                    const avgResponse = data.reduce((sum, item) => sum + (item.avg_response_time || 0), 0) / (data.length || 1);
-                    document.getElementById('avgResponseTime').textContent = Math.round(avgResponse);
-
-                    const totalErrors = data.reduce((sum, item) => sum + (item.error_count || 0), 0);
-                    const errorRate = totalRequests > 0 ? (totalErrors / totalRequests * 100) : 0;
-                    document.getElementById('errorRate').textContent = errorRate.toFixed(1) + '%';
-
-                    // Backend requests chart
-                    const ctx1 = document.getElementById('backendRequestsChart');
-                    new Chart(ctx1, {
-                        type: 'bar',
-                        data: {
-                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access')),
-                            datasets: [{
-                                label: 'Requests',
-                                data: data.map(item => item.hits),
-                                backgroundColor: '#F46319'
-                            }]
-                        },
-                        options: {
-                            ...LogLynxCharts.defaultOptions,
-                            indexAxis: 'y'
-                        }
-                    });
-
-                    // Backend response time chart
-                    const ctx2 = document.getElementById('backendResponseTimeChart');
-                    new Chart(ctx2, {
-                        type: 'bar',
-                        data: {
-                            labels: data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access')),
-                            datasets: [{
-                                label: 'Avg Response Time (ms)',
-                                data: data.map(item => Math.round(item.avg_response_time || 0)),
-                                backgroundColor: data.map(item => {
-                                    const time = item.avg_response_time || 0;
-                                    if (time < 100) return '#28a745';
-                                    if (time < 500) return '#ffc107';
-                                    return '#dc3545';
-                                })
-                            }]
-                        },
-                        options: {
-                            ...LogLynxCharts.defaultOptions,
-                            indexAxis: 'y'
-                        }
-                    });
-                })
-                .catch(error => {
-                    console.error('Error loading backend data:', error);
-                    document.getElementById('totalBackends').textContent = 'N/A';
-                });
+            reloadBackendData();
         });
 
         function exportBackendReport() {

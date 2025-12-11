@@ -41,6 +41,13 @@
             <p class="page-description">Security metrics, IP reputation, and network analysis</p>
         </div>
         <div class="page-actions">
+            <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
+                <option value="1">Last 1 Hour</option>
+                <option value="24">Last 24 Hours</option>
+                <option value="168" selected>Last 7 Days</option>
+                <option value="720">Last 30 Days</option>
+                <option value="0">All Time</option>
+            </select>
             <button class="btn btn-outline btn-sm" onclick="exportSecurityReport()">
                 <i class="fas fa-file-export"></i> Export Report
             </button>
@@ -194,13 +201,182 @@
 
     <script src="/static/js/core/country-data.js"></script>
     <script>
+        let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
+        let statusCodeChartInstance;
+        let errorTimelineChartInstance;
+        let protocolChartInstance;
+        let tlsChartInstance;
+        let topIPsTable;
+        let topCountriesTable;
+
+        function getTimeLabel(hours) {
+            if (hours === 0) return 'All time';
+            if (hours === 1) return 'Last 1 hour';
+            if (hours === 24) return 'Last 24 hours';
+            if (hours === 720) return 'Last 30 days';
+            return 'Last 7 days';
+        }
+
+        function applyTimeLabel() {
+            const label = getTimeLabel(currentTimeRange);
+            document.querySelectorAll('.stat-card .stat-subtitle').forEach(el => {
+                if (el.textContent.includes('Last') || el.textContent === 'All time') {
+                    el.textContent = label;
+                }
+            });
+        }
+
+        function reloadChartsAndKPIs() {
+            const params = { hours: currentTimeRange };
+
+            // Status code distribution
+            fetch(LogLynxAPI.buildURL('/stats/distribution/status-codes', params))
+                .then(response => response.json())
+                .then(data => {
+                    if (statusCodeChartInstance) statusCodeChartInstance.destroy();
+                    const ctx = document.getElementById('statusCodeChart');
+                    statusCodeChartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.map(item => `${item.status_code} (${item.count.toLocaleString()})`),
+                            datasets: [{
+                                data: data.map(item => item.count),
+                                backgroundColor: data.map(item => {
+                                    const code = parseInt(item.status_code);
+                                    if (code < 300) return '#28a745';
+                                    if (code < 400) return '#17a2b8';
+                                    if (code < 500) return '#ffc107';
+                                    return '#dc3545';
+                                })
+                            }]
+                        },
+                        options: LogLynxCharts.defaultOptions
+                    });
+                });
+
+            // Error timeline (status codes over time)
+            fetch(LogLynxAPI.buildURL('/stats/timeline/status-codes', params))
+                .then(response => response.json())
+                .then(data => {
+                    if (errorTimelineChartInstance) errorTimelineChartInstance.destroy();
+                    const ctx = document.getElementById('errorTimelineChart');
+                    errorTimelineChartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.map(item => item.hour),
+                            datasets: [
+                                {
+                                    label: '4xx Errors',
+                                    data: data.map(item => item.status_4xx || 0),
+                                    borderColor: '#ffc107',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                    tension: 0.4
+                                },
+                                {
+                                    label: '5xx Errors',
+                                    data: data.map(item => item.status_5xx || 0),
+                                    borderColor: '#dc3545',
+                                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                    tension: 0.4
+                                }
+                            ]
+                        },
+                        options: LogLynxCharts.defaultOptions
+                    });
+                });
+
+            // Protocol distribution
+            fetch(LogLynxAPI.buildURL('/stats/distribution/protocols', params))
+                .then(response => response.json())
+                .then(data => {
+                    if (protocolChartInstance) protocolChartInstance.destroy();
+                    const ctx = document.getElementById('protocolChart');
+                    protocolChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.map(item => item.protocol),
+                            datasets: [{
+                                label: 'Requests',
+                                data: data.map(item => item.count),
+                                backgroundColor: '#F46319'
+                            }]
+                        },
+                        options: LogLynxCharts.defaultOptions
+                    });
+                });
+
+            // TLS version distribution
+            fetch(LogLynxAPI.buildURL('/stats/distribution/tls-versions', params))
+                .then(response => response.json())
+                .then(data => {
+                    if (tlsChartInstance) tlsChartInstance.destroy();
+                    const ctx = document.getElementById('tlsVersionChart');
+                    tlsChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.map(item => item.tls_version || 'Unknown'),
+                            datasets: [{
+                                label: 'Requests',
+                                data: data.map(item => item.count),
+                                backgroundColor: '#17a2b8'
+                            }]
+                        },
+                        options: LogLynxCharts.defaultOptions
+                    });
+                });
+
+            // Summary stats
+            fetch(LogLynxAPI.buildURL('/stats/summary', params))
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalRequests').textContent = (data.total_requests || 0).toLocaleString();
+                    document.getElementById('failedRequests').textContent = (data.failed_requests || 0).toLocaleString();
+                    document.getElementById('uniqueIPs').textContent = (data.unique_visitors || 0).toLocaleString();
+                });
+
+            // Unique countries count
+            fetch(LogLynxAPI.buildURL('/stats/top/countries', { limit: 1000, hours: currentTimeRange }))
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalCountries').textContent = data.length.toLocaleString();
+                });
+        }
+
+        function reloadTables() {
+            if (topIPsTable) {
+                topIPsTable.ajax.url(LogLynxAPI.buildURL('/stats/top/ips', { limit: 50, hours: currentTimeRange })).load();
+            }
+            if (topCountriesTable) {
+                topCountriesTable.ajax.url(LogLynxAPI.buildURL('/stats/top/countries', { limit: 20, hours: currentTimeRange })).load();
+            }
+        }
+
+        function reloadSecurityPage() {
+            applyTimeLabel();
+            reloadTables();
+            reloadChartsAndKPIs();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             LogLynxUtils.setActiveNavItem('security');
 
+            const selector = document.getElementById('timeframeSelector');
+            if (selector) {
+                selector.value = currentTimeRange.toString();
+                selector.addEventListener('change', () => {
+                    const val = parseInt(selector.value, 10);
+                    if (Number.isNaN(val)) return;
+                    currentTimeRange = val;
+                    LogLynxUtils.setPreferredTimeRangeHours(val);
+                    reloadSecurityPage();
+                });
+            }
+            applyTimeLabel();
+
             // Initialize DataTables
-            const topIPsTable = $('#topIPsTable').DataTable({
+            topIPsTable = $('#topIPsTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/ips', { limit: 50 }),
+                    url: LogLynxAPI.buildURL('/stats/top/ips', { limit: 50, hours: currentTimeRange }),
                     dataSrc: ''
                 },
                 columns: [
@@ -215,9 +391,9 @@
                 pageLength: 20
             });
 
-            const topCountriesTable = $('#topCountriesTable').DataTable({
+            topCountriesTable = $('#topCountriesTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/countries', { limit: 20 }),
+                    url: LogLynxAPI.buildURL('/stats/top/countries', { limit: 20, hours: currentTimeRange }),
                     dataSrc: ''
                 },
                 columns: [
@@ -263,113 +439,7 @@
                 }
             });
 
-            // Load status code distribution
-            fetch(LogLynxAPI.buildURL('/stats/distribution/status-codes'))
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('statusCodeChart');
-                    new Chart(ctx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: data.map(item => `${item.status_code} (${item.count.toLocaleString()})`),
-                            datasets: [{
-                                data: data.map(item => item.count),
-                                backgroundColor: data.map(item => {
-                                    const code = parseInt(item.status_code);
-                                    if (code < 300) return '#28a745';
-                                    if (code < 400) return '#17a2b8';
-                                    if (code < 500) return '#ffc107';
-                                    return '#dc3545';
-                                })
-                            }]
-                        },
-                        options: LogLynxCharts.defaultOptions
-                    });
-                });
-
-            // Load error timeline
-            fetch(LogLynxAPI.buildURL('/stats/timeline/status-codes', { hours: 168 }))
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('errorTimelineChart');
-                    new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: data.map(item => item.hour),
-                            datasets: [
-                                {
-                                    label: '4xx Errors',
-                                    data: data.map(item => item.status_4xx || 0),
-                                    borderColor: '#ffc107',
-                                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                                    tension: 0.4
-                                },
-                                {
-                                    label: '5xx Errors',
-                                    data: data.map(item => item.status_5xx || 0),
-                                    borderColor: '#dc3545',
-                                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                                    tension: 0.4
-                                }
-                            ]
-                        },
-                        options: LogLynxCharts.defaultOptions
-                    });
-                });
-
-            // Load protocol distribution
-            fetch(LogLynxAPI.buildURL('/stats/distribution/protocols'))
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('protocolChart');
-                    new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.map(item => item.protocol),
-                            datasets: [{
-                                label: 'Requests',
-                                data: data.map(item => item.count),
-                                backgroundColor: '#F46319'
-                            }]
-                        },
-                        options: LogLynxCharts.defaultOptions
-                    });
-                });
-
-            // Load TLS version distribution
-            fetch(LogLynxAPI.buildURL('/stats/distribution/tls-versions'))
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('tlsVersionChart');
-                    new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.map(item => item.tls_version || 'Unknown'),
-                            datasets: [{
-                                label: 'Requests',
-                                data: data.map(item => item.count),
-                                backgroundColor: '#17a2b8'
-                            }]
-                        },
-                        options: LogLynxCharts.defaultOptions
-                    });
-                });
-
-            // Load summary stats
-            fetch(LogLynxAPI.buildURL('/stats/summary'))
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalRequests').textContent = data.total_requests.toLocaleString();
-                    document.getElementById('failedRequests').textContent = data.failed_requests.toLocaleString();
-                    document.getElementById('uniqueIPs').textContent = data.unique_visitors.toLocaleString();
-                });
-
-            // Load unique countries count
-            fetch(LogLynxAPI.buildURL('/stats/top/countries', { limit: 1000 }))
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalCountries').textContent = data.length.toLocaleString();
-                });
+            reloadSecurityPage();
         });
 
         function exportSecurityReport() {
