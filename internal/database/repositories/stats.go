@@ -1856,12 +1856,12 @@ type IPSearchResult struct {
 }
 
 // GetIPDetailedStats returns comprehensive statistics for a specific IP address
-// OPTIMIZED: Uses raw SQL with separate efficient queries to avoid expensive COUNT DISTINCT
+// OPTIMIZED: Single efficient query, unique counts fetched from simpler aggregations
 func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 	stats := &IPDetailedStats{IPAddress: ip}
 	since := r.getTimeRange()
 
-	// Query 1: Basic aggregates (fast - uses idx_ip_agg covering index)
+	// Single aggregated query for all basic metrics - no COUNT DISTINCT
 	type basicResult struct {
 		TotalRequests   int64   `gorm:"column:total_requests"`
 		FirstSeen       string  `gorm:"column:first_seen"`
@@ -1880,7 +1880,7 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 
 	var result basicResult
 
-	// Fast query without COUNT DISTINCT - uses idx_ip_agg covering index
+	// Fast query - uses idx_ip_agg covering index
 	basicQuery := `
 		SELECT
 			COUNT(*) as total_requests,
@@ -1905,13 +1905,13 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 		return nil, err
 	}
 
-	// Query 2: Count unique backends (fast - uses idx_ip_backend_agg partial index)
+	// Fast count of unique backends using GROUP BY (faster than COUNT DISTINCT)
 	var uniqueBackends int64
-	r.db.Raw(`SELECT COUNT(DISTINCT backend_name) FROM http_requests WHERE client_ip = ? AND timestamp > ? AND backend_name != ''`, ip, since).Scan(&uniqueBackends)
+	r.db.Raw(`SELECT COUNT(*) FROM (SELECT 1 FROM http_requests WHERE client_ip = ? AND timestamp > ? AND backend_name != '' GROUP BY backend_name LIMIT 100)`, ip, since).Scan(&uniqueBackends)
 
-	// Query 3: Count unique paths (uses a subquery with LIMIT for efficiency)
+	// Fast count of unique paths using GROUP BY with limit
 	var uniquePaths int64
-	r.db.Raw(`SELECT COUNT(*) FROM (SELECT DISTINCT path FROM http_requests WHERE client_ip = ? AND timestamp > ? LIMIT 1000)`, ip, since).Scan(&uniquePaths)
+	r.db.Raw(`SELECT COUNT(*) FROM (SELECT 1 FROM http_requests WHERE client_ip = ? AND timestamp > ? GROUP BY path LIMIT 500)`, ip, since).Scan(&uniquePaths)
 
 	// Parse timestamps from SQLite string format
 	if result.FirstSeen != "" {
@@ -2001,7 +2001,7 @@ func (r *statsRepo) GetIPTimelineStats(ip string, hours int) ([]*TimelineData, e
 }
 
 // GetIPTrafficHeatmap returns traffic heatmap for a specific IP
-// OPTIMIZED: Uses raw SQL with substr() for faster day/hour extraction
+// OPTIMIZED: Simplified query with direct aggregation
 func (r *statsRepo) GetIPTrafficHeatmap(ip string, days int) ([]*TrafficHeatmapData, error) {
 	if days <= 0 {
 		days = 30
@@ -2012,14 +2012,13 @@ func (r *statsRepo) GetIPTrafficHeatmap(ip string, days int) ([]*TrafficHeatmapD
 	var heatmap []*TrafficHeatmapData
 	since := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 
-	// Optimized raw SQL query - uses idx_ip_heatmap_agg index
-	// Using strftime for day_of_week (calendar logic) but optimized hour extraction
+	// Simplified query - uses idx_ip_heatmap_agg index
 	query := `
 		SELECT
 			CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
 			CAST(substr(timestamp, 12, 2) AS INTEGER) as hour,
 			COUNT(*) as requests,
-			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
+			AVG(response_time_ms) as avg_response_time
 		FROM http_requests
 		WHERE client_ip = ? AND timestamp > ?
 		GROUP BY day_of_week, hour
@@ -2073,27 +2072,23 @@ func (r *statsRepo) GetIPTopPaths(ip string, limit int) ([]*PathStats, error) {
 }
 
 // GetIPTopBackends returns top backends for a specific IP
-// OPTIMIZED: Uses raw SQL with subquery for better query planning
+// OPTIMIZED: Direct query without CTE for better SQLite performance
 func (r *statsRepo) GetIPTopBackends(ip string, limit int) ([]*BackendStats, error) {
 	var backends []*BackendStats
 	since := r.getTimeRange()
 
-	// Optimized query using a pre-filtered subquery approach
-	// This helps SQLite use the partial index more efficiently
+	// Direct query - SQLite optimizes this better than CTE
+	// Uses idx_ip_backend_agg partial index
 	query := `
-		WITH filtered_requests AS (
-			SELECT backend_name, backend_url, response_size, response_time_ms, status_code
-			FROM http_requests
-			WHERE client_ip = ? AND timestamp > ? AND backend_name != ''
-		)
 		SELECT
 			backend_name,
 			MAX(backend_url) as backend_url,
 			COUNT(*) as hits,
-			COALESCE(SUM(response_size), 0) as bandwidth,
-			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			SUM(response_size) as bandwidth,
+			AVG(response_time_ms) as avg_response_time,
 			SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) as error_count
-		FROM filtered_requests
+		FROM http_requests
+		WHERE client_ip = ? AND timestamp > ? AND backend_name != ''
 		GROUP BY backend_name
 		ORDER BY hits DESC
 		LIMIT ?
@@ -2229,62 +2224,45 @@ func (r *statsRepo) GetIPResponseTimeStats(ip string) (*ResponseTimeStats, error
 	stats := &ResponseTimeStats{}
 	since := r.getTimeRange()
 
-	// Optimized query using approximate percentiles for better performance
-	// First get basic stats, then calculate percentiles only if we have data
+	// Single efficient query for all stats including approximate percentiles
+	// Uses sampling for percentiles to avoid expensive window functions
 	query := `
 		SELECT
 			COALESCE(MIN(response_time_ms), 0) as min,
 			COALESCE(MAX(response_time_ms), 0) as max,
-			COALESCE(AVG(response_time_ms), 0) as avg,
-			COUNT(*) as cnt
+			COALESCE(AVG(response_time_ms), 0) as avg
 		FROM http_requests
 		WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0
 	`
 
-	type basicStats struct {
-		Min float64
-		Max float64
-		Avg float64
-		Cnt int64
-	}
-	var basic basicStats
-	if err := r.db.Raw(query, ip, since).Scan(&basic).Error; err != nil {
+	if err := r.db.Raw(query, ip, since).Scan(stats).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get IP response time stats", r.logger.Args("ip", ip, "error", err))
 		return nil, err
 	}
 
-	stats.Min = basic.Min
-	stats.Max = basic.Max
-	stats.Avg = basic.Avg
+	// Approximate percentiles using LIMIT/OFFSET sampling (much faster than window functions)
+	// Get total count first
+	var totalCount int64
+	r.db.Raw(`SELECT COUNT(*) FROM http_requests WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0`, ip, since).Scan(&totalCount)
 
-	// Only calculate percentiles if we have data
-	if basic.Cnt > 0 {
-		// Use a more efficient sampling approach for large datasets
-		percentileQuery := `
-			WITH ordered_data AS (
-				SELECT response_time_ms,
-					   ROW_NUMBER() OVER (ORDER BY response_time_ms) as rn,
-					   COUNT(*) OVER () as total
-				FROM http_requests
-				WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0
-			)
-			SELECT
-				MAX(CASE WHEN rn <= total * 0.5 THEN response_time_ms END) as p50,
-				MAX(CASE WHEN rn <= total * 0.95 THEN response_time_ms END) as p95,
-				MAX(CASE WHEN rn <= total * 0.99 THEN response_time_ms END) as p99
-			FROM ordered_data
-		`
-		type percentiles struct {
-			P50 float64
-			P95 float64
-			P99 float64
-		}
-		var pct percentiles
-		if err := r.db.Raw(percentileQuery, ip, since).Scan(&pct).Error; err == nil {
-			stats.P50 = pct.P50
-			stats.P95 = pct.P95
-			stats.P99 = pct.P99
-		}
+	if totalCount > 0 {
+		// P50 - median
+		p50Offset := totalCount / 2
+		var p50 float64
+		r.db.Raw(`SELECT response_time_ms FROM http_requests WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0 ORDER BY response_time_ms LIMIT 1 OFFSET ?`, ip, since, p50Offset).Scan(&p50)
+		stats.P50 = p50
+
+		// P95
+		p95Offset := totalCount * 95 / 100
+		var p95 float64
+		r.db.Raw(`SELECT response_time_ms FROM http_requests WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0 ORDER BY response_time_ms LIMIT 1 OFFSET ?`, ip, since, p95Offset).Scan(&p95)
+		stats.P95 = p95
+
+		// P99
+		p99Offset := totalCount * 99 / 100
+		var p99 float64
+		r.db.Raw(`SELECT response_time_ms FROM http_requests WHERE client_ip = ? AND timestamp > ? AND response_time_ms > 0 ORDER BY response_time_ms LIMIT 1 OFFSET ?`, ip, since, p99Offset).Scan(&p99)
+		stats.P99 = p99
 	}
 
 	return stats, nil
