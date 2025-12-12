@@ -58,60 +58,32 @@
 <!-- Summary KPI Cards -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="totalRequests" data-tooltip-title="Total Requests" data-tooltip-position="bottom">
             Total Requests
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Total Requests</div>
-                    <div class="info-tooltip-description">Total number of HTTP requests received in the selected time period. Includes all status codes and request types.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value" id="totalRequests">0</div>
         <div class="stat-subtitle" id="totalRequestsSubtitle">Last 7 days</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="successRate" data-tooltip-title="Success Rate" data-tooltip-position="bottom">
             Success Rate
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Success Rate</div>
-                    <div class="info-tooltip-description">Percentage of successful requests (2xx and 3xx status codes). Higher is better - aim for 95%+.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value text-success" id="successRate">0%</div>
         <div class="stat-subtitle">2xx + 3xx responses</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="avgResponseTime" data-tooltip-title="Response Time" data-tooltip-position="bottom">
             Avg Response Time
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Response Time</div>
-                    <div class="info-tooltip-description">Average time taken to process and respond to requests. Lower values indicate better performance.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value text-info" id="avgResponseTime">0ms</div>
         <div class="stat-subtitle">Server performance</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="uniqueVisitors" data-tooltip-title="Unique Visitors" data-tooltip-position="bottom">
             Unique Visitors
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Unique Visitors</div>
-                    <div class="info-tooltip-description">Number of unique IP addresses that have accessed your service. Used to estimate distinct users.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value" id="uniqueVisitors">0</div>
         <div class="stat-subtitle">Unique IP addresses</div>
@@ -121,60 +93,32 @@
 <!-- Secondary Metrics -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="errorRate" data-tooltip-title="Error Rate">
             Error Rate
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Error Rate</div>
-                    <div class="info-tooltip-description">Percentage of failed requests (4xx client errors and 5xx server errors). Lower is better.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value text-danger" id="errorRate">0%</div>
         <div class="stat-subtitle">4xx + 5xx responses</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="bandwidth" data-tooltip-title="Bandwidth Usage">
             Bandwidth Used
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Bandwidth Usage</div>
-                    <div class="info-tooltip-description">Total amount of data transferred to clients. Useful for monitoring data usage and costs.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value" id="totalBandwidth">0 MB</div>
         <div class="stat-subtitle">Total transferred</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="unique404" data-tooltip-title="404 Errors">
             404 Errors
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">404 Errors</div>
-                    <div class="info-tooltip-description">Number of "Not Found" errors. High numbers may indicate broken links or missing content.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value text-warning" id="unique404">0</div>
         <div class="stat-subtitle">Not found pages</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">
+        <div class="stat-label" data-tooltip-key="requestsPerHour" data-tooltip-title="Requests Per Hour">
             Requests/Hour
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Requests Per Hour</div>
-                    <div class="info-tooltip-description">Average number of requests per hour. Helps identify traffic patterns and peak times.</div>
-                </div>
-            </span>
         </div>
         <div class="stat-value" id="requestsPerHour">0</div>
         <div class="stat-subtitle">Average rate</div>
@@ -187,16 +131,9 @@
     <div class="chart-container medium">
         <div class="chart-header">
             <div>
-                <h5 class="chart-title">
+                <h5 class="chart-title" data-tooltip-key="requestsTimeline" data-tooltip-title="Requests Timeline">
                     <i class="fas fa-chart-area"></i>
                     Requests Timeline
-                    <span class="info-tooltip">
-                        <i class="info-tooltip-icon fas fa-info"></i>
-                        <div class="info-tooltip-content">
-                            <div class="info-tooltip-title">Requests Timeline</div>
-                            <div class="info-tooltip-description">Shows request volume over time. Use time range buttons to adjust the period. Helps identify traffic patterns and trends.</div>
-                        </div>
-                    </span>
                 </h5>
             </div>
             <div class="time-range-selector">
@@ -211,18 +148,11 @@
     </div>
 
     <!-- Status Code Distribution -->
-    <div class="chart-container medium">
+        <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="statusCodes" data-tooltip-title="Status Code Distribution">
                 <i class="fas fa-chart-pie"></i>
                 Status Code Distribution
-                <span class="info-tooltip">
-                    <i class="info-tooltip-icon fas fa-info"></i>
-                    <div class="info-tooltip-content">
-                        <div class="info-tooltip-title">Status Codes</div>
-                        <div class="info-tooltip-description">HTTP response codes: 2xx=success, 3xx=redirect, 4xx=client error, 5xx=server error.</div>
-                    </div>
-                </span>
             </h5>
         </div>
         <canvas id="statusChart"></canvas>
@@ -233,16 +163,9 @@
 <div class="chart-container medium mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="statusTimeline" data-tooltip-title="Status Codes Over Time">
                 <i class="fas fa-layer-group"></i>
                 Status Codes Over Time
-                <span class="info-tooltip">
-                    <i class="info-tooltip-icon fas fa-info"></i>
-                    <div class="info-tooltip-content">
-                        <div class="info-tooltip-title">Status Timeline</div>
-                        <div class="info-tooltip-description">Stacked view showing how different HTTP status codes change over time. Useful for spotting error patterns.</div>
-                    </div>
-                </span>
             </h5>
             <p class="chart-subtitle">Stacked view of HTTP response codes</p>
         </div>
@@ -256,16 +179,9 @@
     <!-- Top Countries -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="geographicData" data-tooltip-title="Geographic Data">
                 <i class="fas fa-globe"></i>
                 Top Countries
-                <span class="info-tooltip">
-                    <i class="info-tooltip-icon fas fa-info"></i>
-                    <div class="info-tooltip-content">
-                        <div class="info-tooltip-title">Geographic Data</div>
-                        <div class="info-tooltip-description">Countries generating the most traffic. Click "View All" for detailed geographic analytics.</div>
-                    </div>
-                </span>
             </h5>
             <a href="/traffic" class="btn btn-sm btn-outline">
                 <i class="fas fa-arrow-right"></i> View All
@@ -290,16 +206,9 @@
     <!-- Top Paths -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="popularContent" data-tooltip-title="Popular Content">
                 <i class="fas fa-link"></i>
                 Top Paths
-                <span class="info-tooltip">
-                    <i class="info-tooltip-icon fas fa-info"></i>
-                    <div class="info-tooltip-content">
-                        <div class="info-tooltip-title">Popular Content</div>
-                        <div class="info-tooltip-description">Most frequently accessed URLs. Helps identify popular content and pages that may need optimization.</div>
-                    </div>
-                </span>
             </h5>
             <a href="/content" class="btn btn-sm btn-outline">
                 <i class="fas fa-arrow-right"></i> View All
@@ -325,21 +234,14 @@
 <!-- Recent Requests -->
 <div class="card">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="recentActivity" data-tooltip-title="Recent Activity">
             <i class="fas fa-list"></i>
             Recent Requests
-            <span class="info-tooltip">
-                <i class="info-tooltip-icon fas fa-info"></i>
-                <div class="info-tooltip-content">
-                    <div class="info-tooltip-title">Recent Activity</div>
-                    <div class="info-tooltip-description">Latest HTTP requests to your service. Click column headers to sort. Visit Real-time page for live streaming.</div>
-                </div>
-            </span>
         </h5>
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <label for="overviewDisplayPreference" style="font-size: 0.875rem; margin: 0; white-space: nowrap;">Display:</label>
-                <select id="overviewDisplayPreference" class="form-select form-select-sm" style="min-width: 140px;">
+        <div class="card-header-actions">
+            <div class="card-header-display">
+                <label for="overviewDisplayPreference">Display:</label>
+                <select id="overviewDisplayPreference" class="form-select form-select-sm">
                     <option value="auto">Auto</option>
                     <option value="backend_name">Backend Name</option>
                     <option value="backend_url">Backend URL</option>

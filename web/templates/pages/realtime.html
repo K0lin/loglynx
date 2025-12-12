@@ -52,25 +52,25 @@
 <!-- Real-time KPI Cards -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Request Rate</div>
+        <div class="stat-label" data-tooltip-key="requestRate" data-tooltip-title="Request Rate">Request Rate</div>
         <div class="stat-value text-success" id="liveRequestRate">0.00</div>
         <div class="stat-subtitle">req/sec</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Error Rate</div>
+        <div class="stat-label" data-tooltip-key="errorRateLive" data-tooltip-title="Error Rate">Error Rate</div>
         <div class="stat-value text-danger" id="liveErrorRate">0.00</div>
         <div class="stat-subtitle">errors/sec</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-label" data-tooltip-key="avgResponseTime" data-tooltip-title="Avg Response Time">Avg Response Time</div>
         <div class="stat-value text-info" id="liveAvgResponse">0</div>
         <div class="stat-subtitle">Last minute</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Status Distribution</div>
+        <div class="stat-label" data-tooltip-key="statusCodes" data-tooltip-title="Status Distribution">Status Distribution</div>
         <div style="font-size: 0.9rem; margin-top: 10px;">
             <span class="text-success">2xx: <strong id="live2xx">0</strong></span> |
             <span class="text-warning">4xx: <strong id="live4xx">0</strong></span> |
@@ -82,8 +82,8 @@
 
 <!-- Live Chart -->
 <div class="chart-container large live-metrics mb-4">
-    <div class="chart-header">
-        <h5 class="chart-title">
+        <div class="chart-header">
+            <h5 class="chart-title" data-tooltip-key="liveMetrics" data-tooltip-title="Live Metrics Stream">
             <i class="fas fa-chart-line text-danger"></i>
             Live Metrics Stream
             <span class="live-indicator">
@@ -107,7 +107,7 @@
 <div class="grid grid-cols-2 gap-4 mb-4">
     <div class="chart-container large" id="perServiceSection">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="perServiceMetrics" data-tooltip-title="Request Rate per Service">
                 <i class="fas fa-server"></i>
                 Request Rate per Service
             </h5>
@@ -124,7 +124,7 @@
 
     <div class="chart-container large" id="topIPsSection">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="topActiveClients" data-tooltip-title="Top Active Clients">
                 <i class="fas fa-users"></i>
                 Top Active Clients
             </h5>
@@ -148,8 +148,8 @@
 
 <!-- Recent Requests (Live Updates) -->
 <div class="card">
-    <div class="card-header">
-        <h5 class="card-title">
+        <div class="card-header">
+            <h5 class="card-title" data-tooltip-key="recentActivity" data-tooltip-title="Live Request Stream">
             <i class="fas fa-stream"></i>
             Live Request Stream
         </h5>

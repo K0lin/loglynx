@@ -5,14 +5,17 @@
 /* Chart Containers */
 .chart-container {
     position: relative;
-    background: var(--loglynx-card);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
+    background: rgba(26, 26, 29, 0.95);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
     margin-bottom: var(--space-lg);
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border-color);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 107, 53, 0.2);
     overflow: visible;
     width: 100%;
+
+    display: flex;
+    flex-direction: column;
 }
 
 .chart-container.small {
@@ -33,40 +36,86 @@
     padding-bottom: 40px;
 }
 
+.chart-container.small .chart-wrapper {
+    height: 300px;
+}
+
 .chart-container.extra-large {
     height: 650px;
     max-height: 650px;
     padding-bottom: 40px;
 }
 
+.chart-container.medium .chart-wrapper {
+    height: 380px;
+}
+
+
 .chart-container.auto-height {
     height: auto;
     min-height: 300px;
     padding-bottom: 40px;
+
+
+.chart-container.auto-height .chart-wrapper {
+    height: auto;
+    min-height: 320px;
+}
+.chart-container.large .chart-wrapper {
+    height: 460px;
+}
 }
 
-/* Chart Header */
 .chart-header {
+    padding: 0;
+    border: none;
+    width: 100%;
+    margin-bottom: var(--space-md);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-lg);
-    padding-bottom: var(--space-md);
-    border-bottom: 1px solid var(--border-color);
+    gap: var(--space-sm);
+    border-radius: var(--radius-md);
+    /*background: rgba(26, 26, 29, 0.95); old style*/
+    background: rgba(255, 255, 255, 0.03);
+    padding: var(--space-sm) var(--space-md);
+}
+
+.chart-container.heatmap .chart-header {
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.chart-container.heatmap .chart-controls {
+    width: auto;
+}
+
+.chart-container.heatmap .chart-wrapper {
+    min-height: 360px;
+    display: flex;
+    align-items: stretch;
+}
+
+.chart-container.heatmap canvas {
+    min-height: 360px;
 }
 
 .chart-title {
     font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--loglynx-text-light);
     margin: 0;
     display: flex;
     align-items: center;
     gap: var(--space-sm);
 }
 
-.chart-title i {
-    color: var(--loglynx-primary);
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    min-height: 320px;
+    padding: 0;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .chart-subtitle {
@@ -112,15 +161,6 @@
     color: white;
 }
 
-/* Chart Canvas Wrapper */
-.chart-wrapper {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    padding: 5px;
-    box-sizing: border-box;
-}
-
 canvas {
     width: 100% !important;
     height: auto !important;
@@ -128,12 +168,14 @@ canvas {
     max-height: 100%;
     display: block;
     margin: 0 auto;
+    flex: 1;
+    min-height: 240px;
 }
 
 /* Direct canvas children in chart containers */
 .chart-container > canvas {
     width: 100% !important;
-    height: calc(100% - 60px) !important;
+    height: 100% !important;
     padding: 5px;
     box-sizing: border-box;
 }
@@ -662,6 +704,59 @@ canvas {
 
     .chart-container {
         padding: var(--space-md);
+    }
+
+    .chart-container.heatmap {
+        padding: var(--space-md);
+    }
+
+    .chart-container.heatmap .chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: var(--space-sm);
+        gap: var(--space-xs);
+    }
+
+    .chart-container.heatmap .chart-controls {
+        width: 100%;
+        margin-top: var(--space-sm);
+    }
+
+    .chart-container.heatmap .chart-wrapper {
+        min-height: 320px;
+        overflow-x: auto;
+    }
+
+    .chart-container.heatmap canvas {
+        min-height: 320px;
+    }
+}
+
+@media (max-width: 600px) {
+    .chart-grid {
+        gap: var(--space-md);
+    }
+
+    .chart-container {
+        height: auto !important;
+        min-height: 260px;
+    }
+
+    .chart-header,
+    .chart-controls {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .time-range-selector {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .time-range-btn {
+        flex: 1 1 auto;
+        padding: 0.35rem 0.5rem;
     }
 }
 

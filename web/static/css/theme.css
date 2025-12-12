@@ -162,10 +162,12 @@ a:hover {
     border: 1px solid var(--border-color);
     text-align: center;
     transition: all var(--transition-base);
+    position: relative;
+    top: 0;
 }
 
 .stat-card:hover {
-    transform: translateY(-4px);
+    top: -4px;
     box-shadow: var(--shadow-md);
     background: var(--loglynx-card-hover);
 }
@@ -177,6 +179,10 @@ a:hover {
     letter-spacing: 0.05em;
     margin-bottom: var(--space-sm);
     font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
 }
 
 .stat-value {

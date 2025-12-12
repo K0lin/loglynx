@@ -69,31 +69,31 @@
 <!-- IP Overview KPIs -->
 <div class="grid grid-cols-3 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Total Requests</div>
+        <div class="stat-label" data-tooltip-key="totalRequests" data-tooltip-title="Total Requests">Total Requests</div>
         <div class="stat-value text-primary" id="totalRequests" style="font-size: 1.1rem;">0</div>
         <div class="stat-subtitle" id="requestsSubtitle">Last 7 days</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Unique Targets</div>
+        <div class="stat-label" data-tooltip-key="uniqueTargets" data-tooltip-title="Unique Targets">Unique Targets</div>
         <div class="stat-value" id="uniqueTargets" style="font-size: 1.1rem;">0</div>
         <div class="stat-subtitle"><span id="uniqueBackends">0</span> backends · <span id="uniquePaths">0</span> paths</div>
     </div>
     
     <div class="stat-card">
-        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-label" data-tooltip-key="avgResponseTime" data-tooltip-title="Avg Response Time">Avg Response Time</div>
         <div class="stat-value text-info" id="avgResponseTime" style="font-size: 1.1rem;">0ms</div>
         <div class="stat-subtitle" id="responseTimeSubtitle">-</div>
     </div>
 
-     <div class="stat-card">
-        <div class="stat-label">Success Rate</div>
+      <div class="stat-card">
+          <div class="stat-label" data-tooltip-key="successRate" data-tooltip-title="Success Rate">Success Rate</div>
         <div class="stat-value text-success" id="successRate" style="font-size: 1.1rem;">0%</div>
         <div class="stat-subtitle">HTTP 2xx-3xx responses</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Location</div>
+        <div class="stat-label" data-tooltip-key="geoCoordinates" data-tooltip-title="Location">Location</div>
         <div class="stat-value text-secondary" id="ipLocation" style="font-size: 1.1rem;">-</div>
         <div class="stat-subtitle" id="ipCountry">-</div>
     </div>
@@ -101,26 +101,26 @@
 
 <!-- Secondary KPIs -->
 <!--<div class="grid grid-cols-4 mb-4">-->
-      <div class="stat-card">
-        <div class="stat-label">ASN</div>
+            <div class="stat-card">
+                <div class="stat-label" data-tooltip-key="asn" data-tooltip-title="ASN">ASN</div>
         <div class="stat-value" id="asn" style="font-size: 1.1rem;">-</div>
         <div class="stat-subtitle" id="asnOrg">-</div>
     </div>
 
-     <div class="stat-card">
-        <div class="stat-label">Total Bandwidth</div>
+      <div class="stat-card">
+          <div class="stat-label" data-tooltip-key="bandwidth" data-tooltip-title="Total Bandwidth">Total Bandwidth</div>
         <div class="stat-value text-warning" id="totalBandwidth" style="font-size: 1.1rem;">0 B</div>
         <div class="stat-subtitle" id="bandwidthSubtitle">-</div>
     </div>
 
 
     <div class="stat-card">
-        <div class="stat-label">First Seen</div>
+        <div class="stat-label" data-tooltip-key="firstSeen" data-tooltip-title="First Seen">First Seen</div>
         <div class="stat-value" id="firstSeen" style="font-size: 1.1rem;">-</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Last Seen</div>
+        <div class="stat-label" data-tooltip-key="lastSeen" data-tooltip-title="Last Seen">Last Seen</div>
         <div class="stat-value" id="lastSeen" style="font-size: 1.1rem;">-</div>
     </div>
 
@@ -132,7 +132,7 @@
     <!-- IP Location Map -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="geographicLocation" data-tooltip-title="Geographic Location">
                 <i class="fas fa-map-marker-alt"></i>
                 Geographic Location
                 <span class="badge badge-live ms-2">LIVE</span>
@@ -166,7 +166,7 @@
     <!-- Request Timeline -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="requestsTimeline" data-tooltip-title="Request Timeline">
                 <i class="fas fa-chart-line"></i>
                 Request Timeline
             </h5>
@@ -184,7 +184,7 @@
 <div class="chart-container heatmap mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="heatmapChart" data-tooltip-title="Traffic Activity Heatmap - Day × Hour">
                 <i class="fas fa-fire"></i>
                 Traffic Activity Heatmap - Day × Hour
             </h5>
@@ -206,7 +206,7 @@
     <!-- Status Code Distribution -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="statusCodes" data-tooltip-title="Status Codes">
                 <i class="fas fa-traffic-light"></i>
                 Status Codes
             </h5>
@@ -217,7 +217,7 @@
     <!-- Browser Distribution -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="browserDistribution" data-tooltip-title="Browsers">
                 <i class="fas fa-browser"></i>
                 Browsers
             </h5>
@@ -228,7 +228,7 @@
     <!-- Device Type Distribution -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="deviceType" data-tooltip-title="Device Types">
                 <i class="fas fa-devices"></i>
                 Device Types
             </h5>
@@ -242,7 +242,7 @@
     <!-- Operating Systems -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="osDistribution" data-tooltip-title="Operating Systems">
                 <i class="fas fa-desktop"></i>
                 Operating Systems
             </h5>
@@ -253,7 +253,7 @@
     <!-- Response Time Stats -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="percentileBreakdown" data-tooltip-title="Response Time Statistics">
                 <i class="fas fa-tachometer-alt"></i>
                 Response Time Statistics
             </h5>
@@ -304,9 +304,9 @@
 </div>
 
 <!-- Top Backends -->
-<div class="card mb-4">
+    <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="backendServices" data-tooltip-title="Top Accessed Backends">
             <i class="fas fa-server"></i>
             Top Accessed Backends
         </h5>
@@ -338,7 +338,7 @@
 <!-- Top Paths -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="topPaths" data-tooltip-title="Most Accessed Paths">
             <i class="fas fa-route"></i>
             Most Accessed Paths
         </h5>
@@ -371,7 +371,7 @@
 <!-- Recent Requests -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="recentActivity" data-tooltip-title="Recent Requests">
             <i class="fas fa-history"></i>
             Recent Requests
         </h5>
@@ -405,9 +405,9 @@
 </div>
 
 <!-- Threat Intelligence (Placeholder for future) -->
-<div class="card mb-4">
+    <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="attackPatterns" data-tooltip-title="Threat Intelligence">
             <i class="fas fa-shield-alt"></i>
             Threat Intelligence
         </h5>
@@ -451,7 +451,7 @@
 <!-- Export Actions -->
 <div class="card">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="exportData" data-tooltip-title="Export & Actions">
             <i class="fas fa-file-export"></i>
             Export & Actions
         </h5>

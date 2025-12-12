@@ -61,25 +61,25 @@
 <!-- Content Summary KPIs -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Total Requests</div>
+        <div class="stat-label" data-tooltip-key="totalRequests" data-tooltip-title="Total Requests" data-tooltip-position="bottom">Total Requests</div>
         <div class="stat-value" id="totalRequests">0</div>
         <div class="stat-subtitle">Last 7 days</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Unique Paths</div>
+        <div class="stat-label" data-tooltip-key="uniquePaths" data-tooltip-title="Unique Paths" data-tooltip-position="bottom">Unique Paths</div>
         <div class="stat-value text-info" id="uniquePaths">0</div>
         <div class="stat-subtitle">Distinct URLs</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Most Popular Path</div>
+        <div class="stat-label" data-tooltip-key="mostPopularPath" data-tooltip-title="Most Popular Path" data-tooltip-position="bottom">Most Popular Path</div>
         <div class="stat-value text-success" id="topPath" style="font-size: 1.2rem;">-</div>
         <div class="stat-subtitle" id="topPathHits">0 requests</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Referrers</div>
+        <div class="stat-label" data-tooltip-key="referrerTraffic" data-tooltip-title="Referrers" data-tooltip-position="bottom">Referrers</div>
         <div class="stat-value text-warning" id="totalReferrers">0</div>
         <div class="stat-subtitle">Traffic sources</div>
     </div>
@@ -88,9 +88,9 @@
 <!-- Method Distribution -->
 <div class="chart-grid two-column mb-4">
     <div class="chart-container medium">
-        <div class="chart-header">
+                <div class="chart-header">
             <div>
-                <h5 class="chart-title">
+                <h5 class="chart-title" data-tooltip-key="httpMethods" data-tooltip-title="HTTP Method Distribution">
                     <i class="fas fa-chart-pie"></i>
                     HTTP Method Distribution
                 </h5>
@@ -101,9 +101,9 @@
     </div>
 
     <div class="chart-container medium">
-        <div class="chart-header">
+                <div class="chart-header">
             <div>
-                <h5 class="chart-title">
+                <h5 class="chart-title" data-tooltip-key="topPaths" data-tooltip-title="Top Paths by Traffic">
                     <i class="fas fa-chart-bar"></i>
                     Top Paths by Traffic
                 </h5>
@@ -115,9 +115,9 @@
 </div>
 
 <!-- Top Paths Table -->
-<div class="table-container mb-4">
+    <div class="table-container mb-4">
     <div class="table-header">
-        <h5 class="table-title">
+        <h5 class="table-title" data-tooltip-key="topPaths" data-tooltip-title="Top Paths">
             <i class="fas fa-link"></i>
             Top Paths
         </h5>
@@ -139,9 +139,9 @@
 </div>
 
 <!-- Top Referrers Table -->
-<div class="table-container mb-4">
+    <div class="table-container mb-4">
     <div class="table-header">
-        <h5 class="table-title">
+        <h5 class="table-title" data-tooltip-key="topReferrers" data-tooltip-title="Top Referrers">
             <i class="fas fa-external-link-alt"></i>
             Top Referrers
         </h5>
@@ -162,9 +162,9 @@
 </div>
 
 <!-- Top Referrer Domains Table -->
-<div class="table-container mb-4">
+    <div class="table-container mb-4">
     <div class="table-header">
-        <h5 class="table-title">
+        <h5 class="table-title" data-tooltip-key="referrerDomains" data-tooltip-title="Top Referrer Domains">
             <i class="fas fa-globe-americas"></i>
             Top Referrer Domains
         </h5>

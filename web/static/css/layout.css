@@ -1416,10 +1416,11 @@
 /* Page Content */
 .page-content {
     flex: 1;
-    padding: var(--space-xl);
-    max-width: 1920px;
-    margin: 0 auto;
-    width: 100%;
+    padding: var(--space-xl) var(--space-md);
+    max-width: none;
+    margin: 0;
+    width: auto;
+    min-height: calc(100vh - 160px);
 }
 
 /* Page Header */
@@ -1456,6 +1457,81 @@
 .page-actions {
     display: flex;
     gap: var(--space-sm);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.card-header .card-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.card-header .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+.card-header .card-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.card-header-display {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-weight: 500;
+}
+
+.card-header-display label {
+    font-size: 0.875rem;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.card-header-display select {
+    min-width: 140px;
+}
+
+@media (max-width: 768px) {
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .card-header .btn {
+        width: 100%;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+    }
+    .card-header .card-title {
+        font-size: 1rem;
+    }
+
+    .card-header .card-header-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .card-header-display select,
+    .card-header .btn {
+        min-width: 0;
+        width: 100%;
+    }
+}
 }
 
 /* Notifications */
@@ -1605,15 +1681,12 @@
 
     .main-content {
         margin-left: 0;
+        width: 100%;
     }
 
     .top-header {
         padding: var(--space-md);
         flex-wrap: wrap;
-    }
-
-    .page-content {
-        padding: var(--space-md);
     }
 
     .header-title {
@@ -1629,6 +1702,11 @@
         width: 100%;
         flex-wrap: wrap;
         justify-content: flex-start;
+    }
+
+    .header-right > * {
+        flex: 1 1 220px;
+        min-width: 170px;
     }
 
     .header-filters-group {
@@ -1653,15 +1731,27 @@
     .refresh-status span {
         display: none;
     }
+
+    .page-content {
+        padding: var(--space-md);
+        min-height: calc(100vh - 200px);
+    }
 }
 
 @media (max-width: 768px) {
     .top-header {
         padding: var(--space-sm);
+        flex-direction: column;
+        align-items: flex-start;
+        max-height: 320px;
+        overflow-y: auto;
+        padding-bottom: var(--space-xs);
     }
 
     .header-left {
         gap: var(--space-sm);
+        width: 100%;
+        justify-content: space-between;
     }
 
     .header-title {
@@ -1673,16 +1763,20 @@
     }
 
     .header-right {
-        flex-direction: column;
-        align-items: stretch;
-        gap: var(--space-sm);
+        width: 100%;
+        justify-content: flex-start;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     }
 
-    .header-quick-actions {
+    .header-quick-actions,
+    .header-filters-group,
+    .header-refresh-controls {
         width: 100%;
     }
 
-    .header-action-btn {
+    .header-action-btn,
+    .filter-trigger-btn,
+    .refresh-settings-btn {
         width: 100%;
         justify-content: center;
     }
@@ -1712,6 +1806,50 @@
         left: var(--space-md);
         right: var(--space-md);
         min-width: auto;
+    }
+}
+
+@media (max-width: 540px) {
+    .app-container {
+        flex-direction: column;
+    }
+
+    .main-content {
+        margin-left: 0;
+    }
+
+    .top-header,
+    .page-header-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .header-left,
+    .header-right,
+    .page-actions {
+        width: 100%;
+    }
+
+    .top-header {
+        padding: var(--space-xs) var(--space-sm);
+    }
+
+    .header-right {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        display: none;
+    }
+
+    .header-quick-actions,
+    .header-filters-group,
+    .header-refresh-controls {
+        flex-direction: column;
+        gap: var(--space-xs);
+    }
+
+    .page-content {
+        padding: var(--space-sm);
+        min-height: calc(100vh - 180px);
     }
 }
 

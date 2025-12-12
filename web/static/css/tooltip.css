@@ -52,7 +52,7 @@
     max-width: 350px;
     font-size: var(--font-size-sm);
     line-height: 1.5;
-    z-index: 1000;
+    z-index: 9999;
     opacity: 0;
     visibility: hidden;
     transition: all var(--transition-base);
@@ -115,6 +115,38 @@
 .info-tooltip.tooltip-bottom:hover .info-tooltip-content {
     bottom: auto;
     top: calc(100% + 12px);
+}
+
+/* Force page header tooltips below the icon to stay away from the sticky top bar */
+.page-header .info-tooltip-content,
+.top-header .info-tooltip-content {
+    bottom: auto;
+    top: calc(100% + 6px);
+    transform: translateX(-50%);
+}
+
+.page-header .info-tooltip:hover .info-tooltip-content,
+.top-header .info-tooltip:hover .info-tooltip-content {
+    bottom: auto;
+    top: calc(100% + 12px);
+}
+
+.page-header .info-tooltip-content::after,
+.top-header .info-tooltip-content::after {
+    top: auto;
+    bottom: 100%;
+    border-top-color: transparent;
+    border-bottom-color: var(--loglynx-primary);
+}
+
+.page-header .info-tooltip-content::before,
+.top-header .info-tooltip-content::before {
+    top: auto;
+    bottom: 100%;
+    border-top-color: transparent;
+    border-bottom-color: var(--loglynx-card);
+    margin-top: 0;
+    margin-bottom: 1px;
 }
 
 /* Tooltip variations for right position */

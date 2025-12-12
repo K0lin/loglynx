@@ -48,29 +48,29 @@
 
 <!-- Process Information -->
 <div class="section-header">
-    <h4><i class="fas fa-microchip"></i> Process Information</h4>
+    <h4 data-tooltip-key="processInformation" data-tooltip-title="Process Information"><i class="fas fa-microchip"></i> Process Information</h4>
 </div>
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Uptime</div>
+        <div class="stat-label" data-tooltip-key="uptime" data-tooltip-title="Uptime" data-tooltip-position="bottom">Uptime</div>
         <div class="stat-value text-success" id="uptime">-</div>
         <div class="stat-subtitle" id="startTime">Started at: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Memory Usage</div>
+        <div class="stat-label" data-tooltip-key="memoryUsage" data-tooltip-title="Memory Usage" data-tooltip-position="bottom">Memory Usage</div>
         <div class="stat-value text-info" id="memoryAlloc">-</div>
         <div class="stat-subtitle" id="memorySys">System: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Go Routines</div>
+        <div class="stat-label" data-tooltip-key="goRoutines" data-tooltip-title="Go Routines" data-tooltip-position="bottom">Go Routines</div>
         <div class="stat-value" id="numGoroutines">-</div>
         <div class="stat-subtitle" id="numCPU">CPUs: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Runtime</div>
+        <div class="stat-label" data-tooltip-key="runtime" data-tooltip-title="Runtime" data-tooltip-position="bottom">Runtime</div>
         <div class="stat-value text-warning" id="gcPause">-</div>
         <div class="stat-subtitle">Go: <span id="goVersion">-</span></div>
         <div class="stat-subtitle">App: <a id="appVersionLink" href="https://github.com/K0lin/loglynx/tree/v{{.AppVersion}}" target="_blank" rel="noopener"><span id="appVersion">-</span></a></div>
@@ -79,29 +79,29 @@
 
 <!-- Database Information -->
 <div class="section-header">
-    <h4><i class="fas fa-database"></i> Database Information</h4>
+    <h4 data-tooltip-key="databaseInformation" data-tooltip-title="Database Information"><i class="fas fa-database"></i> Database Information</h4>
 </div>
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Total Records</div>
+        <div class="stat-label" data-tooltip-key="totalRecords" data-tooltip-title="Total Records" data-tooltip-position="bottom">Total Records</div>
         <div class="stat-value text-primary" id="totalRecords">-</div>
         <div class="stat-subtitle">HTTP requests stored</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Database Size</div>
+        <div class="stat-label" data-tooltip-key="databaseSize" data-tooltip-title="Database Size" data-tooltip-position="bottom">Database Size</div>
         <div class="stat-value text-info" id="databaseSize">-</div>
         <div class="stat-subtitle" id="databasePath">-</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Records to Cleanup</div>
+        <div class="stat-label" data-tooltip-key="recordsToCleanup" data-tooltip-title="Records to Cleanup" data-tooltip-position="bottom">Records to Cleanup</div>
         <div class="stat-value text-warning" id="recordsToCleanup">-</div>
         <div class="stat-subtitle" id="retentionDays">Retention: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Ingestion Rate</div>
+        <div class="stat-label" data-tooltip-key="ingestionRate" data-tooltip-title="Ingestion Rate">Ingestion Rate</div>
         <div class="stat-value text-success" id="requestsPerSecond">-</div>
         <div class="stat-subtitle">requests/second</div>
     </div>
@@ -109,12 +109,12 @@
 
 <!-- Records Timeline Chart -->
 <div class="section-header">
-    <h4><i class="fas fa-chart-line"></i> Records Timeline</h4>
+    <h4 data-tooltip-key="recordsTimeline" data-tooltip-title="Records Timeline"><i class="fas fa-chart-line"></i> Records Timeline</h4>
 </div>
 <div class="chart-container medium mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">Database Growth Over Time</h5>
+            <h5 class="chart-title" data-tooltip-key="databaseGrowth" data-tooltip-title="Database Growth Over Time">Database Growth Over Time</h5>
         </div>
         <div class="time-range-selector">
             <button class="time-range-btn" data-days="7">Week</button>
@@ -127,23 +127,23 @@
 
 <!-- Cleanup Information -->
 <div class="section-header">
-    <h4><i class="fas fa-broom"></i> Cleanup & Retention</h4>
+    <h4 data-tooltip-key="cleanupRetention" data-tooltip-title="Cleanup & Retention"><i class="fas fa-broom"></i> Cleanup & Retention</h4>
 </div>
 <div class="grid grid-cols-3 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Next Cleanup</div>
+        <div class="stat-label" data-tooltip-key="nextCleanup" data-tooltip-title="Next Cleanup">Next Cleanup</div>
         <div class="stat-value text-info" id="nextCleanupCountdown">-</div>
         <div class="stat-subtitle" id="nextCleanupTime">Scheduled: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Last Cleanup</div>
+        <div class="stat-label" data-tooltip-key="lastCleanup" data-tooltip-title="Last Cleanup">Last Cleanup</div>
         <div class="stat-value" id="lastCleanupTime">-</div>
         <div class="stat-subtitle">Last execution</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Record Age Range</div>
+        <div class="stat-label" data-tooltip-key="recordAgeRange" data-tooltip-title="Record Age Range">Record Age Range</div>
         <div class="stat-value text-muted" id="oldestRecordAge">-</div>
         <div class="stat-subtitle" id="newestRecordAge">Newest: -</div>
     </div>
@@ -151,7 +151,7 @@
 
 <!-- System Details Table -->
 <div class="section-header">
-    <h4><i class="fas fa-list"></i> Detailed Information</h4>
+    <h4 data-tooltip-key="systemDetails" data-tooltip-title="Detailed Information"><i class="fas fa-list"></i> Detailed Information</h4>
 </div>
 <div class="table-container mb-4">
     <table class="table table-striped">

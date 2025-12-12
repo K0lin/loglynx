@@ -61,25 +61,25 @@
 <!-- Backend Summary KPIs -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Total Backends</div>
+        <div class="stat-label" data-tooltip-key="totalBackends" data-tooltip-title="Total Backends" data-tooltip-position="bottom">Total Backends</div>
         <div class="stat-value" id="totalBackends">0</div>
         <div class="stat-subtitle">Active services</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Total Requests</div>
+        <div class="stat-label" data-tooltip-key="totalRequests" data-tooltip-title="Total Requests" data-tooltip-position="bottom">Total Requests</div>
         <div class="stat-value text-info" id="totalRequests">0</div>
         <div class="stat-subtitle">Last 7 days</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-label" data-tooltip-key="avgResponseTime" data-tooltip-title="Avg Response Time" data-tooltip-position="bottom">Avg Response Time</div>
         <div class="stat-value text-success" id="avgResponseTime">0</div>
         <div class="stat-subtitle">Milliseconds</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Error Rate</div>
+        <div class="stat-label" data-tooltip-key="errorRate" data-tooltip-title="Error Rate" data-tooltip-position="bottom">Error Rate</div>
         <div class="stat-value text-warning" id="errorRate">0%</div>
         <div class="stat-subtitle">Failed requests</div>
     </div>
@@ -88,9 +88,9 @@
 <!-- Backend Performance Charts -->
 <div class="chart-grid two-column mb-4">
     <div class="chart-container medium">
-        <div class="chart-header">
+                <div class="chart-header">
             <div>
-                <h5 class="chart-title">
+                <h5 class="chart-title" data-tooltip-key="backendRequestDistribution" data-tooltip-title="Backend Request Distribution">
                     <i class="fas fa-chart-bar"></i>
                     Backend Request Distribution
                 </h5>
@@ -101,9 +101,9 @@
     </div>
 
     <div class="chart-container medium">
-        <div class="chart-header">
+                <div class="chart-header">
             <div>
-                <h5 class="chart-title">
+                <h5 class="chart-title" data-tooltip-key="backendResponseTimes" data-tooltip-title="Backend Response Times">
                     <i class="fas fa-tachometer-alt"></i>
                     Backend Response Times
                 </h5>
@@ -117,7 +117,7 @@
 <!-- Top Backends Table -->
 <div class="table-container mb-4">
     <div class="table-header">
-        <h5 class="table-title">
+        <h5 class="table-title" data-tooltip-key="backendServices" data-tooltip-title="Backend Services">
             <i class="fas fa-server"></i>
             Backend Services
         </h5>
