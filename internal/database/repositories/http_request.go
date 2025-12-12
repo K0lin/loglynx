@@ -62,6 +62,13 @@ var newIndexes = []string{
 	"idx_slow",
 	"idx_response_time",
 	"idx_ip_agg",
+	"idx_ip_browser_agg",
+	"idx_ip_backend_agg",
+	"idx_ip_device_agg",
+	"idx_ip_os_agg",
+	"idx_ip_status_agg",
+	"idx_ip_path_agg",
+	"idx_ip_heatmap_agg",
 	"idx_asn_agg",
 	"idx_device_type",
 	"idx_protocol",
@@ -310,9 +317,49 @@ func (r *httpRequestRepo) optimizeDatabase() error {
 
 		// ===== IP AND CLIENT AGGREGATION INDEXES =====
 
-		// IP aggregation - CRITICAL for GetTopIPAddresses
+		// IP aggregation - CRITICAL for GetTopIPAddresses and GetIPDetailedStats
+		// Covering index includes geo data, ASN, and aggregation columns to avoid table lookups
 		`CREATE INDEX IF NOT EXISTS idx_ip_agg
-		 ON http_requests(client_ip, geo_country, geo_city, geo_lat, geo_lon, response_size, timestamp)`,
+		 ON http_requests(client_ip, timestamp, geo_country, geo_city, geo_lat, geo_lon, response_size, asn, asn_org, status_code)`,
+
+		// IP + Browser aggregation - for GetIPTopBrowsers
+		// Partial index matches WHERE condition in query exactly
+		`CREATE INDEX IF NOT EXISTS idx_ip_browser_agg
+		 ON http_requests(client_ip, timestamp, browser)
+		 WHERE browser != ''`,
+
+		// IP + Backend aggregation - for GetIPTopBackends
+		// Partial index matches WHERE condition, includes all aggregation columns
+		`CREATE INDEX IF NOT EXISTS idx_ip_backend_agg
+		 ON http_requests(client_ip, timestamp, backend_name, backend_url, response_size, response_time_ms, status_code)
+		 WHERE backend_name != ''`,
+
+		// IP + Device aggregation - for GetIPDeviceTypeDistribution
+		// Partial index matches WHERE condition in query
+		`CREATE INDEX IF NOT EXISTS idx_ip_device_agg
+		 ON http_requests(client_ip, timestamp, device_type)
+		 WHERE device_type != ''`,
+
+		// IP + OS aggregation - for GetIPTopOperatingSystems
+		// Partial index matches WHERE condition in query
+		`CREATE INDEX IF NOT EXISTS idx_ip_os_agg
+		 ON http_requests(client_ip, timestamp, os)
+		 WHERE os != ''`,
+
+		// IP + Status Code aggregation - for GetIPStatusCodeDistribution
+		// Covering index for status code grouping
+		`CREATE INDEX IF NOT EXISTS idx_ip_status_agg
+		 ON http_requests(client_ip, timestamp, status_code)`,
+
+		// IP + Path aggregation - for GetIPTopPaths
+		// Covering index includes all columns needed for aggregation
+		`CREATE INDEX IF NOT EXISTS idx_ip_path_agg
+		 ON http_requests(client_ip, timestamp, path, response_time_ms, response_size, backend_name, host, backend_url)`,
+
+		// IP + Heatmap/Timeline aggregation - for GetIPTrafficHeatmap and GetIPTimelineStats
+		// Covering index for time-based aggregations with response metrics
+		`CREATE INDEX IF NOT EXISTS idx_ip_heatmap_agg
+		 ON http_requests(client_ip, timestamp, response_time_ms, response_size, backend_name)`,
 
 		// ASN aggregation - for GetTopASNs
 		`CREATE INDEX IF NOT EXISTS idx_asn_agg
