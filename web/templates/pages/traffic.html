@@ -61,25 +61,25 @@
 <!-- Traffic Summary KPIs -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Total Traffic</div>
+        <div class="stat-label" data-tooltip-key="totalRequests" data-tooltip-title="Total Traffic">Total Traffic</div>
         <div class="stat-value" id="totalTraffic">0</div>
         <div class="stat-subtitle">Last 7 days</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Unique Visitors</div>
+        <div class="stat-label" data-tooltip-key="uniqueVisitors" data-tooltip-title="Unique Visitors">Unique Visitors</div>
         <div class="stat-value text-info" id="uniqueVisitors">0</div>
         <div class="stat-subtitle">Unique IP addresses</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Countries</div>
+        <div class="stat-label" data-tooltip-key="countries" data-tooltip-title="Countries">Countries</div>
         <div class="stat-value text-success" id="totalCountries">0</div>
         <div class="stat-subtitle">Geographic reach</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Peak Traffic</div>
+        <div class="stat-label" data-tooltip-key="peakTraffic" data-tooltip-title="Peak Traffic">Peak Traffic</div>
         <div class="stat-value text-warning" id="peakTraffic">0</div>
         <div class="stat-subtitle" id="peakTrafficTime">req/hour</div>
     </div>
@@ -89,7 +89,7 @@
 <div class="chart-container medium mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="requestsTimeline" data-tooltip-title="Traffic Timeline">
                 <i class="fas fa-chart-line"></i>
                 Traffic Timeline
             </h5>
@@ -110,7 +110,7 @@
 <div class="chart-container heatmap mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="heatmap" data-tooltip-title="Traffic Heatmap - Day × Hour">
                 <i class="fas fa-calendar-alt"></i>
                 Traffic Heatmap - Day × Hour
             </h5>
@@ -132,7 +132,7 @@
     <!-- Device Types -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="deviceTypes" data-tooltip-title="Device Types">
                 <i class="fas fa-mobile-alt"></i>
                 Device Types
             </h5>
@@ -143,7 +143,7 @@
     <!-- Top Countries Pie -->
     <div class="chart-container small" style="grid-column: span 2;">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="geographicData" data-tooltip-title="Top Countries Distribution">
                 <i class="fas fa-flag"></i>
                 Top Countries Distribution
             </h5>
@@ -157,7 +157,7 @@
     <!-- Top Countries -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="countries" data-tooltip-title="Top Countries">
                 <i class="fas fa-globe-americas"></i>
                 Top Countries
             </h5>
@@ -187,7 +187,7 @@
     <!-- Top IP Addresses -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="ipReputation" data-tooltip-title="Top IP Addresses">
                 <i class="fas fa-network-wired"></i>
                 Top IP Addresses
             </h5>
@@ -218,7 +218,7 @@
 <!-- ASN Analysis -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="asn" data-tooltip-title="Top Autonomous Systems (ASN)">
             <i class="fas fa-building"></i>
             Top Autonomous Systems (ASN)
         </h5>
@@ -256,7 +256,7 @@
     <!-- Traffic by Hour -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="barChart" data-tooltip-title="Traffic by Hour of Day">
                 <i class="fas fa-clock"></i>
                 Traffic by Hour of Day
             </h5>
@@ -267,7 +267,7 @@
     <!-- Traffic by Day of Week -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="barChart" data-tooltip-title="Traffic by Day of Week">
                 <i class="fas fa-calendar-week"></i>
                 Traffic by Day of Week
             </h5>

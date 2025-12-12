@@ -177,6 +177,10 @@ a:hover {
     letter-spacing: 0.05em;
     margin-bottom: var(--space-sm);
     font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
 }
 
 .stat-value {

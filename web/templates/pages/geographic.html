@@ -62,25 +62,25 @@
 <!-- Geographic Summary KPIs -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Countries</div>
+        <div class="stat-label" data-tooltip-key="countries" data-tooltip-title="Countries">Countries</div>
         <div class="stat-value text-primary" id="totalCountries">0</div>
         <div class="stat-subtitle">Geographic reach</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Cities</div>
+        <div class="stat-label" data-tooltip-key="cities" data-tooltip-title="Cities">Cities</div>
         <div class="stat-value text-info" id="totalCities">0</div>
         <div class="stat-subtitle">Urban centers</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Continents</div>
+        <div class="stat-label" data-tooltip-key="continents" data-tooltip-title="Continents">Continents</div>
         <div class="stat-value text-success" id="totalContinents">0</div>
         <div class="stat-subtitle">Global coverage</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Top Country</div>
+        <div class="stat-label" data-tooltip-key="topCountry" data-tooltip-title="Top Country">Top Country</div>
         <div class="stat-value text-warning" id="topCountry">-</div>
         <div class="stat-subtitle" id="topCountryHits">0 hits</div>
     </div>
@@ -89,7 +89,7 @@
 <!-- Interactive World Map -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+    <h5 class="card-title" data-tooltip-key="geoSpread" data-tooltip-title="Interactive World Map">
             <i class="fas fa-globe-americas"></i>
             Interactive World Map
             <span class="badge badge-live ms-2">LIVE</span>
@@ -145,7 +145,7 @@
     <!-- Continent Distribution -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="continents" data-tooltip-title="Traffic by Continent">
                 <i class="fas fa-earth-americas"></i>
                 Traffic by Continent
             </h5>
@@ -156,7 +156,7 @@
     <!-- Top Countries Bar Chart -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="countries" data-tooltip-title="Top 10 Countries">
                 <i class="fas fa-flag"></i>
                 Top 10 Countries
             </h5>
@@ -168,7 +168,7 @@
 <!-- Detailed Country Analysis -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="geographicData" data-tooltip-title="Country-Level Analysis">
             <i class="fas fa-globe"></i>
             Country-Level Analysis
         </h5>
@@ -211,7 +211,7 @@
 <!-- City-Level Analysis -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="cities" data-tooltip-title="Top Cities Worldwide">
             <i class="fas fa-city"></i>
             Top Cities Worldwide
         </h5>
@@ -245,7 +245,7 @@
 <!-- IP Geolocation Details -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="ipLookup" data-tooltip-title="IP Geolocation Details">
             <i class="fas fa-network-wired"></i>
             IP Geolocation Details
         </h5>
@@ -279,7 +279,7 @@
 <!-- ASN Geographic Distribution -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="asn" data-tooltip-title="ASN Geographic Distribution">
             <i class="fas fa-building"></i>
             ASN Geographic Distribution
         </h5>
@@ -313,7 +313,7 @@
 <div class="grid grid-cols-3 mb-4">
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="geoSpread" data-tooltip-title="Geographic Diversity">
                 <i class="fas fa-chart-pie"></i>
                 Geographic Diversity
             </h5>
@@ -345,7 +345,7 @@
 
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="geographicData" data-tooltip-title="Top Performing Regions">
                 <i class="fas fa-trophy"></i>
                 Top Performing Regions
             </h5>
@@ -370,7 +370,7 @@
 
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="info" data-tooltip-title="Geographic Alerts">
                 <i class="fas fa-exclamation-triangle"></i>
                 Geographic Alerts
             </h5>
@@ -401,7 +401,7 @@
 <!-- Coordinates Lookup Tool -->
 <div class="card">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="ipLookup" data-tooltip-title="Coordinates Lookup Tool">
             <i class="fas fa-search-location"></i>
             Coordinates Lookup Tool
         </h5>

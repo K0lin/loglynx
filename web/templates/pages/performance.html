@@ -61,25 +61,25 @@
 <!-- Performance KPIs -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Avg Response Time</div>
+        <div class="stat-label" data-tooltip-key="avgResponseTime" data-tooltip-title="Avg Response Time">Avg Response Time</div>
         <div class="stat-value text-info" id="avgResponseTime">0ms</div>
         <div class="stat-subtitle">Overall average</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">P50 (Median)</div>
+        <div class="stat-label" data-tooltip-key="p50" data-tooltip-title="P50 (Median)">P50 (Median)</div>
         <div class="stat-value text-success" id="p50ResponseTime">0ms</div>
         <div class="stat-subtitle">50th percentile</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">P95</div>
+        <div class="stat-label" data-tooltip-key="p95" data-tooltip-title="P95">P95</div>
         <div class="stat-value text-warning" id="p95ResponseTime">0ms</div>
         <div class="stat-subtitle">95th percentile</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">P99</div>
+        <div class="stat-label" data-tooltip-key="p99" data-tooltip-title="P99">P99</div>
         <div class="stat-value text-danger" id="p99ResponseTime">0ms</div>
         <div class="stat-subtitle">99th percentile</div>
     </div>
@@ -88,25 +88,25 @@
 <!-- Additional Performance Metrics -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Min Response Time</div>
+        <div class="stat-label" data-tooltip-key="minResponseTime" data-tooltip-title="Min Response Time">Min Response Time</div>
         <div class="stat-value" id="minResponseTime">0ms</div>
         <div class="stat-subtitle">Fastest request</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Max Response Time</div>
+        <div class="stat-label" data-tooltip-key="maxResponseTime" data-tooltip-title="Max Response Time">Max Response Time</div>
         <div class="stat-value" id="maxResponseTime">0ms</div>
         <div class="stat-subtitle">Slowest request</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Fast Requests</div>
+        <div class="stat-label" data-tooltip-key="fastRequests" data-tooltip-title="Fast Requests">Fast Requests</div>
         <div class="stat-value text-success" id="fastRequests">0%</div>
         <div class="stat-subtitle">< 100ms</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Slow Requests</div>
+        <div class="stat-label" data-tooltip-key="slowRequests" data-tooltip-title="Slow Requests">Slow Requests</div>
         <div class="stat-value text-danger" id="slowRequests">0%</div>
         <div class="stat-subtitle">> 1000ms</div>
     </div>
@@ -116,7 +116,7 @@
 <div class="chart-container medium mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="lineChart" data-tooltip-title="Response Time Timeline">
                 <i class="fas fa-chart-line"></i>
                 Response Time Timeline
             </h5>
@@ -138,7 +138,7 @@
     <!-- Response Time Distribution -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="barChart" data-tooltip-title="Response Time Distribution">
                 <i class="fas fa-chart-bar"></i>
                 Response Time Distribution
             </h5>
@@ -149,7 +149,7 @@
     <!-- Percentile Breakdown -->
     <div class="chart-container medium">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="percentileBreakdown" data-tooltip-title="Percentile Breakdown">
                 <i class="fas fa-layer-group"></i>
                 Percentile Breakdown
             </h5>
@@ -161,7 +161,7 @@
 <!-- Slowest Paths Analysis -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="topPaths" data-tooltip-title="Slowest Paths">
             <i class="fas fa-hourglass-half"></i>
             Slowest Paths
         </h5>
@@ -202,7 +202,7 @@
 <!-- Fastest Paths Analysis -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="fastRequests" data-tooltip-title="Fastest Paths">
             <i class="fas fa-bolt"></i>
             Fastest Paths
         </h5>
@@ -233,7 +233,7 @@
 <!-- Backend Performance -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title">
+        <h5 class="card-title" data-tooltip-key="backendHealth" data-tooltip-title="Backend Performance Comparison">
             <i class="fas fa-server"></i>
             Backend Performance Comparison
         </h5>
@@ -268,7 +268,7 @@
 <div class="chart-container medium mb-4">
     <div class="chart-header">
         <div>
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="areaChart" data-tooltip-title="Request Volume vs Response Time">
                 <i class="fas fa-chart-area"></i>
                 Request Volume vs Response Time
             </h5>
@@ -282,7 +282,7 @@
 <div class="grid grid-cols-3 mb-4">
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="info" data-tooltip-title="Performance Goals">
                 <i class="fas fa-trophy"></i>
                 Performance Goals
             </h5>
@@ -320,7 +320,7 @@
 
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="info" data-tooltip-title="Performance Issues">
                 <i class="fas fa-exclamation-triangle"></i>
                 Performance Issues
             </h5>
@@ -343,7 +343,7 @@
 
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="info" data-tooltip-title="Log Processing">
                 <i class="fas fa-tasks"></i>
                 Log Processing
             </h5>

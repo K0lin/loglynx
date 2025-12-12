@@ -54,25 +54,25 @@
 <!-- User Summary KPIs -->
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label">Total Visitors</div>
+        <div class="stat-label" data-tooltip-key="totalVisitors" data-tooltip-title="Total Visitors">Total Visitors</div>
         <div class="stat-value" id="totalVisitors">0</div>
         <div class="stat-subtitle">Unique IP addresses</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Browser Types</div>
+        <div class="stat-label" data-tooltip-key="browserDistribution" data-tooltip-title="Browser Types">Browser Types</div>
         <div class="stat-value text-info" id="browserTypes">0</div>
         <div class="stat-subtitle">Different browsers</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Operating Systems</div>
+        <div class="stat-label" data-tooltip-key="osDistribution" data-tooltip-title="Operating Systems">Operating Systems</div>
         <div class="stat-value text-success" id="osTypes">0</div>
         <div class="stat-subtitle">Different OS</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label">Referral Traffic</div>
+        <div class="stat-label" data-tooltip-key="referrerTraffic" data-tooltip-title="Referral Traffic">Referral Traffic</div>
         <div class="stat-value text-warning" id="referralTraffic">0%</div>
         <div class="stat-subtitle">From external sources</div>
     </div>
@@ -83,7 +83,7 @@
     <!-- Device Type Distribution -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="deviceType" data-tooltip-title="Device Types">
                 <i class="fas fa-mobile-alt"></i>
                 Device Types
             </h5>
@@ -94,7 +94,7 @@
     <!-- Browser Distribution -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="browserDistribution" data-tooltip-title="Browser Distribution">
                 <i class="fas fa-browser"></i>
                 Browser Distribution
             </h5>
@@ -105,7 +105,7 @@
     <!-- Operating System Distribution -->
     <div class="chart-container small">
         <div class="chart-header">
-            <h5 class="chart-title">
+            <h5 class="chart-title" data-tooltip-key="osDistribution" data-tooltip-title="Operating Systems">
                 <i class="fas fa-laptop"></i>
                 Operating Systems
             </h5>
@@ -116,8 +116,8 @@
 
 <!-- Browser Details -->
 <div class="card mb-4">
-    <div class="card-header">
-        <h5 class="card-title">
+        <div class="card-header">
+            <h5 class="card-title" data-tooltip-key="browserDistribution" data-tooltip-title="Browser Analysis">
             <i class="fas fa-browser"></i>
             Browser Analysis
         </h5>
@@ -149,8 +149,8 @@
 
 <!-- Operating System Details -->
 <div class="card mb-4">
-    <div class="card-header">
-        <h5 class="card-title">
+        <div class="card-header">
+            <h5 class="card-title" data-tooltip-key="osDistribution" data-tooltip-title="Operating System Analysis">
             <i class="fas fa-laptop-code"></i>
             Operating System Analysis
         </h5>
@@ -183,7 +183,7 @@
     <!-- Top Referrers -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="topReferrers" data-tooltip-title="Top Referrers">
                 <i class="fas fa-external-link-alt"></i>
                 Top Referrers
             </h5>
@@ -213,7 +213,7 @@
     <!-- Top Referrer Domains -->
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="referrerDomains" data-tooltip-title="Top Referrer Domains">
                 <i class="fas fa-globe"></i>
                 Top Referrer Domains
             </h5>
@@ -243,8 +243,8 @@
 
 <!-- User Agent Analysis -->
 <div class="card mb-4">
-    <div class="card-header">
-        <h5 class="card-title">
+        <div class="card-header">
+            <h5 class="card-title" data-tooltip-key="userAgent" data-tooltip-title="User Agent Strings">
             <i class="fas fa-fingerprint"></i>
             User Agent Strings
         </h5>
@@ -273,8 +273,8 @@
 
 <!-- Geographic Visitor Distribution -->
 <div class="card mb-4">
-    <div class="card-header">
-        <h5 class="card-title">
+        <div class="card-header">
+            <h5 class="card-title" data-tooltip-key="geoVisitors" data-tooltip-title="Geographic Visitor Distribution">
             <i class="fas fa-map-marked-alt"></i>
             Geographic Visitor Distribution
         </h5>
@@ -304,7 +304,7 @@
 <div class="grid grid-cols-3 mb-4">
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="botDetection" data-tooltip-title="Bot Detection">
                 <i class="fas fa-robot"></i>
                 Bot Detection
             </h5>
@@ -336,7 +336,7 @@
 
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="platformDistribution" data-tooltip-title="Platform Distribution">
                 <i class="fas fa-chart-pie"></i>
                 Platform Distribution
             </h5>
@@ -374,7 +374,7 @@
 
     <div class="card">
         <div class="card-header">
-            <h5 class="card-title">
+            <h5 class="card-title" data-tooltip-key="topUserInsights" data-tooltip-title="Top User Insights">
                 <i class="fas fa-chart-line"></i>
                 Top User Insights
             </h5>
