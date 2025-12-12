@@ -162,10 +162,12 @@ a:hover {
     border: 1px solid var(--border-color);
     text-align: center;
     transition: all var(--transition-base);
+    position: relative;
+    top: 0;
 }
 
 .stat-card:hover {
-    transform: translateY(-4px);
+    top: -4px;
     box-shadow: var(--shadow-md);
     background: var(--loglynx-card-hover);
 }

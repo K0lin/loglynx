@@ -52,25 +52,25 @@
 </div>
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="uptime" data-tooltip-title="Uptime">Uptime</div>
+        <div class="stat-label" data-tooltip-key="uptime" data-tooltip-title="Uptime" data-tooltip-position="bottom">Uptime</div>
         <div class="stat-value text-success" id="uptime">-</div>
         <div class="stat-subtitle" id="startTime">Started at: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="memoryUsage" data-tooltip-title="Memory Usage">Memory Usage</div>
+        <div class="stat-label" data-tooltip-key="memoryUsage" data-tooltip-title="Memory Usage" data-tooltip-position="bottom">Memory Usage</div>
         <div class="stat-value text-info" id="memoryAlloc">-</div>
         <div class="stat-subtitle" id="memorySys">System: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="goRoutines" data-tooltip-title="Go Routines">Go Routines</div>
+        <div class="stat-label" data-tooltip-key="goRoutines" data-tooltip-title="Go Routines" data-tooltip-position="bottom">Go Routines</div>
         <div class="stat-value" id="numGoroutines">-</div>
         <div class="stat-subtitle" id="numCPU">CPUs: -</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="runtime" data-tooltip-title="Runtime">Runtime</div>
+        <div class="stat-label" data-tooltip-key="runtime" data-tooltip-title="Runtime" data-tooltip-position="bottom">Runtime</div>
         <div class="stat-value text-warning" id="gcPause">-</div>
         <div class="stat-subtitle">Go: <span id="goVersion">-</span></div>
         <div class="stat-subtitle">App: <a id="appVersionLink" href="https://github.com/K0lin/loglynx/tree/v{{.AppVersion}}" target="_blank" rel="noopener"><span id="appVersion">-</span></a></div>
@@ -83,19 +83,19 @@
 </div>
 <div class="grid grid-cols-4 mb-4">
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="totalRecords" data-tooltip-title="Total Records">Total Records</div>
+        <div class="stat-label" data-tooltip-key="totalRecords" data-tooltip-title="Total Records" data-tooltip-position="bottom">Total Records</div>
         <div class="stat-value text-primary" id="totalRecords">-</div>
         <div class="stat-subtitle">HTTP requests stored</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="databaseSize" data-tooltip-title="Database Size">Database Size</div>
+        <div class="stat-label" data-tooltip-key="databaseSize" data-tooltip-title="Database Size" data-tooltip-position="bottom">Database Size</div>
         <div class="stat-value text-info" id="databaseSize">-</div>
         <div class="stat-subtitle" id="databasePath">-</div>
     </div>
 
     <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="recordsToCleanup" data-tooltip-title="Records to Cleanup">Records to Cleanup</div>
+        <div class="stat-label" data-tooltip-key="recordsToCleanup" data-tooltip-title="Records to Cleanup" data-tooltip-position="bottom">Records to Cleanup</div>
         <div class="stat-value text-warning" id="recordsToCleanup">-</div>
         <div class="stat-subtitle" id="retentionDays">Retention: -</div>
     </div>
