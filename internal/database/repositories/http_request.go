@@ -109,14 +109,16 @@ type HTTPRequestRepository interface {
 	CountBySourceName(sourceName string) (int64, error)
 	// First-load optimization control
 	DisableFirstLoadMode()
+	SetInitialLoadCompleteCallback(callback func())
 }
 
 type httpRequestRepo struct {
-	db            *gorm.DB
-	logger        *pterm.Logger
-	isFirstLoad   bool       // Global flag: true when database is empty at startup
-	firstLoadMu   sync.Mutex // Protects isFirstLoad flag
-	firstLoadOnce sync.Once  // Ensures first-load check happens only once
+	db                         *gorm.DB
+	logger                     *pterm.Logger
+	isFirstLoad                bool       // Global flag: true when database is empty at startup
+	firstLoadMu                sync.Mutex // Protects isFirstLoad flag
+	firstLoadOnce              sync.Once  // Ensures first-load check happens only once
+	onInitialLoadComplete      func()     // Callback when initial load completes
 }
 
 // NewHTTPRequestRepository creates a new HTTP request repository
@@ -127,6 +129,12 @@ func NewHTTPRequestRepository(db *gorm.DB, logger *pterm.Logger) HTTPRequestRepo
 		isFirstLoad: false, // Will be checked on first CreateBatch call
 	}
 	return repo
+}
+
+// SetInitialLoadCompleteCallback sets a callback to be called when initial load completes
+// This is used to notify the API layer that it can start serving requests
+func (r *httpRequestRepo) SetInitialLoadCompleteCallback(callback func()) {
+	r.onInitialLoadComplete = callback
 }
 
 // checkFirstLoad checks if database is empty (only once, at startup)
@@ -212,6 +220,11 @@ func (r *httpRequestRepo) DisableFirstLoadMode() {
 
 	if wasFirstLoad {
 		r.logger.Info("First load completed - deduplication checks now enabled")
+
+		// Notify API layer that initial load is complete
+		if r.onInitialLoadComplete != nil {
+			r.onInitialLoadComplete()
+		}
 
 		// Create indexes in background (don't block log processing)
 		go r.createDeferredIndexes()

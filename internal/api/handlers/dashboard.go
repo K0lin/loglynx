@@ -24,6 +24,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"sync"
 
 	"loglynx/internal/database/repositories"
 
@@ -33,9 +34,11 @@ import (
 
 // DashboardHandler handles dashboard requests
 type DashboardHandler struct {
-	statsRepo  repositories.StatsRepository
-	httpRepo   repositories.HTTPRequestRepository
-	logger     *pterm.Logger
+	statsRepo         repositories.StatsRepository
+	httpRepo          repositories.HTTPRequestRepository
+	logger            *pterm.Logger
+	initialLoadDone   bool
+	initialLoadDoneMu sync.RWMutex
 }
 
 // NewDashboardHandler creates a new dashboard handler
@@ -45,10 +48,27 @@ func NewDashboardHandler(
 	logger *pterm.Logger,
 ) *DashboardHandler {
 	return &DashboardHandler{
-		statsRepo: statsRepo,
-		httpRepo:  httpRepo,
-		logger:    logger,
+		statsRepo:       statsRepo,
+		httpRepo:        httpRepo,
+		logger:          logger,
+		initialLoadDone: false,
 	}
+}
+
+// SetInitialLoadComplete marks the initial data load as complete
+// Called by the ingestion system when first load phase ends
+func (h *DashboardHandler) SetInitialLoadComplete() {
+	h.initialLoadDoneMu.Lock()
+	defer h.initialLoadDoneMu.Unlock()
+	h.initialLoadDone = true
+	h.logger.Debug("Initial load marked as complete - API will no longer be blocked")
+}
+
+// IsInitialLoadComplete returns whether the initial load phase has completed
+func (h *DashboardHandler) IsInitialLoadComplete() bool {
+	h.initialLoadDoneMu.RLock()
+	defer h.initialLoadDoneMu.RUnlock()
+	return h.initialLoadDone
 }
 
 // ServiceFilter represents a single service filter

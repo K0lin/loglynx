@@ -129,6 +129,12 @@ func main() {
 	// Create dashboard handler
 	dashboardHandler = handlers.NewDashboardHandler(statsRepo, httpRepo, logger)
 
+	// Wire up callback so HTTP repository can notify when initial load completes
+	// This allows the API middleware to unblock as soon as the first data load finishes
+	httpRepo.SetInitialLoadCompleteCallback(func() {
+		dashboardHandler.SetInitialLoadComplete()
+	})
+
 	// Initialize GeoIP enricher (optional - will work without GeoIP databases)
 	var geoIP *enrichment.GeoIPEnricher
 	if cfg.GeoIP.Enabled {

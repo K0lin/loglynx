@@ -53,7 +53,8 @@ type Config struct {
 	SplashScreenEnabled bool // If false, splash screen is disabled on startup
 }
 
-// processingCheckMiddleware blocks API calls during initial log processing
+// processingCheckMiddleware blocks API calls only during initial log processing phase
+// Once initial load completes, all APIs are available even during ongoing log ingestion
 func processingCheckMiddleware(dashboardHandler *handlers.DashboardHandler, logger *pterm.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// If dashboardHandler is nil, allow all requests (shouldn't happen but be safe)
@@ -62,7 +63,7 @@ func processingCheckMiddleware(dashboardHandler *handlers.DashboardHandler, logg
 			return
 		}
 
-		// Allow certain endpoints during processing
+		// Always allow certain endpoints (health check, version, and log processing status)
 		path := c.Request.URL.Path
 		allowedPaths := []string{
 			"/health",
@@ -82,12 +83,13 @@ func processingCheckMiddleware(dashboardHandler *handlers.DashboardHandler, logg
 			}
 		}
 
-		// For other API paths, check if processing is complete
+		// Only block other API calls if INITIAL LOAD is still in progress
+		// Once initial load completes, allow all API requests even during ongoing log ingestion
 		if strings.HasPrefix(path, "/api/v1/") {
-			if !dashboardHandler.IsLogProcessingComplete() {
-				logger.Debug("Blocking API request during log processing", logger.Args("path", path))
+			if !dashboardHandler.IsInitialLoadComplete() {
+				logger.Debug("Blocking API request during initial load phase", logger.Args("path", path))
 				c.JSON(http.StatusServiceUnavailable, gin.H{
-					"error": "Log processing is in progress. Please wait for initial processing to complete.",
+					"error": "Initial data load is in progress. Please wait.",
 				})
 				c.Abort()
 				return
