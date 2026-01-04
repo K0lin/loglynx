@@ -24,7 +24,6 @@ package handlers
 import (
 	"net/http"
 	"strconv"
-	"sync"
 
 	"loglynx/internal/database/repositories"
 
@@ -34,11 +33,9 @@ import (
 
 // DashboardHandler handles dashboard requests
 type DashboardHandler struct {
-	statsRepo            repositories.StatsRepository
-	httpRepo             repositories.HTTPRequestRepository
-	logger               *pterm.Logger
-	indexingComplete     bool
-	indexingCompleteMu   sync.RWMutex
+	statsRepo  repositories.StatsRepository
+	httpRepo   repositories.HTTPRequestRepository
+	logger     *pterm.Logger
 }
 
 // NewDashboardHandler creates a new dashboard handler
@@ -48,25 +45,10 @@ func NewDashboardHandler(
 	logger *pterm.Logger,
 ) *DashboardHandler {
 	return &DashboardHandler{
-		statsRepo:        statsRepo,
-		httpRepo:         httpRepo,
-		logger:           logger,
-		indexingComplete: false,
+		statsRepo: statsRepo,
+		httpRepo:  httpRepo,
+		logger:    logger,
 	}
-}
-
-// SetIndexingComplete marks database indexing as complete
-func (h *DashboardHandler) SetIndexingComplete() {
-	h.indexingCompleteMu.Lock()
-	defer h.indexingCompleteMu.Unlock()
-	h.indexingComplete = true
-}
-
-// IsIndexingComplete returns whether database indexing is complete
-func (h *DashboardHandler) IsIndexingComplete() bool {
-	h.indexingCompleteMu.RLock()
-	defer h.indexingCompleteMu.RUnlock()
-	return h.indexingComplete
 }
 
 // ServiceFilter represents a single service filter
@@ -564,14 +546,10 @@ func (h *DashboardHandler) GetLogProcessingStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// IsLogProcessingComplete checks if all log processing is complete (100%) AND indexing is complete
+// IsLogProcessingComplete checks if all log processing is complete (100%)
+// Note: This does NOT wait for database indexing to complete.
+// Indexing happens asynchronously in the background after log processing completes.
 func (h *DashboardHandler) IsLogProcessingComplete() bool {
-	// First check if indexing is complete
-	if !h.IsIndexingComplete() {
-		h.logger.Trace("Log processing not complete: indexing still in progress")
-		return false
-	}
-
 	stats, err := h.statsRepo.GetLogProcessingStats()
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to check log processing completion", h.logger.Args("error", err))
