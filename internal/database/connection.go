@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package database
 
 import (
@@ -224,12 +223,19 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 		logger.Info("🚀 Empty database detected - deferring index creation until after first data load for optimal performance")
 		logger.Info("   Indexes will be created automatically when initial data load completes")
 	} else {
-		// Database has data - create/verify indexes now
-		logger.Debug("Existing data found - verifying database indexes")
-		if err := OptimizeDatabase(db, logger); err != nil {
-			logger.Warn("Database optimization had warnings", logger.Args("error", err))
-			// Don't fail on optimization errors, just warn
-		}
+		// Database has data - defer index verification to background to avoid blocking startup
+		// OPTIMIZED: Run index verification in background to speed up startup on existing DBs
+		logger.Info("📊 Existing data found - index verification will run in background")
+		go func() {
+			// Small delay to let the server start accepting requests first
+			time.Sleep(2 * time.Second)
+			logger.Debug("Starting background database index verification...")
+			if err := OptimizeDatabase(db, logger); err != nil {
+				logger.Warn("Database optimization had warnings", logger.Args("error", err))
+			} else {
+				logger.Info("✅ Database indexes verified/created in background")
+			}
+		}()
 	}
 
 	// Run discovery engine in background to speed up startup

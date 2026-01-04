@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,10 +19,10 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package enrichment
 
 import (
+	"container/heap"
 	"fmt"
 	"loglynx/internal/database/models"
 	"net"
@@ -35,6 +35,31 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// ipAgeHeap implements a min-heap for LRU cache eviction (oldest first)
+// O(n log n) instead of O(n²) bubble sort
+type ipAgeHeap []ipAge
+
+type ipAge struct {
+	ip       string
+	lastSeen time.Time
+}
+
+func (h ipAgeHeap) Len() int           { return len(h) }
+func (h ipAgeHeap) Less(i, j int) bool { return h[i].lastSeen.Before(h[j].lastSeen) } // oldest first
+func (h ipAgeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *ipAgeHeap) Push(x any) {
+	*h = append(*h, x.(ipAge))
+}
+
+func (h *ipAgeHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
+
 // GeoIPEnricher provides GeoIP enrichment with caching
 type GeoIPEnricher struct {
 	cityDB    *geoip2.Reader
@@ -46,6 +71,11 @@ type GeoIPEnricher struct {
 	cacheMu   sync.RWMutex
 	enabled   bool
 	cacheSize int // Maximum cache size from config (GEOIP_CACHE_SIZE)
+
+	// Bounded async writer pool to replace goroutine-per-IP
+	dbWriteChan chan *models.IPReputation
+	writerWg    sync.WaitGroup
+	writerDone  chan struct{}
 }
 
 // NewGeoIPEnricher creates a new GeoIP enricher
@@ -56,11 +86,21 @@ func NewGeoIPEnricher(cityDBPath, countryDBPath, asnDBPath string, db *gorm.DB, 
 	}
 
 	enricher := &GeoIPEnricher{
-		db:        db,
-		logger:    logger,
-		cache:     make(map[string]*models.IPReputation, cacheSize), // Pre-allocate with capacity
-		enabled:   false,
-		cacheSize: cacheSize,
+		db:          db,
+		logger:      logger,
+		cache:       make(map[string]*models.IPReputation, cacheSize), // Pre-allocate with capacity
+		enabled:     false,
+		cacheSize:   cacheSize,
+		dbWriteChan: make(chan *models.IPReputation, 1000), // Bounded channel for async DB writes
+		writerDone:  make(chan struct{}),
+	}
+
+	// Start bounded async writer pool (2 workers instead of unbounded goroutines)
+	// This prevents memory bloat and SQLite lock contention
+	const numWriters = 2
+	for i := 0; i < numWriters; i++ {
+		enricher.writerWg.Add(1)
+		go enricher.asyncDBWriter()
 	}
 
 	// Try to load City database (provides most detailed location data)
@@ -106,6 +146,49 @@ func NewGeoIPEnricher(cityDBPath, countryDBPath, asnDBPath string, db *gorm.DB, 
 	}
 
 	return enricher, nil
+}
+
+// asyncDBWriter is a bounded worker that writes IP reputations to the database
+// Replaces unbounded goroutine-per-IP pattern to prevent memory bloat
+func (g *GeoIPEnricher) asyncDBWriter() {
+	defer g.writerWg.Done()
+
+	// Batch writes for efficiency (collect up to 50 records or 100ms timeout)
+	batch := make([]*models.IPReputation, 0, 50)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	flushBatch := func() {
+		if len(batch) == 0 {
+			return
+		}
+		// Use silent logger to avoid spam
+		silentDB := g.db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+		for _, rep := range batch {
+			_ = silentDB.Create(rep).Error // Ignore errors (duplicates expected)
+		}
+		batch = batch[:0] // Reset slice, keep capacity
+	}
+
+	for {
+		select {
+		case rep, ok := <-g.dbWriteChan:
+			if !ok {
+				// Channel closed, flush remaining and exit
+				flushBatch()
+				return
+			}
+			batch = append(batch, rep)
+			if len(batch) >= 50 {
+				flushBatch()
+			}
+		case <-ticker.C:
+			flushBatch()
+		case <-g.writerDone:
+			flushBatch()
+			return
+		}
+	}
 }
 
 // Enrich enriches an HTTP request with GeoIP data
@@ -217,39 +300,25 @@ func (g *GeoIPEnricher) lookupAndCache(request *models.HTTPRequest) error {
 
 	// Check if cache is full before adding
 	if len(g.cache) >= g.cacheSize {
-		// Cache is full - implement LRU-style eviction
-		// Remove oldest entries (simple strategy: remove 10% of cache)
+		// Cache is full - implement LRU-style eviction using heap
+		// O(n log n) instead of O(n²) bubble sort
 		evictCount := g.cacheSize / 10
 		if evictCount < 1 {
 			evictCount = 1
 		}
 
-		// Find and remove oldest entries based on LastSeen
-		type ipAge struct {
-			ip       string
-			lastSeen time.Time
-		}
-		ages := make([]ipAge, 0, len(g.cache))
+		// Build min-heap of ages (oldest first) - O(n)
+		h := make(ipAgeHeap, 0, len(g.cache))
 		for ip, rep := range g.cache {
-			ages = append(ages, ipAge{ip: ip, lastSeen: rep.LastSeen})
+			h = append(h, ipAge{ip: ip, lastSeen: rep.LastSeen})
 		}
+		heap.Init(&h)
 
-		// Sort by oldest first
-		for i := 0; i < len(ages)-1; i++ {
-			for j := i + 1; j < len(ages); j++ {
-				if ages[i].lastSeen.After(ages[j].lastSeen) {
-					ages[i], ages[j] = ages[j], ages[i]
-				}
-			}
-		}
-
-		// Remove oldest entries
+		// Pop oldest entries - O(k log n) where k = evictCount
 		evicted := 0
-		for _, age := range ages {
-			if evicted >= evictCount {
-				break
-			}
-			delete(g.cache, age.ip)
+		for h.Len() > 0 && evicted < evictCount {
+			oldest := heap.Pop(&h).(ipAge)
+			delete(g.cache, oldest.ip)
 			evicted++
 		}
 
@@ -264,17 +333,16 @@ func (g *GeoIPEnricher) lookupAndCache(request *models.HTTPRequest) error {
 	g.cache[request.ClientIP] = reputation
 	g.cacheMu.Unlock()
 
-	// Store in database cache asynchronously to avoid blocking
-	// Use goroutine to prevent concurrent insert errors from slowing down processing
-	go func(rep *models.IPReputation) {
-		// Try to insert - silently ignore errors as they're expected race conditions
-		// Create a session with Silent mode to suppress all GORM logging for this operation
-		_ = g.db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).Create(rep).Error
-		// We don't check the error because:
-		// 1. Memory cache is already updated (primary cache)
-		// 2. Duplicate key errors are expected with parallel workers
-		// 3. Database cache is just a persistent backup
-	}(reputation)
+	// Store in database cache asynchronously via bounded worker pool
+	// Non-blocking send: drop if channel is full (DB cache is just a backup)
+	select {
+	case g.dbWriteChan <- reputation:
+		// Sent to async writer
+	default:
+		// Channel full, skip DB write (memory cache is primary)
+		g.logger.Trace("GeoIP DB write channel full, skipping persistence",
+			g.logger.Args("ip", request.ClientIP))
+	}
 
 	return nil
 }
@@ -362,8 +430,13 @@ func (g *GeoIPEnricher) LoadCache() error {
 	return nil
 }
 
-// Close closes the GeoIP databases
+// Close closes the GeoIP databases and shuts down async writers
 func (g *GeoIPEnricher) Close() error {
+	// Signal async writers to stop and wait for them to finish
+	close(g.writerDone)
+	close(g.dbWriteChan)
+	g.writerWg.Wait()
+
 	if g.cityDB != nil {
 		g.cityDB.Close()
 	}
@@ -373,7 +446,7 @@ func (g *GeoIPEnricher) Close() error {
 	if g.asnDB != nil {
 		g.asnDB.Close()
 	}
-	g.logger.Info("Closed GeoIP databases")
+	g.logger.Info("Closed GeoIP databases and async writers")
 	return nil
 }
 
