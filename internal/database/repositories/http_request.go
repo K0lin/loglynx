@@ -111,11 +111,20 @@ type HTTPRequestRepository interface {
 	DisableFirstLoadMode()
 	// Index creation status
 	IsIndexCreationActive() bool
+	// Set processor pauser for coordinated pause during index creation
+	SetProcessorPauser(pauser ProcessorPauser)
+}
+
+// ProcessorPauser allows pausing/resuming processors during index creation
+type ProcessorPauser interface {
+	PauseAll()
+	ResumeAll()
 }
 
 type httpRequestRepo struct {
 	db                  *gorm.DB
 	logger              *pterm.Logger
+	processorPauser     ProcessorPauser // Optional: pauses processors during index creation
 	isFirstLoad         bool       // Global flag: true when database is empty at startup
 	firstLoadMu         sync.Mutex // Protects isFirstLoad flag
 	firstLoadOnce       sync.Once  // Ensures first-load check happens only once
@@ -131,6 +140,11 @@ func NewHTTPRequestRepository(db *gorm.DB, logger *pterm.Logger) HTTPRequestRepo
 		isFirstLoad: false, // Will be checked on first CreateBatch call
 	}
 	return repo
+}
+
+// SetProcessorPauser sets the processor pauser for coordinated pausing during index creation
+func (r *httpRequestRepo) SetProcessorPauser(pauser ProcessorPauser) {
+	r.processorPauser = pauser
 }
 
 // checkFirstLoad checks if database is empty (only once, at startup)
@@ -231,6 +245,18 @@ func (r *httpRequestRepo) IsIndexCreationActive() bool {
 
 // createDeferredIndexes creates performance indexes after initial data load
 func (r *httpRequestRepo) createDeferredIndexes() {
+	// Pause all processors to prevent data loss during index creation
+	if r.processorPauser != nil {
+		r.logger.Info("Pausing log processors for safe index creation...")
+		r.processorPauser.PauseAll()
+		
+		// Ensure we resume processors when done
+		defer func() {
+			r.logger.Info("Resuming log processors...")
+			r.processorPauser.ResumeAll()
+		}()
+	}
+
 	// Mark index creation as active
 	r.indexCreationMu.Lock()
 	r.indexCreationActive = true

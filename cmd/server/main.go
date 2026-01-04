@@ -203,6 +203,9 @@ func main() {
 		cfg.Performance.WorkerPoolSize,
 	)
 
+	// Set processor pauser on httpRepo to enable coordinated pausing during index creation
+	httpRepo.SetProcessorPauser(coordinator)
+
 	// Initialize database cleanup service with coordinator reference for maintenance windows
 	logger.Debug("Initializing database cleanup service...")
 	cleanupService := database.NewCleanupService(

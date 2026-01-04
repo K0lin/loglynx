@@ -230,6 +230,28 @@ func (c *Coordinator) Stop() {
 	c.logger.Info("Ingestion coordinator stopped successfully")
 }
 
+// PauseAll pauses all active processors
+func (c *Coordinator) PauseAll() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	c.logger.Info("Pausing all processors", c.logger.Args("count", len(c.processors)))
+	for _, processor := range c.processors {
+		processor.Pause()
+	}
+}
+
+// ResumeAll resumes all paused processors
+func (c *Coordinator) ResumeAll() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	c.logger.Info("Resuming all processors", c.logger.Args("count", len(c.processors)))
+	for _, processor := range c.processors {
+		processor.Resume()
+	}
+}
+
 // GetStatus returns the current status of the coordinator
 func (c *Coordinator) GetStatus() map[string]interface{} {
 	c.mu.RLock()
