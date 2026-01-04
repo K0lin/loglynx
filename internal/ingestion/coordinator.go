@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package ingestion
 
 import (
@@ -254,6 +253,32 @@ func (c *Coordinator) GetProcessorCount() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return len(c.processors)
+}
+
+// IsInitialLoadComplete returns whether all processors have completed their initial load
+// This is used to determine when the application is ready to serve API requests
+func (c *Coordinator) IsInitialLoadComplete() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// If no processors, initial load is complete
+	if len(c.processors) == 0 {
+		return true
+	}
+
+	// Check if all processors have completed initial load
+	for _, processor := range c.processors {
+		processor.initialLoadMu.Lock()
+		isInitial := processor.isInitialLoad && !processor.initialLoadComplete
+		processor.initialLoadMu.Unlock()
+
+		// If any processor is still in initial load, return false
+		if isInitial {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Restart stops and restarts the coordinator

@@ -37,10 +37,6 @@ const LogLynxAPI = {
     hideTrafficServices: [], // Array of services to hide traffic on [{name: 'X', type: 'backend_name'}, ...]
     pendingRequests: new Map(), // Track in-flight requests to prevent duplicates
     abortControllers: new Map(), // Track abort controllers for request cancellation
-    
-    // Initial load blocking
-    isInitialLoadComplete: false, // Flag to track if initial load is complete - blocks all API calls until index is ready
-    _blockedRequests: [], // Queue of requests made during initial load (for debugging)
 
     // Performance monitoring
     _performanceMetrics: {
@@ -56,33 +52,8 @@ const LogLynxAPI = {
      * Make a GET request with optional caching and request deduplication
      */
     async get(endpoint, params = {}, useCache = false) {
-        // CRITICAL: Block all API calls during initial load (first page load + index creation)
-        // Allow version and processing stats endpoints through (used by startup loader)
-        if (!this.isInitialLoadComplete && 
-            endpoint !== '/version' && 
-            endpoint !== '/logs/processing-stats' &&
-            endpoint !== '/summary') {
-            
-            // Log blocked request for debugging
-            this._blockedRequests.push({
-                endpoint,
-                timestamp: Date.now(),
-                reason: 'Initial load in progress'
-            });
-            
-            // Keep buffer manageable
-            if (this._blockedRequests.length > 100) {
-                this._blockedRequests.shift();
-            }
-            
-            console.log(`[API] Blocking request during initial load: ${endpoint}`);
-            return { 
-                success: false, 
-                error: 'Application is initializing. Please wait...',
-                blocked: true,
-                initialLoadComplete: this.isInitialLoadComplete
-            };
-        }
+        // NOTE: Backend middleware now handles blocking during initial load
+        // No need for client-side blocking - this prevents double-blocking issues
         
         // Build URL with parameters
         const url = this.buildURL(endpoint, params);
@@ -111,6 +82,19 @@ const LogLynxAPI = {
                 const response = await fetch(url, {
                     signal: abortController.signal
                 });
+
+                // Handle 503 Service Unavailable (initial load in progress)
+                if (response.status === 503) {
+                    const data = await response.json();
+                    console.log(`[API] Service initializing: ${endpoint} - ${data.message}`);
+                    return {
+                        success: false,
+                        error: data.message || 'Service initializing. Please wait...',
+                        status: 503,
+                        initializing: true,
+                        data: data
+                    };
+                }
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -898,70 +882,14 @@ const LogLynxAPI = {
     },
 
     /**
-     * Get recent requests for a specific IP
-     * @param {string} ip - IP address
-     * @param {number} limit - Number of recent requests (1-500, default: 50)
-     */
-    async getIPRecentRequests(ip, limit = 50) {
-        return this.get(`/ip/${ip}/recent-requests`, { limit });
-    },
-
-    /**
      * Search for IPs matching a query
      * @param {string} query - Search query (partial IP)
      * @param {number} limit - Number of results (1-100)
      */
     async searchIPs(query, limit = 20) {
         return this.get('/ip/search', { q: query, limit });
-    },
-
-    // ======================
-    // Diagnostics Methods
-    // ======================
-
-    /**
-     * Get diagnostic information about initial load status and blocked requests
-     * Useful for debugging why pages aren't loading during startup
-     */
-    getInitialLoadDiagnostics() {
-        return {
-            isInitialLoadComplete: this.isInitialLoadComplete,
-            blockedRequestsCount: this._blockedRequests.length,
-            recentBlockedRequests: this._blockedRequests.slice(-10).map(req => ({
-                endpoint: req.endpoint,
-                timestamp: new Date(req.timestamp).toISOString(),
-                reason: req.reason
-            })),
-            performanceMetrics: {
-                totalRequests: this._performanceMetrics.totalRequests,
-                successfulRequests: this._performanceMetrics.successfulRequests,
-                failedRequests: this._performanceMetrics.failedRequests,
-                avgResponseTime: this._performanceMetrics.totalRequests > 0 
-                    ? (this._performanceMetrics.totalResponseTime / this._performanceMetrics.successfulRequests).toFixed(2)
-                    : 0,
-                slowestRequest: this._performanceMetrics.slowestRequest
-            }
-        };
-    },
-
-    /**
-     * Log diagnostics to console for debugging
-     */
-    logInitialLoadDiagnostics() {
-        const diagnostics = this.getInitialLoadDiagnostics();
-        console.group('[API Diagnostics]');
-        console.log('Initial Load Status:', diagnostics);
-        console.table(diagnostics.recentBlockedRequests);
-        console.groupEnd();
     }
 };
 
 // Export for use in other scripts
 window.LogLynxAPI = LogLynxAPI;
-
-// Attach diagnostics to window for easy access during debugging
-window.LogLynxAPIDiagnostics = () => {
-    const api = window.LogLynxAPI;
-    api.logInitialLoadDiagnostics();
-    return api.getInitialLoadDiagnostics();
-};
