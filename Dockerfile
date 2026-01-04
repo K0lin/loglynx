@@ -35,9 +35,6 @@ VOLUME ["/data", "/app/geoip", "/traefik/logs"]
 
 EXPOSE 8080
 
-# Run as non-root user for security
-USER 65532
-
 ENTRYPOINT ["/usr/local/bin/loglynx"]
 
 
