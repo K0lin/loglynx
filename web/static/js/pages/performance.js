@@ -32,6 +32,12 @@ let allPerformanceData = {};
 
 // Load all performance data
 async function loadPerformanceData() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[Performance] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         const hours = currentTimeRange;
 
@@ -865,7 +871,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 
-    // Initialize refresh controls (will do initial data load automatically)
+    // Listen for startup loader ready event
+    window.addEventListener('loglynx:ready', () => {
+        console.log('[Performance] Startup loader ready, loading initial data');
+        loadPerformanceData();
+    });
+
+    // Initialize refresh controls (will do initial data load automatically if startup loader is ready)
     LogLynxUtils.initRefreshControls(loadPerformanceData, 30);
 });
 

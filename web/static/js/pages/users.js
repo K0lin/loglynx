@@ -31,6 +31,12 @@ let allUserData = {};
 
 // Load all user analytics data
 async function loadUserAnalyticsData() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[Users] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         // Load summary for KPIs
         const summaryResult = await LogLynxAPI.getSummary();
@@ -748,7 +754,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 
-    // Initialize refresh controls (will do initial data load automatically)
+    // Listen for startup loader ready event
+    window.addEventListener('loglynx:ready', () => {
+        console.log('[Users] Startup loader ready, loading initial data');
+        loadUserAnalyticsData();
+    });
+
+    // Initialize refresh controls (will do initial data load automatically if startup loader is ready)
     LogLynxUtils.initRefreshControls(loadUserAnalyticsData, 30);
 });
 

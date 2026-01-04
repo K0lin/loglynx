@@ -547,6 +547,29 @@ func (h *DashboardHandler) GetLogProcessingStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+// IsLogProcessingComplete checks if all log processing is complete (100%)
+func (h *DashboardHandler) IsLogProcessingComplete() bool {
+	stats, err := h.statsRepo.GetLogProcessingStats()
+	if err != nil {
+		h.logger.WithCaller().Error("Failed to check log processing completion", h.logger.Args("error", err))
+		return false
+	}
+
+	// If no log sources, consider complete
+	if len(stats) == 0 {
+		return true
+	}
+
+	// Check if all sources are 100% processed
+	for _, stat := range stats {
+		if stat.Percentage < 100.0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 // GetTopBrowsers returns top browsers
 func (h *DashboardHandler) GetTopBrowsers(c *gin.Context) {
 	limit := 10

@@ -31,6 +31,12 @@ let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
 
 // Load all dashboard data
 async function loadDashboardData() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[Overview] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         const hours = currentTimeRange;
 
@@ -513,7 +519,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 
-    // Initialize refresh controls (will do initial data load automatically)
+    // Listen for startup loader ready event
+    window.addEventListener('loglynx:ready', () => {
+        console.log('[Overview] Startup loader ready, loading initial data');
+        loadDashboardData();
+    });
+
+    // Initialize refresh controls (will do initial data load automatically if startup loader is ready)
     LogLynxUtils.initRefreshControls(loadDashboardData, 30);
 });
 

@@ -40,6 +40,12 @@ function getHeatmapDaysForRange(hours) {
 
 // Load all traffic data
 async function loadTrafficData() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[Traffic] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         const hours = currentTimeRange;
 
@@ -832,7 +838,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 
-    // Initialize refresh controls (will do initial data load automatically)
+    // Listen for startup loader ready event
+    window.addEventListener('loglynx:ready', () => {
+        console.log('[Traffic] Startup loader ready, loading initial data');
+        loadTrafficData();
+    });
+
+    // Initialize refresh controls (will do initial data load automatically if startup loader is ready)
     LogLynxUtils.initRefreshControls(loadTrafficData, 30);
 });
 

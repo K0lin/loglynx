@@ -34,6 +34,12 @@ let currentLookupData = null;
 
 // Load all geographic data
 async function loadGeographicData() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[Geographic] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         // Load countries
         const countriesResult = await LogLynxAPI.getTopCountries(0); // 0 = all countries
@@ -851,7 +857,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 
-    // Initialize refresh controls (will do initial data load automatically)
+    // Listen for startup loader ready event
+    window.addEventListener('loglynx:ready', () => {
+        console.log('[Geographic] Startup loader ready, loading initial data');
+        loadGeographicData();
+    });
+
+    // Initialize refresh controls (will do initial data load automatically if startup loader is ready)
     LogLynxUtils.initRefreshControls(loadGeographicData, 60); // 60 seconds for map data
 });
 

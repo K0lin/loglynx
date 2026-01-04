@@ -26,6 +26,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"loglynx/internal/api/handlers"
@@ -53,6 +54,49 @@ type Config struct {
 	SplashScreenEnabled bool // If false, splash screen is disabled on startup
 }
 
+// processingCheckMiddleware blocks API calls during initial log processing
+func processingCheckMiddleware(dashboardHandler *handlers.DashboardHandler, logger *pterm.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Allow certain endpoints during processing
+		path := c.Request.URL.Path
+		allowedPaths := []string{
+			"/health",
+			"/api/v1/version",
+			"/api/v1/stats/log-processing",
+		}
+
+		// Check if path is allowed
+		for _, allowedPath := range allowedPaths {
+			if path == allowedPath {
+				// Add cache control headers to prevent caching
+				c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+				c.Header("Pragma", "no-cache")
+				c.Header("Expires", "0")
+				c.Next()
+				return
+			}
+		}
+
+		// For other API paths, check if processing is complete
+		if strings.HasPrefix(path, "/api/v1/") {
+			if !dashboardHandler.IsLogProcessingComplete() {
+				logger.Info("Blocking API request during log processing", logger.Args("path", path))
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"error": "Log processing is in progress. Please wait for initial processing to complete.",
+				})
+				c.Abort()
+				return
+			}
+		}
+
+		// Add cache control headers to all responses
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+		c.Next()
+	}
+}
+
 // NewServer creates a new HTTP server
 func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, logger *pterm.Logger) *Server {
 	// Set Gin mode
@@ -68,6 +112,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 	router.Use(corsMiddleware())
+	router.Use(processingCheckMiddleware(dashboardHandler, logger))
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {

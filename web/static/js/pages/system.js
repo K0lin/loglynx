@@ -32,6 +32,12 @@ let retentionDays = 365; // Default retention, will be updated from server
 
 // Load system stats
 async function loadSystemStats() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[System] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         const result = await LogLynxAPI.getSystemStats();
         if (result.success) {
@@ -66,6 +72,12 @@ function updateAllButtonLabel() {
 
 // Load records timeline chart data
 async function loadRecordsTimeline() {
+    // Check if startup loader is still active (splash screen showing)
+    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
+        console.log('[System] Startup loader not ready, skipping data load');
+        return;
+    }
+
     try {
         const result = await LogLynxAPI.getSystemTimeline(currentTimeRange);
         if (result.success) {
@@ -304,9 +316,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize time range selector
     initTimeRangeSelector();
 
-    // Load all data initially
-    loadSystemStats();
-    loadRecordsTimeline();
+    // Listen for startup loader ready event
+    window.addEventListener('loglynx:ready', () => {
+        console.log('[System] Startup loader ready, loading initial data');
+        loadSystemStats();
+        loadRecordsTimeline();
+    });
+
+    // Load all data initially if startup loader is ready
+    if (!window.LogLynxStartupLoader || window.LogLynxStartupLoader.isReady) {
+        loadSystemStats();
+        loadRecordsTimeline();
+    }
 
     // Set up auto-refresh every 5 seconds
     LogLynxUtils.initRefreshControls(() => {
