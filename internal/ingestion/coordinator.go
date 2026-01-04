@@ -256,13 +256,18 @@ func (c *Coordinator) GetProcessorCount() int {
 }
 
 // IsInitialLoadComplete returns whether all processors have completed their initial load
+// AND whether database indexes have been created
 // This is used to determine when the application is ready to serve API requests
 func (c *Coordinator) IsInitialLoadComplete() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	// If no processors, initial load is complete
+	// If no processors, check if indexes are being created
 	if len(c.processors) == 0 {
+		// Even with no processors, check if indexes are being created
+		if c.httpRepo.IsIndexCreationActive() {
+			return false
+		}
 		return true
 	}
 
@@ -276,6 +281,11 @@ func (c *Coordinator) IsInitialLoadComplete() bool {
 		if isInitial {
 			return false
 		}
+	}
+
+	// All processors done, but check if indexes are being created
+	if c.httpRepo.IsIndexCreationActive() {
+		return false
 	}
 
 	return true

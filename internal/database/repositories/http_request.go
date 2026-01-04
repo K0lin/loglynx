@@ -109,14 +109,18 @@ type HTTPRequestRepository interface {
 	CountBySourceName(sourceName string) (int64, error)
 	// First-load optimization control
 	DisableFirstLoadMode()
+	// Index creation status
+	IsIndexCreationActive() bool
 }
 
 type httpRequestRepo struct {
-	db            *gorm.DB
-	logger        *pterm.Logger
-	isFirstLoad   bool       // Global flag: true when database is empty at startup
-	firstLoadMu   sync.Mutex // Protects isFirstLoad flag
-	firstLoadOnce sync.Once  // Ensures first-load check happens only once
+	db                  *gorm.DB
+	logger              *pterm.Logger
+	isFirstLoad         bool       // Global flag: true when database is empty at startup
+	firstLoadMu         sync.Mutex // Protects isFirstLoad flag
+	firstLoadOnce       sync.Once  // Ensures first-load check happens only once
+	indexCreationActive bool       // True while indexes are being created
+	indexCreationMu     sync.RWMutex // Protects indexCreationActive flag
 }
 
 // NewHTTPRequestRepository creates a new HTTP request repository
@@ -218,9 +222,28 @@ func (r *httpRequestRepo) DisableFirstLoadMode() {
 	}
 }
 
+// IsIndexCreationActive returns true if indexes are currently being created
+func (r *httpRequestRepo) IsIndexCreationActive() bool {
+	r.indexCreationMu.RLock()
+	defer r.indexCreationMu.RUnlock()
+	return r.indexCreationActive
+}
+
 // createDeferredIndexes creates performance indexes after initial data load
 func (r *httpRequestRepo) createDeferredIndexes() {
-	r.logger.Info("🔨 Creating performance indexes in background (this may take a few minutes)...")
+	// Mark index creation as active
+	r.indexCreationMu.Lock()
+	r.indexCreationActive = true
+	r.indexCreationMu.Unlock()
+
+	// Ensure we mark as complete when done
+	defer func() {
+		r.indexCreationMu.Lock()
+		r.indexCreationActive = false
+		r.indexCreationMu.Unlock()
+	}()
+
+	r.logger.Info("Creating performance indexes in background (this may take a few minutes)...")
 
 	startTime := time.Now()
 
