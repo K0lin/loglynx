@@ -265,7 +265,7 @@ func main() {
 		}
 	}()
 
-	logger.Info("🐱 LogLynx is running",
+	logger.Info("LogLynx is running",
 		logger.Args(
 			"url", pterm.Sprintf("http://localhost:%d", cfg.Server.Port),
 			"processors", coordinator.GetProcessorCount(),
@@ -281,7 +281,7 @@ func main() {
 			if coordinator.IsInitialLoadComplete() {
 				// All initial loads are complete, unlock API
 				webServer.MarkInitialLoadComplete()
-				logger.Info("✓ Initial load complete - All log sources processed, API now fully available")
+				logger.Info("Initial load complete - All log sources processed, API now fully available")
 				return
 			}
 		}

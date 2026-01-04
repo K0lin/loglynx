@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package database
 
 import (
@@ -169,7 +168,7 @@ func (pm *PoolMonitor) collectAndAnalyze() {
 		pm.lastAlert = time.Now()
 		pm.mu.Unlock()
 
-		pm.logger.Warn("⚠️  Connection pool high utilization detected",
+		pm.logger.Warn("Connection pool high utilization detected",
 			pm.logger.Args(
 				"utilization", fmt.Sprintf("%.1f%%", stats.Utilization*100),
 				"in_use", stats.InUse,
@@ -186,7 +185,7 @@ func (pm *PoolMonitor) collectAndAnalyze() {
 
 	// Check for saturation
 	if stats.IsSaturated {
-		pm.logger.Error("🚨 Connection pool SATURATED - all connections in use!",
+		pm.logger.Error("Connection pool SATURATED - all connections in use!",
 			pm.logger.Args(
 				"in_use", stats.InUse,
 				"max_open", stats.MaxOpenConns,
@@ -282,7 +281,7 @@ func (pm *PoolMonitor) performAutoTuning(stats *PoolStats) {
 
 	// Only increase if current utilization is high
 	if stats.Utilization >= pm.threshold && optimalMaxOpen > currentMaxOpen {
-		pm.logger.Info("🔧 Auto-tuning connection pool (increasing capacity)",
+		pm.logger.Info("Auto-tuning connection pool (increasing capacity)",
 			pm.logger.Args(
 				"current_max_open", currentMaxOpen,
 				"new_max_open", optimalMaxOpen,
@@ -300,7 +299,7 @@ func (pm *PoolMonitor) performAutoTuning(stats *PoolStats) {
 		pm.mu.Unlock()
 	} else if stats.IdleRatio > 0.7 && optimalMaxOpen < currentMaxOpen {
 		// Decrease if too many idle connections (optimization)
-		pm.logger.Info("🔧 Auto-tuning connection pool (optimizing idle)",
+		pm.logger.Info("Auto-tuning connection pool (optimizing idle)",
 			pm.logger.Args(
 				"current_max_open", currentMaxOpen,
 				"new_max_open", optimalMaxOpen,
@@ -343,7 +342,7 @@ func (pm *PoolMonitor) PrintSummary() {
 	adjustments := pm.totalAdjustments
 	pm.mu.RUnlock()
 
-	pm.logger.Info("📊 Connection Pool Summary",
+	pm.logger.Info("Connection Pool Summary",
 		pm.logger.Args(
 			"max_open_conns", stats.MaxOpenConns,
 			"current_open", stats.OpenConns,

@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package database
 
 import (
@@ -187,7 +186,7 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 				maxIdleConns = 10
 			}
 
-			logger.Info("🔧 Auto-tuned connection pool based on CPU cores",
+			logger.Info("Auto-tuned connection pool based on CPU cores",
 				logger.Args(
 					"cpu_cores", cpuCores,
 					"max_open_conns", maxOpenConns,
@@ -221,7 +220,7 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	isDatabaseEmpty := (count == 0)
 
 	if isDatabaseEmpty {
-		logger.Info("🚀 Empty database detected - deferring index creation until after first data load for optimal performance")
+		logger.Info("Empty database detected - deferring index creation until after first data load for optimal performance")
 		logger.Info("   Indexes will be created automatically when initial data load completes")
 	} else {
 		// Database has data - create/verify indexes now
