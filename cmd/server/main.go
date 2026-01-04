@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package main
 
 import (
@@ -155,14 +154,19 @@ func main() {
 	logger.Debug("Initializing parser registry...")
 	parserRegistry := parsers.NewRegistry(logger)
 
-	// Run initial discovery SYNCHRONOUSLY to ensure log sources are found before starting ingestion
-	logger.Info("Discovering log sources...")
+	// Initialize discovery engine
 	discoveryEngine := discovery.NewEngine(sourceRepo, logger)
-	if err := discoveryEngine.Run(logger); err != nil {
-		logger.Warn("Initial discovery failed", logger.Args("error", err))
-	} else {
-		logger.Info("Log source discovery completed")
-	}
+
+	// Run initial discovery ASYNCHRONOUSLY in background to speed up server startup
+	// This allows the server to start accepting requests while discovery is happening
+	logger.Info("Starting log source discovery in background...")
+	go func() {
+		if err := discoveryEngine.Run(logger); err != nil {
+			logger.Warn("Initial discovery failed", logger.Args("error", err))
+		} else {
+			logger.Info("Log source discovery completed")
+		}
+	}()
 
 	// Run periodic discovery in background for late-arriving files
 	go func() {
@@ -190,6 +194,7 @@ func main() {
 
 	// Initialize ingestion coordinator with initial import limiting and performance config
 	// NOTE: Coordinator is initialized before cleanup service because cleanup needs to pause ingestion during VACUUM
+	// NOTE: Ingestion will start in standby mode and wait for log sources to be discovered
 	logger.Debug("Initializing ingestion coordinator...")
 	coordinator := ingestion.NewCoordinator(
 		sourceRepo,
@@ -217,8 +222,8 @@ func main() {
 	)
 	cleanupService.Start()
 
-	// Start ingestion engine
-	logger.Info("Starting ingestion engine...")
+	// Start ingestion engine in standby mode (will wait for log sources to be discovered)
+	logger.Info("Starting ingestion engine (will wait for log sources)...")
 	if err := coordinator.Start(); err != nil {
 		logger.WithCaller().Fatal("Failed to start ingestion coordinator", logger.Args("error", err))
 	}
@@ -226,18 +231,12 @@ func main() {
 	logger.Info("Ingestion engine started",
 		logger.Args("processors", coordinator.GetProcessorCount()))
 
-	// Start database sync loop to automatically pick up new log sources
-	// This ensures that when periodic discovery adds new sources to the database,
-	// the coordinator will automatically start processing them
+	// Start database sync loop to automatically pick up newly discovered log sources
+	// This is essential now that discovery runs in background
 	coordinator.StartSyncLoop(30 * time.Second)
 
-	// Give the ingestion engine a moment to start processing before accepting web requests
-	// This improves initial user experience by ensuring some data is available
-	if coordinator.GetProcessorCount() > 0 {
-		logger.Info("Waiting for initial log processing to begin...")
-		// Wait up to 3 seconds for processing to start
-		time.Sleep(3 * time.Second)
-	}
+	// Skip the 3-second wait - server is now lighter and can start immediately
+	// Initial log processing will be monitored by the frontend's splash screen
 
 	// Initialize web server with configured settings
 	logger.Info("Initializing web server...")

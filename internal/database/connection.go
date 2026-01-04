@@ -24,8 +24,6 @@ package database
 import (
 	"context"
 	"errors"
-	"loglynx/internal/database/repositories"
-	"loglynx/internal/discovery"
 	"os"
 	"runtime"
 	"strings"
@@ -206,12 +204,13 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 			"conn_max_life", cfg.ConnMaxLife,
 		))
 
-	// Run migrations
-	logger.Trace("Running database migrations.")
-	if err := RunMigrations(db); err != nil {
-		logger.WithCaller().Fatal("Failed to run database migrations.", logger.Args("error", err))
-		// Fatal() terminates the program, so no code after this will execute
-	}
+	// Run migrations in background (non-blocking) - migrations are idempotent in GORM
+	logger.Trace("Running database migrations in background...")
+	go func() {
+		if err := RunMigrations(db); err != nil {
+			logger.WithCaller().Warn("Failed to run database migrations.", logger.Args("error", err))
+		}
+	}()
 
 	// Check if database is empty (first load)
 	// We need to import models for this check
@@ -238,23 +237,9 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 		}()
 	}
 
-	// Run discovery engine in background to speed up startup
-	go func() {
-		logger.Debug("Running log source discovery in background...")
-		engine := discovery.NewEngine(repositories.NewLogSourceRepository(db), logger)
-		if err := engine.Run(logger); err != nil {
-			logger.Warn("Failed to run discovery engine", logger.Args("error", err))
-			return
-		}
-
-		logSourceRepo, err := repositories.NewLogSourceRepository(db).FindAll()
-		if err != nil {
-			logger.Warn("Failed to retrieve log sources", logger.Args("error", err))
-			return
-		}
-
-		logger.Info("Discovered log sources", logger.Args("count", len(logSourceRepo)))
-	}()
+	// Discovery is now handled in main.go - do NOT run it here
+	// (Running as synchronous initial discovery followed by periodic background discovery)
+	// This avoids duplicate discovery runs and improves startup performance
 
 	// Start pool monitoring if enabled
 	if cfg.PoolMonitoringEnabled {
