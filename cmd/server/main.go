@@ -296,11 +296,6 @@ func main() {
 			logger.WithCaller().Error("Web server error", logger.Args("error", err))
 		}
 	}()
-	go func() {
-		if err := webServer.Run(); err != nil {
-			logger.WithCaller().Error("Web server error", logger.Args("error", err))
-		}
-	}()
 
 	logger.Info("🐱 LogLynx is running",
 		logger.Args(

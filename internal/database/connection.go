@@ -229,21 +229,51 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 			cfg.OnIndexingComplete()
 		}
 	} else {
-		// Database has data - defer index verification to background to avoid blocking startup
-		// OPTIMIZED: Run index verification in background to speed up startup on existing DBs
-		logger.Info("📊 Existing data found - index verification will run in background")
+		// Database has data - verify indexes exist but don't block startup
+		// OPTIMIZED: Run index verification in background with timeout to speed up startup
+		logger.Info("📊 Existing data found - indexes will be verified in background")
 		go func() {
 			// Small delay to let the server start accepting requests first
-			time.Sleep(2 * time.Second)
+			time.Sleep(1 * time.Second)
 			logger.Debug("Starting background database index verification...")
-			if err := OptimizeDatabase(db, logger); err != nil {
-				logger.Warn("Database optimization had warnings", logger.Args("error", err))
-			} else {
-				logger.Info("✅ Database indexes verified/created in background")
-				// Notify that indexing is complete
+			
+			// Set a timeout of 30 seconds for index verification
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			
+			// Run in a separate goroutine with timeout
+			done := make(chan error, 1)
+			go func() {
+				done <- OptimizeDatabase(db, logger)
+			}()
+			
+			select {
+			case err := <-done:
+				if err != nil {
+					logger.Warn("Database optimization had warnings", logger.Args("error", err))
+				} else {
+					logger.Info("✅ Database indexes verified/created in background")
+				}
+				// Always mark as complete when indexing finishes (success or failure)
 				if cfg.OnIndexingComplete != nil {
 					cfg.OnIndexingComplete()
 				}
+			case <-ctx.Done():
+				// Timeout - mark as complete anyway to not block API indefinitely
+				logger.Warn("Database index verification timed out after 30 seconds, proceeding anyway")
+				if cfg.OnIndexingComplete != nil {
+					cfg.OnIndexingComplete()
+				}
+			}
+		}()
+		
+		// Also mark as "optimistically complete" immediately for existing DBs
+		// This allows the API to serve if optimization takes too long
+		go func() {
+			time.Sleep(5 * time.Second)
+			if cfg.OnIndexingComplete != nil {
+				logger.Debug("Marking indexing as complete (optimization may still be running in background)")
+				cfg.OnIndexingComplete()
 			}
 		}()
 	}

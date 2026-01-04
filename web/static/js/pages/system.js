@@ -32,12 +32,6 @@ let retentionDays = 365; // Default retention, will be updated from server
 
 // Load system stats
 async function loadSystemStats() {
-    // Check if startup loader is still active (splash screen showing)
-    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
-        console.log('[System] Startup loader not ready, skipping data load');
-        return;
-    }
-
     try {
         const result = await LogLynxAPI.getSystemStats();
         if (result.success) {

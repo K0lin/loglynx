@@ -34,12 +34,6 @@ let currentLookupData = null;
 
 // Load all geographic data
 async function loadGeographicData() {
-    // Check if startup loader is still active (splash screen showing)
-    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
-        console.log('[Geographic] Startup loader not ready, skipping data load');
-        return;
-    }
-
     try {
         // Load countries
         const countriesResult = await LogLynxAPI.getTopCountries(0); // 0 = all countries

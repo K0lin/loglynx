@@ -31,12 +31,6 @@ let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
 
 // Load all dashboard data
 async function loadDashboardData() {
-    // Check if startup loader is still active (splash screen showing)
-    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
-        console.log('[Overview] Startup loader not ready, skipping data load');
-        return;
-    }
-
     try {
         const hours = currentTimeRange;
 

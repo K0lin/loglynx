@@ -32,12 +32,6 @@ let allPerformanceData = {};
 
 // Load all performance data
 async function loadPerformanceData() {
-    // Check if startup loader is still active (splash screen showing)
-    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
-        console.log('[Performance] Startup loader not ready, skipping data load');
-        return;
-    }
-
     try {
         const hours = currentTimeRange;
 

@@ -40,12 +40,6 @@ function getHeatmapDaysForRange(hours) {
 
 // Load all traffic data
 async function loadTrafficData() {
-    // Check if startup loader is still active (splash screen showing)
-    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
-        console.log('[Traffic] Startup loader not ready, skipping data load');
-        return;
-    }
-
     try {
         const hours = currentTimeRange;
 

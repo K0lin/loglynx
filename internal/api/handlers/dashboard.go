@@ -568,27 +568,32 @@ func (h *DashboardHandler) GetLogProcessingStats(c *gin.Context) {
 func (h *DashboardHandler) IsLogProcessingComplete() bool {
 	// First check if indexing is complete
 	if !h.IsIndexingComplete() {
+		h.logger.Trace("Log processing not complete: indexing still in progress")
 		return false
 	}
 
 	stats, err := h.statsRepo.GetLogProcessingStats()
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to check log processing completion", h.logger.Args("error", err))
-		return false
+		// On error, allow requests to proceed (don't block indefinitely)
+		return true
 	}
 
 	// If no log sources, consider complete
 	if len(stats) == 0 {
+		h.logger.Trace("Log processing complete: no log sources configured")
 		return true
 	}
 
 	// Check if all sources are 100% processed
 	for _, stat := range stats {
 		if stat.Percentage < 100.0 {
+			h.logger.Trace("Log processing not complete", h.logger.Args("source", stat.LogSourceName, "percentage", stat.Percentage))
 			return false
 		}
 	}
 
+	h.logger.Trace("Log processing complete: all sources at 100%")
 	return true
 }
 

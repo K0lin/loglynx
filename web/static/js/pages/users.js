@@ -31,12 +31,6 @@ let allUserData = {};
 
 // Load all user analytics data
 async function loadUserAnalyticsData() {
-    // Check if startup loader is still active (splash screen showing)
-    if (window.LogLynxStartupLoader && !window.LogLynxStartupLoader.isReady) {
-        console.log('[Users] Startup loader not ready, skipping data load');
-        return;
-    }
-
     try {
         // Load summary for KPIs
         const summaryResult = await LogLynxAPI.getSummary();
