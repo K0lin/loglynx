@@ -1155,10 +1155,11 @@ const LogLynxStartupLoader = {
 
                 this.updateLoadingMessage('Ready! Loading dashboard...');
                 this.isInitialLoad = false; // Mark that initial load is complete
+                this.isReady = true; // Mark as ready
 
-                // Small delay to show the message, then refresh
+                // Hide the splash screen and show content
                 setTimeout(() => {
-                    location.reload();
+                    this.onReady();
                 }, 500);
             } else {
                 // Data not yet available, wait and retry
