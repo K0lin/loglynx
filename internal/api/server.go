@@ -56,6 +56,12 @@ type Config struct {
 // processingCheckMiddleware blocks API calls during initial log processing
 func processingCheckMiddleware(dashboardHandler *handlers.DashboardHandler, logger *pterm.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// If dashboardHandler is nil, allow all requests (shouldn't happen but be safe)
+		if dashboardHandler == nil {
+			c.Next()
+			return
+		}
+
 		// Allow certain endpoints during processing
 		path := c.Request.URL.Path
 		allowedPaths := []string{
@@ -79,7 +85,7 @@ func processingCheckMiddleware(dashboardHandler *handlers.DashboardHandler, logg
 		// For other API paths, check if processing is complete
 		if strings.HasPrefix(path, "/api/v1/") {
 			if !dashboardHandler.IsLogProcessingComplete() {
-				logger.Info("Blocking API request during log processing", logger.Args("path", path))
+				logger.Debug("Blocking API request during log processing", logger.Args("path", path))
 				c.JSON(http.StatusServiceUnavailable, gin.H{
 					"error": "Log processing is in progress. Please wait for initial processing to complete.",
 				})

@@ -46,6 +46,9 @@ type Config struct {
 	PoolMonitoringInterval  time.Duration
 	PoolSaturationThreshold float64
 	AutoTuning              bool
+
+	// OnIndexingComplete callback - called when database indexing is complete
+	OnIndexingComplete func()
 }
 
 // SlowQueryLogger logs slow database queries for performance monitoring
@@ -221,6 +224,10 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	if isDatabaseEmpty {
 		logger.Info("🚀 Empty database detected - deferring index creation until after first data load for optimal performance")
 		logger.Info("   Indexes will be created automatically when initial data load completes")
+		// Mark indexing as complete immediately for empty database (will index after data arrives)
+		if cfg.OnIndexingComplete != nil {
+			cfg.OnIndexingComplete()
+		}
 	} else {
 		// Database has data - defer index verification to background to avoid blocking startup
 		// OPTIMIZED: Run index verification in background to speed up startup on existing DBs
@@ -233,6 +240,10 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 				logger.Warn("Database optimization had warnings", logger.Args("error", err))
 			} else {
 				logger.Info("✅ Database indexes verified/created in background")
+				// Notify that indexing is complete
+				if cfg.OnIndexingComplete != nil {
+					cfg.OnIndexingComplete()
+				}
 			}
 		}()
 	}

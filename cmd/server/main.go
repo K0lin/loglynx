@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/pterm/pterm"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -97,8 +99,19 @@ func main() {
 			"geoip_enabled", cfg.GeoIP.Enabled,
 		))
 
+	// Initialize repositories first (we need them for dashboard handler)
+	// Note: We'll connect to database right after
+	var db *gorm.DB
+	var statsRepo repositories.StatsRepository
+	var httpRepo repositories.HTTPRequestRepository
+	var dashboardHandler *handlers.DashboardHandler
+	
+	// Indexing state - used during DB connection before handler is created
+	var indexingCompleteMu sync.RWMutex
+	var indexingComplete bool
+
 	// Initialize database connection with configured settings
-	db, err := database.NewConnection(&database.Config{
+	db, err = database.NewConnection(&database.Config{
 		Path:         cfg.Database.Path,
 		MaxOpenConns: cfg.Database.MaxOpenConns,
 		MaxIdleConns: cfg.Database.MaxIdleConns,
@@ -109,16 +122,35 @@ func main() {
 		PoolMonitoringInterval:  cfg.Database.PoolMonitoringInterval,
 		PoolSaturationThreshold: cfg.Database.PoolSaturationThreshold,
 		AutoTuning:              cfg.Database.AutoTuning,
+
+		// Callback to notify when indexing is complete
+		OnIndexingComplete: func() {
+			indexingCompleteMu.Lock()
+			defer indexingCompleteMu.Unlock()
+			indexingComplete = true
+			// Also notify the handler if it's been created
+			if dashboardHandler != nil {
+				dashboardHandler.SetIndexingComplete()
+			}
+			logger.Debug("Indexing marked as complete")
+		},
 	}, logger)
 	if err != nil {
 		logger.WithCaller().Fatal("Failed to connect to database", logger.Args("error", err))
 	}
 
-	// Initialize repositories
 	logger.Debug("Initializing repositories...")
 	sourceRepo := repositories.NewLogSourceRepository(db)
-	httpRepo := repositories.NewHTTPRequestRepository(db, logger)
-	statsRepo := repositories.NewStatsRepository(db, logger)
+	httpRepo = repositories.NewHTTPRequestRepository(db, logger)
+	statsRepo = repositories.NewStatsRepository(db, logger)
+
+	// Now create dashboard handler for real and mark if indexing was already complete
+	dashboardHandler = handlers.NewDashboardHandler(statsRepo, httpRepo, logger)
+	indexingCompleteMu.RLock()
+	if indexingComplete {
+		dashboardHandler.SetIndexingComplete()
+	}
+	indexingCompleteMu.RUnlock()
 
 	// Initialize GeoIP enricher (optional - will work without GeoIP databases)
 	var geoIP *enrichment.GeoIPEnricher
@@ -240,7 +272,7 @@ func main() {
 
 	// Initialize web server with configured settings
 	logger.Info("Initializing web server...")
-	dashboardHandler := handlers.NewDashboardHandler(statsRepo, httpRepo, logger)
+	// Note: dashboardHandler already created earlier to pass callback to database connection
 	realtimeHandler := handlers.NewRealtimeHandler(metricsCollector, logger)
 	systemHandler := handlers.NewSystemHandler(
 		statsRepo,
@@ -259,6 +291,11 @@ func main() {
 	}, dashboardHandler, realtimeHandler, systemHandler, logger)
 
 	// Start web server in goroutine
+	go func() {
+		if err := webServer.Run(); err != nil {
+			logger.WithCaller().Error("Web server error", logger.Args("error", err))
+		}
+	}()
 	go func() {
 		if err := webServer.Run(); err != nil {
 			logger.WithCaller().Error("Web server error", logger.Args("error", err))
