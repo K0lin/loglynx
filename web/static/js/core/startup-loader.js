@@ -56,6 +56,10 @@ const LogLynxStartupLoader = {
     async init() {
         console.log('[StartupLoader] Initializing...');
 
+        // CRITICAL: Mark initial load as starting - this blocks all API calls in LogLynxAPI
+        LogLynxAPI.isInitialLoadComplete = false;
+        console.log('[StartupLoader] Initial load lock enabled - API calls blocked');
+
         // Load configuration from window variable (set by server in template)
         if (window.LOGLYNX_CONFIG && typeof window.LOGLYNX_CONFIG.splashScreenEnabled === 'boolean') {
             this.splashScreenEnabled = window.LOGLYNX_CONFIG.splashScreenEnabled;
@@ -66,18 +70,23 @@ const LogLynxStartupLoader = {
         if (!this.splashScreenEnabled) {
             console.log('[StartupLoader] Splash screen disabled by configuration');
             this.isReady = true;
+            // Unlock API calls since we're not doing initial load
+            LogLynxAPI.isInitialLoadComplete = true;
             return;
         }
 
         // If already checked and ready, skip entirely
         if (this.alreadyChecked && this.isReady) {
             console.log('[StartupLoader] Already ready, skipping loader');
+            // Unlock API calls
+            LogLynxAPI.isInitialLoadComplete = true;
             return;
         }
 
         // If already checked but not ready, show loader immediately
         if (this.alreadyChecked && !this.isReady) {
             console.log('[StartupLoader] Previously checked and not ready, showing loader');
+
             this.showLoadingScreen();
             await this.checkProcessingStatus();
             return;
@@ -1102,6 +1111,10 @@ const LogLynxStartupLoader = {
 
                 this.updateLoadingMessage('Ready! Refreshing page...');
                 this.isInitialLoad = false; // Mark that initial load is complete
+                
+                // Unlock API before reload so subsequent requests work immediately
+                LogLynxAPI.isInitialLoadComplete = true;
+                console.log('[StartupLoader] Initial load lock released before page reload');
 
                 // Small delay to show the message, then refresh
                 setTimeout(() => {
@@ -1188,6 +1201,10 @@ const LogLynxStartupLoader = {
      */
     onReady() {
         console.log('[StartupLoader] Application is ready!');
+        
+        // CRITICAL: Unlock API calls now that initial load and index creation is complete
+        LogLynxAPI.isInitialLoadComplete = true;
+        console.log('[StartupLoader] Initial load lock released - API calls enabled');
 
         // Clear check timer
         if (this.checkTimer) {
