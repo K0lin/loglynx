@@ -36,6 +36,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64
           tags: ${{ env.IMAGE }}:dev-k
 
       - name: Build and push (main -> dev)
@@ -44,6 +45,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64
           tags: ${{ env.IMAGE }}:dev
 
       - name: Build and push (release -> latest and version)
@@ -52,6 +54,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.ref_name }}
