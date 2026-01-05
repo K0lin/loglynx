@@ -328,8 +328,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // Whitelisted endpoints: /version and /stats/log-processing (used by startup loader)
 func initialLoadBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Skip blocking if initial load is complete or splash screen is disabled
-		if ils.IsInitialLoadComplete() || !ils.splashEnabled {
+		// Skip blocking if initial load is complete
+		if ils.IsInitialLoadComplete() {
 			c.Next()
 			return
 		}
