@@ -336,8 +336,7 @@ func initialLoadBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) 
 
 		// Whitelist endpoints that are needed during startup
 		if c.Request.URL.Path == "/api/v1/version" || 
-		   c.Request.URL.Path == "/api/v1/stats/log-processing" ||
-		   c.Request.URL.Path == "/api/v1/stats/summary" {
+		   c.Request.URL.Path == "/api/v1/stats/log-processing" {
 			c.Next()
 			return
 		}
