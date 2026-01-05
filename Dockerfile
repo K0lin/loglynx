@@ -35,4 +35,6 @@ VOLUME ["/data", "/app/geoip", "/traefik/logs"]
 
 EXPOSE 8080
 
+
 ENTRYPOINT ["/usr/local/bin/loglynx"]
+
