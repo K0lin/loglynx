@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,13 +19,13 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package api
 
 import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"loglynx/internal/api/handlers"
@@ -35,6 +35,45 @@ import (
 	"github.com/pterm/pterm"
 )
 
+// InitialLoadState tracks whether the initial load and index creation is complete
+// This prevents API calls from overwhelming the database during startup
+type InitialLoadState struct {
+	mu              sync.RWMutex
+	isInitialLoad   bool
+	splashEnabled   bool
+	startTime       time.Time
+}
+
+// NewInitialLoadState creates a new initial load state tracker
+func NewInitialLoadState(splashEnabled bool) *InitialLoadState {
+	return &InitialLoadState{
+		isInitialLoad: true,
+		splashEnabled: splashEnabled,
+		startTime:     time.Now(),
+	}
+}
+
+// MarkInitialLoadComplete marks the initial load as complete
+func (ils *InitialLoadState) MarkInitialLoadComplete() {
+	ils.mu.Lock()
+	defer ils.mu.Unlock()
+	ils.isInitialLoad = false
+}
+
+// IsInitialLoadComplete returns whether initial load is complete
+func (ils *InitialLoadState) IsInitialLoadComplete() bool {
+	ils.mu.RLock()
+	defer ils.mu.RUnlock()
+	return !ils.isInitialLoad
+}
+
+// GetElapsedTime returns how long initial load has been running
+func (ils *InitialLoadState) GetElapsedTime() time.Duration {
+	ils.mu.RLock()
+	defer ils.mu.RUnlock()
+	return time.Since(ils.startTime)
+}
+
 // Server represents the HTTP server
 type Server struct {
 	router              *gin.Engine
@@ -42,6 +81,7 @@ type Server struct {
 	logger              *pterm.Logger
 	port                int
 	splashScreenEnabled bool
+	initialLoadState    *InitialLoadState
 }
 
 // Config holds server configuration
@@ -68,6 +108,8 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 	router.Use(corsMiddleware())
+
+	initialLoadState := NewInitialLoadState(cfg.SplashScreenEnabled)
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
@@ -170,6 +212,8 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 
 	// API routes
 	api := router.Group("/api/v1")
+	// Apply initial load blocking middleware to API group
+	api.Use(initialLoadBlockingMiddleware(initialLoadState, logger))
 	{
 		api.GET("/version", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"version": version.Version})
@@ -252,6 +296,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		logger:              logger,
 		port:                cfg.Port,
 		splashScreenEnabled: cfg.SplashScreenEnabled,
+		initialLoadState:    initialLoadState,
 	}
 }
 
@@ -265,10 +310,53 @@ func (s *Server) Run() error {
 	return nil
 }
 
+// MarkInitialLoadComplete marks the initial load as complete
+// Call this after index creation is complete to allow normal API usage
+func (s *Server) MarkInitialLoadComplete() {
+	s.initialLoadState.MarkInitialLoadComplete()
+	s.logger.Info("Initial load complete - API calls now enabled")
+}
+
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down web server...")
 	return s.server.Shutdown(ctx)
+}
+
+// initialLoadBlockingMiddleware blocks API calls during initial load (first startup)
+// This prevents excessive database load during index creation
+// Whitelisted endpoints: /version and /stats/log-processing (used by startup loader)
+func initialLoadBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Skip blocking if initial load is complete
+		if ils.IsInitialLoadComplete() {
+			c.Next()
+			return
+		}
+
+		// Whitelist endpoints that are needed during startup
+		if c.Request.URL.Path == "/api/v1/version" || 
+		   c.Request.URL.Path == "/api/v1/stats/log-processing" {
+			c.Next()
+			return
+		}
+
+		// Block all other API calls with 503 Service Unavailable
+		// 503 is appropriate because the service is temporarily unavailable during initialization
+		elapsed := ils.GetElapsedTime()
+		logger.Debug("Blocking API request during initial load",
+			logger.Args("path", c.Request.URL.Path, "elapsed_ms", elapsed.Milliseconds()))
+
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":              "Service initializing",
+			"message":            "The application is currently initializing and indexing logs. Please wait...",
+			"status":             "initializing",
+			"elapsed_seconds":    elapsed.Seconds(),
+			"max_wait_estimate":  "This usually takes between 10-120 seconds depending on your log volume",
+		})
+
+		c.Abort()
+	}
 }
 
 // corsMiddleware adds CORS headers

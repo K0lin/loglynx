@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package main
 
 import (
@@ -204,6 +203,9 @@ func main() {
 		cfg.Performance.WorkerPoolSize,
 	)
 
+	// Set processor pauser on httpRepo to enable coordinated pausing during index creation
+	httpRepo.SetProcessorPauser(coordinator)
+
 	// Initialize database cleanup service with coordinator reference for maintenance windows
 	logger.Debug("Initializing database cleanup service...")
 	cleanupService := database.NewCleanupService(
@@ -266,11 +268,27 @@ func main() {
 		}
 	}()
 
-	logger.Info("🐱 LogLynx is running",
+	logger.Info("LogLynx is running",
 		logger.Args(
 			"url", pterm.Sprintf("http://localhost:%d", cfg.Server.Port),
 			"processors", coordinator.GetProcessorCount(),
 		))
+
+	// Start goroutine to monitor initial load completion
+	// Once all processors finish their initial load, unlock API calls
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond) // Check every 500ms
+		defer ticker.Stop()
+
+		for range ticker.C {
+			if coordinator.IsInitialLoadComplete() {
+				// All initial loads are complete, unlock API
+				webServer.MarkInitialLoadComplete()
+				logger.Info("Initial load complete - All log sources processed, API now fully available")
+				return
+			}
+		}
+	}()
 
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)

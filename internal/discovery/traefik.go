@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,15 +19,14 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package discovery
 
 import (
 	"bufio"
 	"encoding/json"
+	"loglynx/internal/database/models"
 	"os"
 	"regexp"
-	"loglynx/internal/database/models"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -101,7 +100,7 @@ func (d *TraefikDetector) Detect() ([]*models.LogSource, error) {
             if !fileInfo.IsDir() && fileInfo.Size() > 0 {
                 d.logger.Trace("Validating format", d.logger.Args("path", path))
                 if isTraefikFormat(path) {
-                    d.logger.Info("✓ Traefik log source detected", d.logger.Args("path", path))
+                    d.logger.Info("Traefik log source detected", d.logger.Args("path", path))
                     sources = append(sources, &models.LogSource{
                         Name:       generateName(path),
                         Path:       path,

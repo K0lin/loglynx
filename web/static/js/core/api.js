@@ -52,6 +52,9 @@ const LogLynxAPI = {
      * Make a GET request with optional caching and request deduplication
      */
     async get(endpoint, params = {}, useCache = false) {
+        // NOTE: Backend middleware now handles blocking during initial load
+        // No need for client-side blocking - this prevents double-blocking issues
+        
         // Build URL with parameters
         const url = this.buildURL(endpoint, params);
 
@@ -79,6 +82,19 @@ const LogLynxAPI = {
                 const response = await fetch(url, {
                     signal: abortController.signal
                 });
+
+                // Handle 503 Service Unavailable (initial load in progress)
+                if (response.status === 503) {
+                    const data = await response.json();
+                    console.log(`[API] Service initializing: ${endpoint} - ${data.message}`);
+                    return {
+                        success: false,
+                        error: data.message || 'Service initializing. Please wait...',
+                        status: 503,
+                        initializing: true,
+                        data: data
+                    };
+                }
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -866,15 +882,6 @@ const LogLynxAPI = {
     },
 
     /**
-     * Get recent requests for a specific IP
-     * @param {string} ip - IP address
-     * @param {number} limit - Number of recent requests (1-500, default: 50)
-     */
-    async getIPRecentRequests(ip, limit = 50) {
-        return this.get(`/ip/${ip}/recent-requests`, { limit });
-    },
-
-    /**
      * Search for IPs matching a query
      * @param {string} query - Search query (partial IP)
      * @param {number} limit - Number of results (1-100)
@@ -886,4 +893,3 @@ const LogLynxAPI = {
 
 // Export for use in other scripts
 window.LogLynxAPI = LogLynxAPI;
-

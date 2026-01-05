@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package ingestion
 
 import (
@@ -231,6 +230,28 @@ func (c *Coordinator) Stop() {
 	c.logger.Info("Ingestion coordinator stopped successfully")
 }
 
+// PauseAll pauses all active processors
+func (c *Coordinator) PauseAll() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	c.logger.Info("Pausing all processors", c.logger.Args("count", len(c.processors)))
+	for _, processor := range c.processors {
+		processor.Pause()
+	}
+}
+
+// ResumeAll resumes all paused processors
+func (c *Coordinator) ResumeAll() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	c.logger.Info("Resuming all processors", c.logger.Args("count", len(c.processors)))
+	for _, processor := range c.processors {
+		processor.Resume()
+	}
+}
+
 // GetStatus returns the current status of the coordinator
 func (c *Coordinator) GetStatus() map[string]interface{} {
 	c.mu.RLock()
@@ -254,6 +275,42 @@ func (c *Coordinator) GetProcessorCount() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return len(c.processors)
+}
+
+// IsInitialLoadComplete returns whether all processors have completed their initial load
+// AND whether database indexes have been created
+// This is used to determine when the application is ready to serve API requests
+func (c *Coordinator) IsInitialLoadComplete() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// If no processors, check if indexes are being created
+	if len(c.processors) == 0 {
+		// Even with no processors, check if indexes are being created
+		if c.httpRepo.IsIndexCreationActive() {
+			return false
+		}
+		return true
+	}
+
+	// Check if all processors have completed initial load
+	for _, processor := range c.processors {
+		processor.initialLoadMu.Lock()
+		isInitial := processor.isInitialLoad && !processor.initialLoadComplete
+		processor.initialLoadMu.Unlock()
+
+		// If any processor is still in initial load, return false
+		if isInitial {
+			return false
+		}
+	}
+
+	// All processors done, but check if indexes are being created
+	if c.httpRepo.IsIndexCreationActive() {
+		return false
+	}
+
+	return true
 }
 
 // Restart stops and restarts the coordinator

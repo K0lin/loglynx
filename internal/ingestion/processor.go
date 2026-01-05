@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package ingestion
 
 import (
@@ -66,6 +65,10 @@ type SourceProcessor struct {
 	isInitialLoad       bool // True if this is the first time reading this file (lastPosition == 0)
 	initialLoadComplete bool // True after reaching EOF on first load
 	initialLoadMu       sync.Mutex
+	// Pause/resume control
+	isPaused   bool
+	pauseCond  *sync.Cond
+	pauseMu    sync.Mutex
 }
 
 // NewSourceProcessor creates a new source processor
@@ -101,7 +104,7 @@ func NewSourceProcessor(
 	// Check if this is an initial load (first time reading this file)
 	isInitialLoad := (source.LastPosition == 0)
 
-	return &SourceProcessor{
+	sp := &SourceProcessor{
 		source:              source,
 		parser:              parser,
 		reader:              reader,
@@ -121,7 +124,10 @@ func NewSourceProcessor(
 		startTime:           time.Now(),
 		isInitialLoad:       isInitialLoad,
 		initialLoadComplete: false,
+		isPaused:            false,
 	}
+	sp.pauseCond = sync.NewCond(&sp.pauseMu)
+	return sp
 }
 
 // ApplyInitialImportLimit applies date-based limiting for initial imports
@@ -186,6 +192,36 @@ func (sp *SourceProcessor) Stop() {
 	sp.logger.Info("Stopped source processor", sp.logger.Args("source", sp.source.Name))
 }
 
+// Pause temporarily pauses the processor
+func (sp *SourceProcessor) Pause() {
+	sp.pauseMu.Lock()
+	defer sp.pauseMu.Unlock()
+	if !sp.isPaused {
+		sp.isPaused = true
+		sp.logger.Debug("Paused source processor", sp.logger.Args("source", sp.source.Name))
+	}
+}
+
+// Resume resumes a paused processor
+func (sp *SourceProcessor) Resume() {
+	sp.pauseMu.Lock()
+	defer sp.pauseMu.Unlock()
+	if sp.isPaused {
+		sp.isPaused = false
+		sp.pauseCond.Broadcast() // Wake up all waiting goroutines
+		sp.logger.Debug("Resumed source processor", sp.logger.Args("source", sp.source.Name))
+	}
+}
+
+// waitIfPaused blocks if the processor is paused
+func (sp *SourceProcessor) waitIfPaused() {
+	sp.pauseMu.Lock()
+	for sp.isPaused {
+		sp.pauseCond.Wait()
+	}
+	sp.pauseMu.Unlock()
+}
+
 // processLoop is the main processing loop
 func (sp *SourceProcessor) processLoop() {
 	defer sp.wg.Done()
@@ -208,6 +244,9 @@ func (sp *SourceProcessor) processLoop() {
 	var lastUpdatedPos int64 // Track last position that was saved to DB
 
 	for {
+		// Check if paused and wait
+		sp.waitIfPaused()
+
 		select {
 		case <-sp.ctx.Done():
 			// Flush remaining batch before exit

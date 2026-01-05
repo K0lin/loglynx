@@ -41,3 +41,4 @@ USER 65532
 ENTRYPOINT ["/usr/local/bin/loglynx"]
 
 
+

@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package repositories
 
 import (
@@ -110,14 +109,27 @@ type HTTPRequestRepository interface {
 	CountBySourceName(sourceName string) (int64, error)
 	// First-load optimization control
 	DisableFirstLoadMode()
+	// Index creation status
+	IsIndexCreationActive() bool
+	// Set processor pauser for coordinated pause during index creation
+	SetProcessorPauser(pauser ProcessorPauser)
+}
+
+// ProcessorPauser allows pausing/resuming processors during index creation
+type ProcessorPauser interface {
+	PauseAll()
+	ResumeAll()
 }
 
 type httpRequestRepo struct {
-	db            *gorm.DB
-	logger        *pterm.Logger
-	isFirstLoad   bool       // Global flag: true when database is empty at startup
-	firstLoadMu   sync.Mutex // Protects isFirstLoad flag
-	firstLoadOnce sync.Once  // Ensures first-load check happens only once
+	db                  *gorm.DB
+	logger              *pterm.Logger
+	processorPauser     ProcessorPauser // Optional: pauses processors during index creation
+	isFirstLoad         bool       // Global flag: true when database is empty at startup
+	firstLoadMu         sync.Mutex // Protects isFirstLoad flag
+	firstLoadOnce       sync.Once  // Ensures first-load check happens only once
+	indexCreationActive bool       // True while indexes are being created
+	indexCreationMu     sync.RWMutex // Protects indexCreationActive flag
 }
 
 // NewHTTPRequestRepository creates a new HTTP request repository
@@ -128,6 +140,11 @@ func NewHTTPRequestRepository(db *gorm.DB, logger *pterm.Logger) HTTPRequestRepo
 		isFirstLoad: false, // Will be checked on first CreateBatch call
 	}
 	return repo
+}
+
+// SetProcessorPauser sets the processor pauser for coordinated pausing during index creation
+func (r *httpRequestRepo) SetProcessorPauser(pauser ProcessorPauser) {
+	r.processorPauser = pauser
 }
 
 // checkFirstLoad checks if database is empty (only once, at startup)
@@ -219,9 +236,40 @@ func (r *httpRequestRepo) DisableFirstLoadMode() {
 	}
 }
 
+// IsIndexCreationActive returns true if indexes are currently being created
+func (r *httpRequestRepo) IsIndexCreationActive() bool {
+	r.indexCreationMu.RLock()
+	defer r.indexCreationMu.RUnlock()
+	return r.indexCreationActive
+}
+
 // createDeferredIndexes creates performance indexes after initial data load
 func (r *httpRequestRepo) createDeferredIndexes() {
-	r.logger.Info("🔨 Creating performance indexes in background (this may take a few minutes)...")
+	// Pause all processors to prevent data loss during index creation
+	if r.processorPauser != nil {
+		r.logger.Info("Pausing log processors for safe index creation...")
+		r.processorPauser.PauseAll()
+		
+		// Ensure we resume processors when done
+		defer func() {
+			r.logger.Info("Resuming log processors...")
+			r.processorPauser.ResumeAll()
+		}()
+	}
+
+	// Mark index creation as active
+	r.indexCreationMu.Lock()
+	r.indexCreationActive = true
+	r.indexCreationMu.Unlock()
+
+	// Ensure we mark as complete when done
+	defer func() {
+		r.indexCreationMu.Lock()
+		r.indexCreationActive = false
+		r.indexCreationMu.Unlock()
+	}()
+
+	r.logger.Info("Creating performance indexes in background (this may take a few minutes)...")
 
 	startTime := time.Now()
 
@@ -235,7 +283,7 @@ func (r *httpRequestRepo) createDeferredIndexes() {
 	}
 
 	elapsed := time.Since(startTime)
-	r.logger.Info("✅ Performance indexes created successfully",
+	r.logger.Info("Performance indexes created successfully",
 		r.logger.Args("elapsed_seconds", elapsed.Seconds()))
 }
 

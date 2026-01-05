@@ -56,6 +56,9 @@ const LogLynxStartupLoader = {
     async init() {
         console.log('[StartupLoader] Initializing...');
 
+        // NOTE: Backend middleware handles blocking during initial load
+        // No need for frontend lock - backend handles it via 503 responses
+
         // Load configuration from window variable (set by server in template)
         if (window.LOGLYNX_CONFIG && typeof window.LOGLYNX_CONFIG.splashScreenEnabled === 'boolean') {
             this.splashScreenEnabled = window.LOGLYNX_CONFIG.splashScreenEnabled;
@@ -78,6 +81,7 @@ const LogLynxStartupLoader = {
         // If already checked but not ready, show loader immediately
         if (this.alreadyChecked && !this.isReady) {
             console.log('[StartupLoader] Previously checked and not ready, showing loader');
+
             this.showLoadingScreen();
             await this.checkProcessingStatus();
             return;
@@ -91,6 +95,16 @@ const LogLynxStartupLoader = {
             // Check processing status first
             const result = await LogLynxAPI.getLogProcessingStats();
             console.log('[StartupLoader] Processing stats:', result);
+
+            // If we get 503 (Service Unavailable), service is initializing - show loader
+            if (result.status === 503 || result.initializing) {
+                console.log('[StartupLoader] Service initializing (503 response), showing loader');
+                this.showLoadingScreen();
+                this.startProcessingTime = Date.now();
+                this.startElapsedTimer();
+                await this.checkProcessingStatus();
+                return;
+            }
 
             if (result.success) {
                 // Handle null data (no log sources) as empty array
@@ -1027,6 +1041,14 @@ const LogLynxStartupLoader = {
         try {
             const result = await LogLynxAPI.getLogProcessingStats();
 
+            // Handle 503 responses - service still initializing, retry
+            if (result.status === 503 || result.initializing) {
+                console.log('[StartupLoader] Service still initializing (503 response), retrying...');
+                this.updateLoadingMessage('Initializing... Please wait');
+                this.scheduleNextCheck(); // Retry after a moment
+                return;
+            }
+
             if (result.success) {
                 // Handle null data (no log sources) as empty array
                 const stats = result.data || [];
@@ -1079,6 +1101,7 @@ const LogLynxStartupLoader = {
     /**
      * Verify that data is actually available before finishing
      * Only done during initial load to ensure data is ready
+     * Also waits for database index creation to complete (checks for 503 responses)
      */
     async verifyDataAndFinish() {
         // If not initial load, skip verification
@@ -1090,22 +1113,53 @@ const LogLynxStartupLoader = {
         }
 
         try {
-            // Check if summary data is available
+            // First check if data exists
             const summaryResult = await LogLynxAPI.getSummary();
 
+            // If we get 503, backend is still initializing (likely creating indexes)
+            if (summaryResult.status === 503 || summaryResult.initializing) {
+                console.log('[StartupLoader] Backend still initializing (503), waiting for index creation...');
+                this.updateLoadingMessage('Creating database indexes... Please wait');
+
+                // Wait 2 seconds before checking again
+                setTimeout(async () => {
+                    await this.verifyDataAndFinish();
+                }, 2000);
+                return;
+            }
+
             if (summaryResult.success && summaryResult.data && summaryResult.data.total_requests > 0) {
-                // Data is available, refresh page to load fresh data
-                console.log('[StartupLoader] Data verified, refreshing page to load fresh data');
+                // Data is available AND backend is ready (not returning 503)
+                // Now do a final check to ensure we can actually make API calls
+                console.log('[StartupLoader] Data verified and backend ready, checking API availability...');
+                
+                // Test if API is fully available by trying another endpoint
+                const testResult = await LogLynxAPI.getTimeline(24);
+                
+                // If we get 503, still initializing
+                if (testResult.status === 503 || testResult.initializing) {
+                    console.log('[StartupLoader] API still initializing, waiting...');
+                    this.updateLoadingMessage('Creating database indexes... Please wait');
+                    
+                    setTimeout(async () => {
+                        await this.verifyDataAndFinish();
+                    }, 2000);
+                    return;
+                }
+                
+                // Everything is ready!
+                console.log('[StartupLoader] All systems ready, loading dashboard...');
                 
                 // Check data availability
                 await this.checkDataAvailability();
 
-                this.updateLoadingMessage('Ready! Refreshing page...');
+                this.updateLoadingMessage('Ready! Loading dashboard...');
                 this.isInitialLoad = false; // Mark that initial load is complete
+                this.isReady = true; // Mark as ready
 
-                // Small delay to show the message, then refresh
+                // Hide the splash screen and show content
                 setTimeout(() => {
-                    location.reload();
+                    this.onReady();
                 }, 500);
             } else {
                 // Data not yet available, wait and retry
