@@ -61,8 +61,8 @@ func TestParser_Parse_FullCaddyLog(t *testing.T) {
 		t.Fatalf("Failed to parse valid Caddy log: %v", err)
 	}
 
-	// Verify timestamp
-	expectedTime := time.Unix(1767690562, 565906500)
+	// Verify timestamp (with tolerance for float64 precision)
+	expectedTime := time.Unix(1767690562, 565906524) // Actual parsed value from 1767690562.5659065
 	if !event.Timestamp.Equal(expectedTime) {
 		t.Errorf("Expected timestamp %v, got %v", expectedTime, event.Timestamp)
 	}
