@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for LogLynx
-# Builder stage: compiles a static linux/amd64 binary
+# Builder stage: compiles a static binary for the target platform
 FROM golang:1.25.5 AS builder
 
 WORKDIR /src
@@ -12,7 +12,10 @@ RUN go mod download
 COPY . .
 
 # Build the server binary (CGO enabled for sqlite/geoip native deps)
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+# TARGETPLATFORM and TARGETARCH are automatically set by Docker Buildx
+ARG TARGETPLATFORM
+ARG TARGETARCH
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
     go build -ldflags "-s -w" -o /out/loglynx ./cmd/server
 
 
@@ -35,4 +38,6 @@ VOLUME ["/data", "/app/geoip", "/traefik/logs"]
 
 EXPOSE 8080
 
+
 ENTRYPOINT ["/usr/local/bin/loglynx"]
+
