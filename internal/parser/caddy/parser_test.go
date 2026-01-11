@@ -218,7 +218,7 @@ func TestParser_Parse_URISplitting(t *testing.T) {
 
 func TestParser_Parse_TLSVersionConversion(t *testing.T) {
 	logger := pterm.DefaultLogger.WithLevel(pterm.LogLevelTrace)
-	parser := NewParser(logger)
+	_ = NewParser(logger)
 
 	testCases := []struct {
 		version  int
@@ -241,7 +241,7 @@ func TestParser_Parse_TLSVersionConversion(t *testing.T) {
 
 func TestParser_Parse_TLSCipherConversion(t *testing.T) {
 	logger := pterm.DefaultLogger.WithLevel(pterm.LogLevelTrace)
-	parser := NewParser(logger)
+	_ = NewParser(logger)
 
 	testCases := []struct {
 		cipher   int
