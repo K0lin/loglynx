@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package config
 
 import (
@@ -81,6 +80,7 @@ type GeoIPConfig struct {
 type LogSourcesConfig struct {
 	TraefikLogPath      string
 	TraefikLogFormat    string // auto, json, clf
+	CaddyLogPath        string
 	AutoDiscover        bool
 	InitialImportDays   int  // Only import last N days on first run (0 = import all)
 	InitialImportEnable bool // Enable initial import limiting
@@ -134,6 +134,7 @@ func Load() (*Config, error) {
 		LogSources: LogSourcesConfig{
 			TraefikLogPath:      getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
 			TraefikLogFormat:    getEnv("TRAEFIK_LOG_FORMAT", "auto"),
+			CaddyLogPath:        getEnv("CADDY_LOG_PATH", "caddy/logs/access.log"),
 			AutoDiscover:        getEnvAsBool("LOG_AUTO_DISCOVER", true),
 			InitialImportDays:   getEnvAsInt("INITIAL_IMPORT_DAYS", 60),
 			InitialImportEnable: getEnvAsBool("INITIAL_IMPORT_ENABLE", true),
