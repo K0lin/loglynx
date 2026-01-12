@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,11 +19,11 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package parsers
 
 import (
 	"fmt"
+	"loglynx/internal/parser/caddy"
 	"loglynx/internal/parser/traefik"
 
 	"github.com/pterm/pterm"
@@ -45,6 +45,16 @@ func (w *traefikParserWrapper) Parse(line string) (Event, error) {
 	return w.Parser.Parse(line)
 }
 
+// caddyParserWrapper wraps caddy.Parser to implement LogParser interface
+type caddyParserWrapper struct {
+	*caddy.Parser
+}
+
+// Parse adapts caddy.Parser.Parse to return Event interface
+func (w *caddyParserWrapper) Parse(line string) (Event, error) {
+	return w.Parser.Parse(line)
+}
+
 // NewRegistry creates a new parser registry with all built-in parsers
 func NewRegistry(logger *pterm.Logger) *Registry {
 	registry := &Registry{
@@ -56,6 +66,10 @@ func NewRegistry(logger *pterm.Logger) *Registry {
 	traefikParser := traefik.NewParser(logger)
 	registry.Register("traefik", &traefikParserWrapper{traefikParser})
 	logger.Debug("Registered parser", logger.Args("type", "traefik"))
+
+	caddyParser := caddy.NewParser(logger)
+	registry.Register("caddy", &caddyParserWrapper{caddyParser})
+	logger.Debug("Registered parser", logger.Args("type", "caddy"))
 
 	return registry
 }
