@@ -173,10 +173,18 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	maxOpenConns := cfg.MaxOpenConns
 	maxIdleConns := cfg.MaxIdleConns
 
+	// Ensure sensible defaults if config is unset or very low
+	if maxOpenConns <= 0 {
+		maxOpenConns = 25
+	}
+	if maxIdleConns <= 0 {
+		maxIdleConns = 10
+	}
+
 	if cfg.AutoTuning {
-		// Auto-tune based on CPU cores
+		// Auto-tune based on CPU cores for read-heavy analytics
 		cpuCores := runtime.NumCPU()
-		optimalMaxOpen := cpuCores * 3 // 3 connections per core for read-heavy workloads
+		optimalMaxOpen := cpuCores * 5 // allow higher concurrency for aggregation workloads
 
 		if optimalMaxOpen > maxOpenConns {
 			maxOpenConns = optimalMaxOpen
