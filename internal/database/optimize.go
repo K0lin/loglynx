@@ -56,17 +56,30 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		// Main timeline index - covers most dashboard queries
 		// Used by: GetTimelineStats, GetStatusCodeTimeline, GetSummary
 		`CREATE INDEX IF NOT EXISTS idx_timestamp_status
-		 ON http_requests(timestamp DESC, status_code)`,
+			 ON http_requests(timestamp DESC, status_code)`,
 
 		// Time + Host - for per-service filtering
 		// Used by: service-filtered queries
 		`CREATE INDEX IF NOT EXISTS idx_time_host
-		 ON http_requests(timestamp DESC, host)`,
+			 ON http_requests(timestamp DESC, host)`,
 
-		// Time + Backend - for backend analytics
-		// Used by: GetTopBackends, backend-filtered queries
+		// Time + Backend (name) - for backend analytics and filtered queries
+		// Used by: GetTopBackends, service-filtered queries
 		`CREATE INDEX IF NOT EXISTS idx_time_backend
-		 ON http_requests(timestamp DESC, backend_name, status_code)`,
+			 ON http_requests(timestamp DESC, backend_name, status_code)`,
+
+		// Time + Backend URL - for filtered queries where backend_url is used
+		`CREATE INDEX IF NOT EXISTS idx_time_backend_url
+			 ON http_requests(timestamp DESC, backend_url)`,
+
+		// Time + Host (already above) and Time + Client IP for IP-filtered timelines/overview
+		`CREATE INDEX IF NOT EXISTS idx_time_client_ip
+			 ON http_requests(timestamp DESC, client_ip)`,
+
+		// Covering index for summary aggregates (status, size, time, unique counts)
+		`CREATE INDEX IF NOT EXISTS idx_summary_cover
+			 ON http_requests(status_code, response_size, response_time_ms, client_ip, path)`,
+
 
 		// ===== AGGREGATION INDEXES (for GROUP BY queries) =====
 
@@ -74,6 +87,10 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		// Covering index includes all columns needed for the query
 		`CREATE INDEX IF NOT EXISTS idx_path_agg
 		 ON http_requests(path, timestamp, client_ip, response_time_ms, response_size)`,
+
+		// Path aggregation (all-time, heavy scans) - ensure covering without table lookups
+		`CREATE INDEX IF NOT EXISTS idx_top_paths_cover
+		 ON http_requests(timestamp DESC, path, client_ip, response_size, response_time_ms)`,
 
 		// Country aggregation - CRITICAL for GetTopCountries
 		// Partial index excludes empty geo_country for efficiency
@@ -114,6 +131,10 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		// Covering index includes geo data, ASN, and aggregation columns to avoid table lookups
 		`CREATE INDEX IF NOT EXISTS idx_ip_agg
 		 ON http_requests(client_ip, timestamp, geo_country, geo_city, geo_lat, geo_lon, response_size, asn, asn_org, status_code)`,
+
+		// IP aggregation (all-time, heavy scans) - covering to avoid table lookups
+		`CREATE INDEX IF NOT EXISTS idx_top_ips_cover
+		 ON http_requests(client_ip, timestamp DESC, geo_country, geo_city, geo_lat, geo_lon, response_size, status_code)`,
 
 		// IP + Browser aggregation - for GetIPTopBrowsers
 		// Partial index matches WHERE condition in query exactly
@@ -232,6 +253,13 @@ func OptimizeDatabase(db *gorm.DB, logger *pterm.Logger) error {
 		logger.Warn("Failed to analyze database", logger.Args("error", err))
 	} else {
 		logger.Trace("Database statistics analyzed")
+	}
+
+	// Hint SQLite to optimize query plans using collected stats
+	if err := db.Exec("PRAGMA optimize").Error; err != nil {
+		logger.Debug("PRAGMA optimize failed", logger.Args("error", err))
+	} else {
+		logger.Trace("PRAGMA optimize executed")
 	}
 
 	logger.Debug("Database optimizations completed")
