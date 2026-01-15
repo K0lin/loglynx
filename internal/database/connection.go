@@ -227,17 +227,18 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
 	db.Table("http_requests").Count(&count)
 	isDatabaseEmpty := (count == 0)
 
-	if isDatabaseEmpty {
-		logger.Info("Empty database detected - deferring index creation until after first data load for optimal performance")
-		logger.Info("   Indexes will be created automatically when initial data load completes")
-	} else {
-		// Database has data - create/verify indexes now
-		logger.Debug("Existing data found - verifying database indexes")
-		if err := OptimizeDatabase(db, logger); err != nil {
-			logger.Warn("Database optimization had warnings", logger.Args("error", err))
-			// Don't fail on optimization errors, just warn
-		}
-	}
+    if isDatabaseEmpty {
+        logger.Info("Empty database detected - deferring index creation until after first data load for optimal performance")
+        logger.Info("   Indexes will be created automatically when initial data load completes")
+    } else {
+        // Database has data - reconcile indexes now on startup
+        logger.Debug("Existing data found - reconciling database indexes")
+        if err := OptimizeDatabase(db, logger); err != nil {
+            logger.Warn("Database optimization had warnings", logger.Args("error", err))
+            // Don't fail on optimization errors, just warn
+        }
+    }
+
 
 	// Run discovery engine in background to speed up startup
 	go func() {
