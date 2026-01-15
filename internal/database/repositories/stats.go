@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package repositories
 
 import (
@@ -418,7 +417,7 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 	ctx, cancel := r.withTimeout()
 	defer cancel()
 
-	// Single aggregated query for all counts and metrics
+	// Single aggregated query using CTE to avoid multiple scans
 	type aggregatedResult struct {
 		TotalRequests    int64   `gorm:"column:total_requests"`
 		ValidRequests    int64   `gorm:"column:valid_requests"`
@@ -430,32 +429,65 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 		AvgResponseTime  float64 `gorm:"column:avg_response_time"`
 		NotFoundCount    int64   `gorm:"column:not_found_count"`
 		ServerErrorCount int64   `gorm:"column:server_error_count"`
+		TopCountry       string  `gorm:"column:top_country"`
+		TopPath          string  `gorm:"column:top_path"`
 	}
 
 	var result aggregatedResult
 
-	query := r.db.WithContext(ctx).Table("http_requests").
-		Select(`
-			COUNT(*) as total_requests,
-			COUNT(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 END) as valid_requests,
-			COUNT(CASE WHEN status_code >= 400 THEN 1 END) as failed_requests,
-			COUNT(DISTINCT client_ip) as unique_visitors,
-			COUNT(DISTINCT path) as unique_files,
-			COUNT(DISTINCT CASE WHEN status_code = 404 THEN path END) as unique_404,
-			COALESCE(SUM(response_size), 0) as total_bandwidth,
-			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
-			COUNT(CASE WHEN status_code = 404 THEN 1 END) as not_found_count,
-			COUNT(CASE WHEN status_code >= 500 AND status_code < 600 THEN 1 END) as server_error_count
-		`)
+	// Build WHERE clause and args manually to avoid gorm schema parsing issues
+	whereClause := "1=1"
+	args := []interface{}{}
 
 	if hours > 0 {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
+		whereClause += " AND timestamp > ?"
+		args = append(args, since)
 	}
 
-	query = r.applyServiceFilters(query, filters)
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
 
-	if err := query.Scan(&result).Error; err != nil {
+	baseSQL := `WITH base AS (
+		SELECT status_code, response_size, response_time_ms, client_ip, path, geo_country
+		FROM http_requests
+		WHERE ` + whereClause + `
+	)
+	SELECT 
+		COUNT(*) as total_requests,
+		COUNT(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 END) as valid_requests,
+		COUNT(CASE WHEN status_code >= 400 THEN 1 END) as failed_requests,
+		COUNT(DISTINCT client_ip) as unique_visitors,
+		COUNT(DISTINCT path) as unique_files,
+		COUNT(DISTINCT CASE WHEN status_code = 404 THEN path END) as unique_404,
+		COALESCE(SUM(response_size), 0) as total_bandwidth,
+		COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+		COUNT(CASE WHEN status_code = 404 THEN 1 END) as not_found_count,
+		COUNT(CASE WHEN status_code >= 500 AND status_code < 600 THEN 1 END) as server_error_count,
+		(SELECT geo_country FROM base WHERE geo_country != '' GROUP BY geo_country ORDER BY COUNT(*) DESC LIMIT 1) AS top_country,
+		(SELECT path FROM base GROUP BY path ORDER BY COUNT(*) DESC LIMIT 1) AS top_path
+	 FROM base`
+	if err := r.db.WithContext(ctx).Raw(baseSQL, args...).Scan(&result).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get summary stats", r.logger.Args("error", err))
 		return nil, err
 	}
@@ -469,6 +501,8 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 	summary.Unique404 = result.Unique404
 	summary.TotalBandwidth = result.TotalBandwidth
 	summary.AvgResponseTime = result.AvgResponseTime
+	summary.TopCountry = result.TopCountry
+	summary.TopPath = result.TopPath
 
 	// Calculate rates
 	if summary.TotalRequests > 0 {
@@ -486,38 +520,32 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 			First string
 			Last  string
 		}
-		
+
 		rangeQuery := r.db.Table("http_requests").Select("MIN(timestamp) as first, MAX(timestamp) as last")
 		rangeQuery = r.applyServiceFilters(rangeQuery, filters)
-		
-		if err := rangeQuery.Scan(&timeRange).Error; err == nil && timeRange.First != "" && timeRange.Last != "" {
-			// Parse timestamps (try RFC3339Nano first, then standard format)
-			var firstTime, lastTime time.Time
 
-			// Parse First timestamp
+		if err := rangeQuery.Scan(&timeRange).Error; err == nil && timeRange.First != "" && timeRange.Last != "" {
+			var firstTime, lastTime time.Time
 			if t, err := time.Parse(SQLiteTimeFormat, timeRange.First); err == nil {
 				firstTime = t
 			} else if t, err := time.Parse(time.DateTime, timeRange.First); err == nil {
 				firstTime = t
 			} else {
-				// Fallback to Unix epoch if parsing fails
 				firstTime = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 			}
 
-			// Parse Last timestamp
 			if t, err := time.Parse(SQLiteTimeFormat, timeRange.Last); err == nil {
 				lastTime = t
 			} else if t, err := time.Parse(time.DateTime, timeRange.Last); err == nil {
 				lastTime = t
 			} else {
-				// Use current time if parsing fails
 				lastTime = time.Now()
 			}
 
 			if !firstTime.IsZero() && !lastTime.IsZero() {
 				durationHours := lastTime.Sub(firstTime).Hours()
 				if durationHours < 1 {
-					durationHours = 1 // Avoid division by zero or very small numbers
+					durationHours = 1
 				}
 				summary.RequestsPerHour = float64(summary.TotalRequests) / durationHours
 			} else {
@@ -528,23 +556,8 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 		}
 	}
 
-	// Top country (separate query - minimal overhead)
-	query = r.db.Table("http_requests").Select("geo_country").Where("geo_country != ''")
-	if hours > 0 {
-		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
-	}
-	query = r.applyServiceFilters(query, filters)
-	query.Group("geo_country").Order("COUNT(*) DESC").Limit(1).Pluck("geo_country", &summary.TopCountry)
-
-	// Top path (separate query - minimal overhead)
-	query = r.db.Table("http_requests").Select("path")
-	if hours > 0 {
-		since := time.Now().Add(-time.Duration(hours) * time.Hour)
-		query = query.Where("timestamp > ?", since)
-	}
-	query = r.applyServiceFilters(query, filters)
-	query.Group("path").Order("COUNT(*) DESC").Limit(1).Pluck("path", &summary.TopPath)
+	summary.TopCountry = ""
+	summary.TopPath = ""
 
 	r.logger.Trace("Generated stats summary (optimized)", r.logger.Args("total_requests", summary.TotalRequests, "service_filters", filters))
 	return summary, nil
@@ -558,23 +571,15 @@ func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, exclude
 	// Adaptive grouping based on time range
 	var groupBy string
 
-	if hours > 0 && hours <= 24 {
-		// For 1 hour or 24 hours: group by hour
-		// Optimize: substr(timestamp, 1, 13) extracts "YYYY-MM-DD HH"
-		groupBy = "substr(timestamp, 1, 13) || ':00'"
-	} else if hours > 0 && hours <= 168 {
-		// For 7 days: group by 6-hour blocks
-		// Optimize: use substr for date and hour extraction
-		// "YYYY-MM-DD" || " " || (hour/6)*6 || ":00"
-		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'"
-	} else if hours > 0 && hours <= 720 {
-		// For 30 days: group by day
-		// Optimize: substr(timestamp, 1, 10) extracts "YYYY-MM-DD"
-		groupBy = "substr(timestamp, 1, 10)"
-	} else {
-		// For longer periods: group by week
-		// We still use strftime for weeks as it involves calendar logic
-		groupBy = "strftime('%Y-W%W', timestamp)"
+	switch {
+	case hours > 0 && hours <= 24:
+		groupBy = "substr(timestamp, 1, 13) || ':00'" // hourly
+	case hours > 0 && hours <= 168:
+		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'" // 6-hour blocks
+	case hours > 0 && hours <= 720:
+		groupBy = "substr(timestamp, 1, 10)" // daily for ~30 days
+	default:
+		groupBy = "strftime('%Y-W%W', timestamp)" // weekly for long ranges
 	}
 
 	query := r.db.Model(&models.HTTPRequest{}).
@@ -1356,12 +1361,12 @@ func extractBackendName(backendName string) string {
 func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*BackendStats, error) {
 	// OPTIMIZED: Uses dedicated covering indexes (idx_backend_agg, idx_backend_url_agg, idx_host_agg)
 	// Removed AVG(response_time_ms) - not essential for top backends and causes table scans
-	
+
 	// Build time filter for each UNION part
 	var timeFilter string
 	var since time.Time
 	hasTimeFilter := hours > 0
-	
+
 	if hasTimeFilter {
 		since = time.Now().Add(-time.Duration(hours) * time.Hour)
 		timeFilter = " AND timestamp > ?"
@@ -2468,4 +2473,3 @@ func (r *statsRepo) GetRecordsTimeline(days int) ([]*TimelineData, error) {
 	r.logger.Trace("Generated records timeline", r.logger.Args("days", days, "data_points", len(timeline)))
 	return timeline, nil
 }
-
