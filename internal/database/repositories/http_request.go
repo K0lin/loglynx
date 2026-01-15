@@ -22,84 +22,16 @@
 package repositories
 
 import (
-	"loglynx/internal/database/models"
-	"strings"
-	"sync"
-	"time"
+    "loglynx/internal/database/indexes"
+    "loglynx/internal/database/models"
+    "strings"
+    "sync"
+    "time"
 
-	"github.com/pterm/pterm"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+    "github.com/pterm/pterm"
+    "gorm.io/gorm"
+    "gorm.io/gorm/clause"
 )
-
-// Old indexes that need to be dropped during database optimization
-var oldIndexes = []string{
-	"idx_source_name",
-	"idx_timestamp",
-	"idx_partition_key",
-	"idx_client_ip", // Will be recreated with different definition
-	"idx_host",
-	"idx_status",
-	"idx_response_time",
-	"idx_retry_attempts",
-	"idx_browser",
-	"idx_os",
-	"idx_device_type", // Will be recreated
-	"idx_router_name",
-	"idx_request_id",
-	"idx_trace_id",
-	"idx_geo_country",
-	"idx_created_at",
-	"idx_time_status",
-	"idx_ip_time",
-	"idx_status_host",
-	"idx_timestamp_response_time",
-	"idx_summary_query",
-	"idx_errors_only",
-	"idx_slow_requests",
-	"idx_server_errors",
-	"idx_retried_requests",
-	"idx_dashboard_covering",
-	"idx_error_analysis",
-	"idx_timestamp_cleanup",
-}
-
-// New optimized indexes that should exist after optimization
-var newIndexes = []string{
-	"idx_timestamp_status",
-	"idx_time_host",
-	"idx_time_backend",
-	"idx_time_backend_url",
-	"idx_time_client_ip",
-	"idx_summary_cover",
-	"idx_path_agg",
-	"idx_top_paths_cover",
-	"idx_geo_agg",
-	"idx_referer_agg",
-	"idx_service_id",
-	"idx_backend_agg",
-	"idx_backend_url_agg",
-	"idx_host_agg",
-	"idx_ip_agg",
-	"idx_top_ips_cover",
-	"idx_ip_browser_agg",
-	"idx_ip_backend_agg",
-	"idx_ip_device_agg",
-	"idx_ip_os_agg",
-	"idx_ip_status_agg",
-	"idx_ip_path_agg",
-	"idx_ip_heatmap_agg",
-	"idx_status_code",
-	"idx_method",
-	"idx_asn_agg",
-	"idx_device_type",
-	"idx_protocol",
-	"idx_tls_version",
-	"idx_errors",
-	"idx_slow",
-	"idx_response_time",
-	"idx_cleanup",
-}
 
 
 // HTTPRequestRepository handles CRUD operations for HTTP requests
@@ -155,72 +87,36 @@ func (r *httpRequestRepo) SetProcessorPauser(pauser ProcessorPauser) {
 // checkFirstLoad checks if database is empty (only once, at startup)
 // This is thread-safe and executes only on the first call
 func (r *httpRequestRepo) checkFirstLoad() {
-	r.firstLoadOnce.Do(func() {
-		var count int64
-		r.db.Model(&models.HTTPRequest{}).Count(&count)
+    r.firstLoadOnce.Do(func() {
+        var count int64
+        r.db.Model(&models.HTTPRequest{}).Count(&count)
 
-		r.firstLoadMu.Lock()
-		r.isFirstLoad = (count == 0)
-		r.firstLoadMu.Unlock()
+        r.firstLoadMu.Lock()
+        r.isFirstLoad = (count == 0)
+        r.firstLoadMu.Unlock()
 
-		if r.isFirstLoad {
-			r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
-		} else {
-			// For existing databases, check if they need index upgrade
-			r.checkAndUpgradeIndexes()
-		}
-	})
+        if r.isFirstLoad {
+            r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
+        } else {
+            // For existing databases, reconcile indexes before processing
+            r.reconcileIndexesBackground()
+        }
+    })
 }
 
-// checkAndUpgradeIndexes checks if the database has the new optimized indexes
-// If not, runs the optimization in the background
-func (r *httpRequestRepo) checkAndUpgradeIndexes() {
-	// Check if all new indexes exist (if any are missing, upgrade is needed)
-	var missingCount int64
-	query := `SELECT COUNT(*) FROM (SELECT 1 FROM sqlite_master WHERE type='index' AND name IN (`
-	args := make([]interface{}, len(newIndexes))
-	for i, indexName := range newIndexes {
-		if i > 0 {
-			query += ","
-		}
-		query += "?"
-		args[i] = indexName
-	}
-	query += ")) WHERE 1 = 0" // This will count how many are missing
-
-	// Actually, let's count how many new indexes exist
-	query = `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN (`
-	args = make([]interface{}, len(newIndexes))
-	for i, indexName := range newIndexes {
-		if i > 0 {
-			query += ","
-		}
-		query += "?"
-		args[i] = indexName
-	}
-	query += ")"
-
-	err := r.db.Raw(query, args...).Scan(&missingCount).Error
-	if err != nil {
-		r.logger.Warn("Failed to check database indexes", r.logger.Args("error", err))
-		return
-	}
-
-	// If not all new indexes exist, we need to upgrade
-	if int(missingCount) < len(newIndexes) {
-		r.logger.Info("Database indexes need upgrade - applying optimizations in background...",
-			r.logger.Args("existing_indexes", missingCount, "required_indexes", len(newIndexes)))
-		go func() {
-			if err := r.optimizeDatabase(); err != nil {
-				r.logger.Error("Failed to upgrade database indexes", r.logger.Args("error", err))
-			} else {
-				r.logger.Info("Database indexes upgraded successfully")
-			}
-		}()
-	} else {
-		r.logger.Debug("Database indexes are up to date")
-	}
+func (r *httpRequestRepo) reconcileIndexesBackground() {
+    r.logger.Debug("Reconciling database indexes in background for existing database")
+    go func() {
+        created, dropped, err := indexes.Ensure(r.db, r.logger)
+        if err != nil {
+            r.logger.Error("Failed to reconcile database indexes", r.logger.Args("error", err))
+            return
+        }
+        r.logger.Info("Database indexes reconciled",
+            r.logger.Args("created", created, "dropped", dropped))
+    }()
 }
+
 
 // DisableFirstLoadMode disables first-load optimization
 // Called after the initial file load is complete
@@ -250,242 +146,46 @@ func (r *httpRequestRepo) IsIndexCreationActive() bool {
 
 // createDeferredIndexes creates performance indexes after initial data load
 func (r *httpRequestRepo) createDeferredIndexes() {
-	// Pause all processors to prevent data loss during index creation
-	if r.processorPauser != nil {
-		r.logger.Info("Pausing log processors for safe index creation...")
-		r.processorPauser.PauseAll()
-		
-		// Ensure we resume processors when done
-		defer func() {
-			r.logger.Info("Resuming log processors...")
-			r.processorPauser.ResumeAll()
-		}()
-	}
+    // Pause all processors to prevent data loss during index creation
+    if r.processorPauser != nil {
+        r.logger.Info("Pausing log processors for safe index creation...")
+        r.processorPauser.PauseAll()
 
-	// Mark index creation as active
-	r.indexCreationMu.Lock()
-	r.indexCreationActive = true
-	r.indexCreationMu.Unlock()
+        // Ensure we resume processors when done
+        defer func() {
+            r.logger.Info("Resuming log processors...")
+            r.processorPauser.ResumeAll()
+        }()
+    }
 
-	// Ensure we mark as complete when done
-	defer func() {
-		r.indexCreationMu.Lock()
-		r.indexCreationActive = false
-		r.indexCreationMu.Unlock()
-	}()
+    // Mark index creation as active
+    r.indexCreationMu.Lock()
+    r.indexCreationActive = true
+    r.indexCreationMu.Unlock()
 
-	r.logger.Info("Creating performance indexes in background (this may take a few minutes)...")
+    // Ensure we mark as complete when done
+    defer func() {
+        r.indexCreationMu.Lock()
+        r.indexCreationActive = false
+        r.indexCreationMu.Unlock()
+    }()
 
-	startTime := time.Now()
+    r.logger.Info("Creating performance indexes in background (this may take a few minutes)...")
 
-	// Import optimize package function
-	// Note: This requires OptimizeDatabase to be accessible
-	// For now, we'll implement a simplified version here
-	if err := r.optimizeDatabase(); err != nil {
-		r.logger.Error("Failed to create performance indexes",
-			r.logger.Args("error", err, "elapsed", time.Since(startTime)))
-		return
-	}
+    startTime := time.Now()
 
-	elapsed := time.Since(startTime)
-	r.logger.Info("Performance indexes created successfully",
-		r.logger.Args("elapsed_seconds", elapsed.Seconds()))
+    created, dropped, err := indexes.Ensure(r.db, r.logger)
+    if err != nil {
+        r.logger.Error("Failed to create performance indexes",
+            r.logger.Args("error", err, "elapsed", time.Since(startTime)))
+        return
+    }
+
+    elapsed := time.Since(startTime)
+    r.logger.Info("Performance indexes created successfully",
+        r.logger.Args("elapsed_seconds", elapsed.Seconds(), "created", created, "dropped", dropped))
 }
 
-// optimizeDatabase creates all performance indexes
-// This is a copy of OptimizeDatabase function to avoid circular dependencies
-// INDEX STRATEGY: ~15 optimized indexes for read-heavy analytics workload
-func (r *httpRequestRepo) optimizeDatabase() error {
-	// Drop old indexes that are no longer used or have been replaced
-	r.logger.Debug("Dropping old indexes", r.logger.Args("count", len(oldIndexes)))
-	for _, indexName := range oldIndexes {
-		dropSQL := "DROP INDEX IF EXISTS " + indexName
-		if err := r.db.Exec(dropSQL).Error; err != nil {
-			r.logger.Warn("Failed to drop old index", r.logger.Args("index", indexName, "error", err))
-			// Continue with other drops
-		} else {
-			r.logger.Trace("Dropped old index", r.logger.Args("index", indexName))
-		}
-	}
-
-	indexes := []string{
-		// ===== PRIMARY COMPOSITE INDEXES (for time-range queries) =====
-
-		// Main timeline index - covers most dashboard queries
-		`CREATE INDEX IF NOT EXISTS idx_timestamp_status
-		 ON http_requests(timestamp DESC, status_code)`,
-
-		// Time + Host - for per-service filtering
-		`CREATE INDEX IF NOT EXISTS idx_time_host
-		 ON http_requests(timestamp DESC, host)`,
-
-		// Time + Backend - for backend analytics
-		`CREATE INDEX IF NOT EXISTS idx_time_backend
-		 ON http_requests(timestamp DESC, backend_name, status_code)`,
-
-		// ===== AGGREGATION INDEXES (for GROUP BY queries) =====
-
-		// Path aggregation - CRITICAL for GetTopPaths
-		`CREATE INDEX IF NOT EXISTS idx_path_agg
-		 ON http_requests(path, timestamp, client_ip, response_time_ms, response_size)`,
-
-		// Country aggregation - CRITICAL for GetTopCountries
-		`CREATE INDEX IF NOT EXISTS idx_geo_agg
-		 ON http_requests(geo_country, timestamp, client_ip, response_size)
-		 WHERE geo_country != ''`,
-
-		// Referrer aggregation - CRITICAL for GetTopReferrerDomains
-		`CREATE INDEX IF NOT EXISTS idx_referer_agg
-		 ON http_requests(referer, timestamp, client_ip)
-		 WHERE referer != ''`,
-
-		// Service identification - for GetServices
-		`CREATE INDEX IF NOT EXISTS idx_service_id
-		 ON http_requests(backend_name, backend_url, host)`,
-
-		// Backend aggregation - CRITICAL for GetTopBackends
-		// Covering index for backend_name grouping with all aggregation columns
-		`CREATE INDEX IF NOT EXISTS idx_backend_agg
-		 ON http_requests(backend_name, timestamp, backend_url, host, response_size, status_code)
-		 WHERE backend_name != ''`,
-
-		// Backend URL fallback aggregation - for requests without backend_name
-		`CREATE INDEX IF NOT EXISTS idx_backend_url_agg
-		 ON http_requests(backend_url, timestamp, host, response_size, status_code)
-		 WHERE backend_name = '' AND backend_url != ''`,
-
-		// Host fallback aggregation - for requests without backend_name or backend_url
-		`CREATE INDEX IF NOT EXISTS idx_host_agg
-		 ON http_requests(host, timestamp, response_size, status_code)
-		 WHERE backend_name = '' AND backend_url = '' AND host != ''`,
-
-		// ===== LOOKUP INDEXES (for filtering and detail queries) =====
-
-		// Client IP lookup - for IP detail pages
-		`CREATE INDEX IF NOT EXISTS idx_client_ip
-		 ON http_requests(client_ip, timestamp DESC)`,
-
-		// Status code lookup - for distribution queries
-		`CREATE INDEX IF NOT EXISTS idx_status_code
-		 ON http_requests(status_code, timestamp)`,
-
-		// Method lookup - for distribution queries
-		`CREATE INDEX IF NOT EXISTS idx_method
-		 ON http_requests(method, timestamp)`,
-
-		// ===== PARTIAL INDEXES (for specific filtered queries) =====
-
-		// Errors only - for error analysis
-		`CREATE INDEX IF NOT EXISTS idx_errors
-		 ON http_requests(timestamp DESC, status_code, path, client_ip)
-		 WHERE status_code >= 400`,
-
-		// Slow requests - for performance analysis
-		`CREATE INDEX IF NOT EXISTS idx_slow
-		 ON http_requests(timestamp DESC, response_time_ms, path, host)
-		 WHERE response_time_ms > 1000`,
-
-		// Response time percentiles
-		`CREATE INDEX IF NOT EXISTS idx_response_time
-		 ON http_requests(timestamp DESC, response_time_ms)
-		 WHERE response_time_ms > 0`,
-
-		// ===== IP AND CLIENT AGGREGATION INDEXES =====
-
-		// IP aggregation - CRITICAL for GetTopIPAddresses and GetIPDetailedStats
-		// Covering index includes geo data, ASN, and aggregation columns to avoid table lookups
-		`CREATE INDEX IF NOT EXISTS idx_ip_agg
-		 ON http_requests(client_ip, timestamp, geo_country, geo_city, geo_lat, geo_lon, response_size, asn, asn_org, status_code)`,
-
-		// IP + Browser aggregation - for GetIPTopBrowsers
-		// Partial index matches WHERE condition in query exactly
-		`CREATE INDEX IF NOT EXISTS idx_ip_browser_agg
-		 ON http_requests(client_ip, timestamp, browser)
-		 WHERE browser != ''`,
-
-		// IP + Backend aggregation - for GetIPTopBackends
-		// Partial index matches WHERE condition, includes all aggregation columns
-		`CREATE INDEX IF NOT EXISTS idx_ip_backend_agg
-		 ON http_requests(client_ip, timestamp, backend_name, backend_url, response_size, response_time_ms, status_code)
-		 WHERE backend_name != ''`,
-
-		// IP + Device aggregation - for GetIPDeviceTypeDistribution
-		// Partial index matches WHERE condition in query
-		`CREATE INDEX IF NOT EXISTS idx_ip_device_agg
-		 ON http_requests(client_ip, timestamp, device_type)
-		 WHERE device_type != ''`,
-
-		// IP + OS aggregation - for GetIPTopOperatingSystems
-		// Partial index matches WHERE condition in query
-		`CREATE INDEX IF NOT EXISTS idx_ip_os_agg
-		 ON http_requests(client_ip, timestamp, os)
-		 WHERE os != ''`,
-
-		// IP + Status Code aggregation - for GetIPStatusCodeDistribution
-		// Covering index for status code grouping
-		`CREATE INDEX IF NOT EXISTS idx_ip_status_agg
-		 ON http_requests(client_ip, timestamp, status_code)`,
-
-		// IP + Path aggregation - for GetIPTopPaths
-		// Covering index includes all columns needed for aggregation
-		`CREATE INDEX IF NOT EXISTS idx_ip_path_agg
-		 ON http_requests(client_ip, timestamp, path, response_time_ms, response_size, backend_name, host, backend_url)`,
-
-		// IP + Heatmap/Timeline aggregation - for GetIPTrafficHeatmap and GetIPTimelineStats
-		// Covering index for time-based aggregations with response metrics
-		`CREATE INDEX IF NOT EXISTS idx_ip_heatmap_agg
-		 ON http_requests(client_ip, timestamp, response_time_ms, response_size, backend_name)`,
-
-		// ASN aggregation - for GetTopASNs
-		`CREATE INDEX IF NOT EXISTS idx_asn_agg
-		 ON http_requests(asn, asn_org, timestamp, client_ip, response_size)
-		 WHERE asn != ''`,
-
-		// Device type aggregation - for GetBrowserStats
-		`CREATE INDEX IF NOT EXISTS idx_device_type
-		 ON http_requests(device_type, timestamp)
-		 WHERE device_type != ''`,
-
-		// Protocol aggregation
-		`CREATE INDEX IF NOT EXISTS idx_protocol
-		 ON http_requests(protocol, timestamp)
-		 WHERE protocol != ''`,
-
-		// TLS version aggregation
-		`CREATE INDEX IF NOT EXISTS idx_tls_version
-		 ON http_requests(tls_version, timestamp)
-		 WHERE tls_version != ''`,
-
-		// ===== MAINTENANCE INDEX =====
-
-		// Cleanup index - for data retention
-		`CREATE INDEX IF NOT EXISTS idx_cleanup
-		 ON http_requests(timestamp)`,
-	}
-
-	indexCount := 0
-	for i, indexSQL := range indexes {
-		r.logger.Debug("Creating index",
-			r.logger.Args("progress", i+1, "total", len(indexes)))
-
-		if err := r.db.Exec(indexSQL).Error; err != nil {
-			r.logger.Warn("Failed to create index", r.logger.Args("error", err))
-			return err
-		}
-		indexCount++
-	}
-
-	r.logger.Debug("Performance indexes created", r.logger.Args("count", indexCount))
-
-	// Analyze tables for query optimizer
-	if err := r.db.Exec("ANALYZE").Error; err != nil {
-		r.logger.Warn("Failed to analyze database", r.logger.Args("error", err))
-	} else {
-		r.logger.Trace("Database statistics analyzed")
-	}
-
-	return nil
-}
 
 // getFirstLoadStatus returns current first-load status (thread-safe)
 func (r *httpRequestRepo) getFirstLoadStatus() bool {
