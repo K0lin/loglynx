@@ -34,7 +34,6 @@ import (
 )
 
 
-
 // HTTPRequestRepository handles CRUD operations for HTTP requests
 type HTTPRequestRepository interface {
 	Create(request *models.HTTPRequest) error
