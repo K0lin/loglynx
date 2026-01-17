@@ -1,4 +1,4 @@
-# LogLynx 🦁📊
+# LogLynx ⚡
 
 **Advanced Log Analytics Platform for Traefik and Beyond**
 
@@ -264,5 +264,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - 📖 [Documentation Wiki](../../wiki)
 
 ---
+
 
 **Made with ❤️ for the community**
