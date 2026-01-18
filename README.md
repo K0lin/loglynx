@@ -1,8 +1,8 @@
 # LogLynx ⚡
 
-**Advanced Log Analytics Platform for Traefik and Beyond**
+**Advanced Log Analytics Platform for Traefik, Caddy, and Beyond**
 
-LogLynx is a high-performance (less than 50 MB of RAM), real-time log analytics platform designed to provide deep insights into your web traffic. Built with Go and optimized for Traefik reverse proxy logs, it offers a beautiful dark-themed dashboard and comprehensive REST API.
+LogLynx is a high-performance (less than 50 MB of RAM), real-time log analytics platform designed to provide deep insights into your web traffic. Built with Go and optimized for reverse proxy logs (Traefik and Caddy), it offers a beautiful dark-themed dashboard and comprehensive REST API.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)
@@ -11,6 +11,7 @@ LogLynx is a high-performance (less than 50 MB of RAM), real-time log analytics 
 > **📚 Important Documentation**
 >
 > - **[Traefik Setup Guide](../../wiki/Traefik)** - Recommended Traefik configuration for optimal LogLynx performance and complete field capture (for the [pangolin quick installation](https://docs.pangolin.net/self-host/quick-install) no additional configuration is required for Traefik).
+> - **[Caddy Setup Guide](../../wiki/Caddy)** - Caddy configuration for JSON access log format with LogLynx
 > - **[Deduplication System](../../wiki/Deduplication-System)** - Learn how LogLynx prevents duplicate log entries and handles various scenarios (log rotation, crashes, re-imports)
 
 <img width="1920" height="1080" alt="LogLynx-Overview-Demo" src="img/LogLynx-Overview-Demo.png" />
@@ -26,14 +27,15 @@ LogLynx is a high-performance (less than 50 MB of RAM), real-time log analytics 
 - 🔌 **REST API** - Full-featured API for integrations
 - 📱 **Device Analytics** - Browser, OS, and device type detection
 - 🌐 **GeoIP Enrichment** - Country, city, and ASN information
-- 🔄 **Auto-Discovery** - Automatically detects Traefik log files
+- 🔄 **Auto-Discovery** - Automatically detects Traefik and Caddy log files
+- 🔌 **Multi-Parser Support** - Works with Traefik and Caddy reverse proxy logs
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Go 1.25 or higher
-- Traefik access logs (optional for initial setup)
+- Traefik or Caddy access logs (optional for initial setup)
 
 ### Standalone installation
 
@@ -174,6 +176,12 @@ GEOIP_ASN_DB=geoip/GeoLite2-ASN.mmdb
 # ================================
 # Path to Traefik access log file
 TRAEFIK_LOG_PATH=traefik/logs/access.log
+
+# Path to Caddy access log file (JSON format)
+CADDY_LOG_PATH=caddy/logs/access.log
+
+# Auto-discovery of log files (default: true)
+LOG_AUTO_DISCOVER=true
 ```
 
 
@@ -196,6 +204,35 @@ accessLog:
   format: json  # JSON format recommended
 ```
 
+### Caddy Log Format
+
+LogLynx requires Caddy's JSON access log format. Configure Caddy with:
+
+```caddyfile
+{
+    log {
+        output file /var/log/caddy/access.log
+        format json
+        level INFO
+    }
+}
+
+# Or per-site configuration:
+example.com {
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+    reverse_proxy localhost:8080
+}
+```
+
+**Important Notes for Caddy:**
+- JSON format is **required** (default CLF/common log format is not supported)
+- Cookie headers are stored as-is - configure redaction in Caddy if needed
+- LogLynx automatically extracts client IP from `client_ip`, `remote_ip`, or `X-Forwarded-For`
+- TLS information (version, cipher suite) is automatically converted from numeric codes
+
 ## 📦 Project Structure
 
 ```
@@ -204,9 +241,10 @@ loglynx/
 ├── internal/
 │   ├── api/            # HTTP server and handlers
 │   ├── database/       # Database models and repositories
+│   ├── discovery/      # Log file auto-discovery
 │   ├── enrichment/     # GeoIP enrichment
 │   ├── ingestion/      # Log file processing
-│   ├── parser/         # Log format parsers
+│   ├── parser/         # Log format parsers (Traefik, Caddy)
 │   └── realtime/       # Real-time metrics
 ├── web/
 │   ├── static/         # CSS, JavaScript, images
@@ -252,6 +290,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [Traefik](https://traefik.io/) - Modern HTTP reverse proxy
+- [Caddy](https://caddyserver.com/) - Fast and extensible multi-platform HTTP server
 - [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) - GeoIP databases
 - [DataTables](https://datatables.net/) - Table plugin for jQuery
 - [Chart.js](https://www.chartjs.org/) - JavaScript charting
