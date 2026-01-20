@@ -882,6 +882,15 @@ const LogLynxAPI = {
     },
 
     /**
+     * Get recent requests for a specific IP
+     * @param {string} ip - IP address
+     * @param {number} limit - Number of results (1-100)
+     */
+    async getIPRecentRequests(ip, limit = 50) {
+        return this.get(`/ip/${ip}/recent-requests`, { limit });
+    },
+
+    /**
      * Search for IPs matching a query
      * @param {string} query - Search query (partial IP)
      * @param {number} limit - Number of results (1-100)
