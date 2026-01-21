@@ -853,4 +853,18 @@ canvas {
     height: 50px;
     width: 100%;
     margin-bottom: 5px;
+    position: relative;
+    overflow: hidden;
+}
+
+.mini-chart-wrapper canvas {
+    width: 100% !important;
+    height: 50px !important;
+    max-height: 50px !important;
+    min-height: 50px !important;
+    display: block;
+}
+
+.mini-monitor-body {
+    overflow: hidden;
 }
