@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for LogLynx
 # Builder stage: compiles a static binary for the target platform
-FROM golang:1.25.5 AS builder
+FROM golang:1.25.6 AS builder
 
 WORKDIR /src
 
@@ -40,4 +40,5 @@ EXPOSE 8080
 
 
 ENTRYPOINT ["/usr/local/bin/loglynx"]
+
 
