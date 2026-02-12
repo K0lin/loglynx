@@ -1,0 +1,450 @@
+{{define "widget.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>LogLynx Widget</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg: #161619;
+            --bg-dark: #0D0D0F;
+            --card: #1A1A1D;
+            --card-hover: #252528;
+            --text: #E8E8E8;
+            --text-light: #FFFFFF;
+            --text-muted: #999999;
+            --accent: #FF6B35;
+            --accent-light: #FF8C61;
+            --accent-dark: #C44900;
+            --success: #2D5F2E;
+            --warning: #FFB800;
+            --danger: #DC3545;
+            --border: #2A2A2D;
+            --border-light: #3A3A3D;
+        }
+        
+        .theme-light {
+            --bg: #f8f9fa;
+            --bg-dark: #e9ecef;
+            --card: #ffffff;
+            --card-hover: #f1f3f5;
+            --text: #212529;
+            --text-light: #000000;
+            --text-muted: #6c757d;
+            --border: #dee2e6;
+            --border-light: #ced4da;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--bg) 0%, var(--bg-dark) 100%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 8px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        .widget-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        .stat-card {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 10px;
+            border-left: 3px solid var(--accent);
+            display: flex;
+            flex-direction: column;
+            min-height: 70px;
+            transition: background 0.2s ease;
+        }
+        
+        .stat-card:hover {
+            background: var(--card-hover);
+        }
+        
+        .stat-card.full-width {
+            grid-column: span 2;
+            border-left: none;
+            border-top: 3px solid var(--accent);
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-light);
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+        
+        .stat-value .unit {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+        
+        .stat-value.success { color: var(--success); }
+        .stat-value.warning { color: var(--warning); }
+        .stat-value.danger { color: var(--danger); }
+        
+        .sparkline-container {
+            height: 35px;
+            margin-top: 6px;
+            position: relative;
+        }
+        
+        .sparkline {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent) 100%);
+            border-radius: 6px;
+            grid-column: span 2;
+        }
+        
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-light);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.warning { background: var(--warning); }
+        .status-dot.danger { background: var(--danger); }
+        
+        .status-dot.static {
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.9); }
+        }
+        
+        .status-text {
+            font-size: 11px;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+        
+        .time-badge {
+            font-size: 10px;
+            padding: 3px 8px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        
+        @media (max-width: 200px) {
+            .widget-container { grid-template-columns: 1fr; }
+            .stat-card.full-width, .status-bar { grid-column: span 1; }
+        }
+    </style>
+</head>
+<body class="theme-{{.Theme}}">
+    <div class="widget-container" id="widget">
+        <div class="status-bar">
+            <div class="status-left">
+                <div class="status-dot" id="statusDot"></div>
+                <div class="status-text">
+                    <span id="statusText">Loading...</span>
+                </div>
+            </div>
+            <div class="time-badge" id="timeBadge" style="display:none;"></div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-label" id="labelPrimary">Requests/min</div>
+            <div class="stat-value" id="valuePrimary">-</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-label">Error Rate</div>
+            <div class="stat-value" id="errorRate">-<span class="unit">%</span></div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-label">Avg Response</div>
+            <div class="stat-value" id="avgResponse">-<span class="unit">ms</span></div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-label" id="labelSecondary">Unique IPs</div>
+            <div class="stat-value" id="valueSecondary">-</div>
+        </div>
+        
+        <div class="stat-card full-width">
+            <div class="stat-label" id="labelChart">Traffic (last 30 min)</div>
+            <div class="sparkline-container">
+                <canvas id="sparkline" class="sparkline"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const mode = urlParams.get('time') || 'realtime';
+            const theme = urlParams.get('theme') || 'dark';
+            
+            const TIME_CONFIG = {
+                '1h':  { hours: 1,   label: '1H',   badge: '1h' },
+                '24h': { hours: 24,  label: '24H',  badge: '24h' },
+                '7d':  { hours: 168, label: '7D',   badge: '7d' },
+                '30d': { hours: 720, label: '30D',  badge: '30d' }
+            };
+            
+            const isRealtime = mode === 'realtime';
+            const config = TIME_CONFIG[mode] || TIME_CONFIG['24h'];
+            
+            const API_URL = isRealtime 
+                ? '/api/v1/widget/data' 
+                : `/api/v1/widget/summary?hours=${config.hours}`;
+            const TIMELINE_URL = `/api/v1/widget/timeline?hours=${config.hours}`;
+            const REFRESH_INTERVAL = isRealtime ? 5000 : 60000;
+            
+            let sparklineData = [];
+            
+            function formatNumber(num) {
+                if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                return Math.round(num).toString();
+            }
+            
+            function formatTime(date) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            
+            function setStatus(status, isStatic) {
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+                
+                dot.className = 'status-dot' + (isStatic ? ' static' : '');
+                
+                if (status === 'healthy') {
+                    text.textContent = 'Healthy';
+                } else if (status === 'warning') {
+                    dot.classList.add('warning');
+                    text.textContent = 'Warning';
+                } else if (status === 'danger') {
+                    dot.classList.add('danger');
+                    text.textContent = 'Critical';
+                } else {
+                    dot.classList.add('danger');
+                    text.textContent = 'Error';
+                }
+            }
+            
+            function setValue(id, value, className, unit) {
+                const el = document.getElementById(id);
+                el.className = 'stat-value' + (className ? ' ' + className : '');
+                if (unit) {
+                    el.innerHTML = value + '<span class="unit">' + unit + '</span>';
+                } else {
+                    el.textContent = value;
+                }
+            }
+            
+            function initSparkline() {
+                const canvas = document.getElementById('sparkline');
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                
+                canvas.width = canvas.offsetWidth * dpr;
+                canvas.height = canvas.offsetHeight * dpr;
+                ctx.scale(dpr, dpr);
+                
+                return { canvas, ctx };
+            }
+            
+            function drawSparkline(data) {
+                const { canvas, ctx } = initSparkline();
+                const width = canvas.offsetWidth;
+                const height = canvas.offsetHeight;
+                
+                ctx.clearRect(0, 0, width, height);
+                
+                if (data.length < 2) return;
+                
+                const max = Math.max(...data, 1);
+                const min = Math.min(...data, 0);
+                const range = max - min || 1;
+                const padding = 2;
+                
+                const stepX = (width - padding * 2) / (data.length - 1);
+                
+                const isDark = !document.body.classList.contains('theme-light');
+                const lineColor = '#FF6B35';
+                const fillColor = isDark ? 'rgba(255, 107, 53, 0.25)' : 'rgba(255, 107, 53, 0.3)';
+                
+                ctx.beginPath();
+                ctx.moveTo(padding, height - padding - ((data[0] - min) / range) * (height - padding * 2));
+                
+                for (let i = 1; i < data.length; i++) {
+                    const x = padding + i * stepX;
+                    const y = height - padding - ((data[i] - min) / range) * (height - padding * 2);
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+                
+                ctx.lineTo(padding + (data.length - 1) * stepX, height - padding);
+                ctx.lineTo(padding, height - padding);
+                ctx.closePath();
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+            }
+            
+            async function fetchTimeline() {
+                try {
+                    const response = await fetch(TIMELINE_URL);
+                    if (!response.ok) return;
+                    
+                    const data = await response.json();
+                    sparklineData = data.map(d => d.requests || 0);
+                    drawSparkline(sparklineData);
+                } catch (e) {
+                    console.error('Timeline fetch error:', e);
+                }
+            }
+            
+            async function fetchRealtimeData() {
+                try {
+                    const response = await fetch(API_URL);
+                    if (!response.ok) throw new Error('API error');
+                    
+                    const data = await response.json();
+                    
+                    setStatus(data.status, false);
+                    
+                    setValue('valuePrimary', formatNumber(data.requests_per_minute || 0));
+                    
+                    const errorRate = data.error_rate || 0;
+                    const errorClass = errorRate > 5 ? 'danger' : errorRate > 1 ? 'warning' : 'success';
+                    setValue('errorRate', errorRate.toFixed(1), errorClass, '%');
+                    
+                    const avgResp = data.avg_response_time || 0;
+                    const respClass = avgResp > 1000 ? 'danger' : avgResp > 500 ? 'warning' : 'success';
+                    setValue('avgResponse', Math.round(avgResp), respClass, 'ms');
+                    
+                    setValue('valueSecondary', formatNumber(data.unique_ips || 0));
+                    
+                    sparklineData.push(data.requests_per_minute || 0);
+                    if (sparklineData.length > 30) sparklineData.shift();
+                    drawSparkline(sparklineData);
+                    
+                } catch (error) {
+                    console.error('Widget fetch error:', error);
+                    setStatus('error', false);
+                }
+            }
+            
+            async function fetchSummaryData() {
+                try {
+                    const [summaryRes, timelineRes] = await Promise.all([
+                        fetch(API_URL),
+                        fetch(TIMELINE_URL)
+                    ]);
+                    
+                    if (!summaryRes.ok) throw new Error('API error');
+                    
+                    const data = await summaryRes.json();
+                    
+                    setStatus(data.status, true);
+                    
+                    setValue('valuePrimary', formatNumber(data.total_requests || 0));
+                    
+                    const errorRate = data.error_rate || 0;
+                    const errorClass = errorRate > 5 ? 'danger' : errorRate > 1 ? 'warning' : 'success';
+                    setValue('errorRate', errorRate.toFixed(1), errorClass, '%');
+                    
+                    const avgResp = data.avg_response_ms || 0;
+                    const respClass = avgResp > 1000 ? 'danger' : avgResp > 500 ? 'warning' : 'success';
+                    setValue('avgResponse', Math.round(avgResp), respClass, 'ms');
+                    
+                    setValue('valueSecondary', formatNumber(data.unique_ips || 0));
+                    
+                    if (timelineRes.ok) {
+                        const timeline = await timelineRes.json();
+                        sparklineData = timeline.map(d => d.requests || 0);
+                        drawSparkline(sparklineData);
+                    }
+                    
+                } catch (error) {
+                    console.error('Widget fetch error:', error);
+                    setStatus('error', true);
+                }
+            }
+            
+            function initUI() {
+                if (theme === 'light') {
+                    document.body.classList.add('theme-light');
+                }
+                
+                if (!isRealtime) {
+                    document.getElementById('timeBadge').style.display = 'block';
+                    document.getElementById('timeBadge').textContent = config.badge;
+                    
+                    document.getElementById('labelPrimary').textContent = 'Total Requests';
+                    document.getElementById('labelSecondary').textContent = 'Unique IPs';
+                    document.getElementById('labelChart').textContent = `Traffic (${config.label})`;
+                }
+            }
+            
+            async function fetchData() {
+                if (isRealtime) {
+                    await fetchRealtimeData();
+                } else {
+                    await fetchSummaryData();
+                }
+            }
+            
+            initUI();
+            fetchData();
+            setInterval(fetchData, REFRESH_INTERVAL);
+            
+            window.addEventListener('resize', () => drawSparkline(sparklineData));
+        })();
+    </script>
+</body>
+</html>
+{{end}}
