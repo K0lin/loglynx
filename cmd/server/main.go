@@ -67,20 +67,8 @@ func main() {
 		logger.WithCaller().Fatal("Failed to load configuration", logger.Args("error", err))
 	}
 
-	// Initialize TimeZone and set time.Local
-	if cfg.Server.TimeZone != "" && strings.ToUpper(cfg.Server.TimeZone) != "UTC" {
-		loc, err := time.LoadLocation(cfg.Server.TimeZone)
-		if err != nil {
-			logger.Warn("Failed to load configured timezone, falling back to UTC",
-				logger.Args("timezone", cfg.Server.TimeZone, "error", err))
-		} else {
-			time.Local = loc
-			logger.Info("Dashboard timezone initialized", logger.Args("timezone", cfg.Server.TimeZone))
-		}
-	} else {
-		// Ensure UTC if not specified or explicitly set to UTC
-		time.Local = time.UTC
-		logger.Info("Dashboard timezone set to UTC")
+	if cfg.Server.TimeZone != "" {
+		logger.Info("Dashboard display timezone configured", logger.Args("timezone", cfg.Server.TimeZone))
 	}
 
 	// Apply configured log level from environment variable LOG_LEVEL (default: info)
@@ -342,4 +330,3 @@ func main() {
 
 	logger.Info("LogLynx stopped gracefully")
 }
-
