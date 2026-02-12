@@ -486,7 +486,8 @@
 <!-- Application Configuration -->
 <script>
     window.LOGLYNX_CONFIG = {
-        splashScreenEnabled: {{.SplashScreenEnabled}}
+        splashScreenEnabled: {{.SplashScreenEnabled}},
+        timeZone: "{{.TimeZone}}"
     };
 </script>
 
@@ -510,9 +511,9 @@
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <!-- Core JavaScript -->
-<script src="/static/js/core/refresh-manager.js"></script>
-<script src="/static/js/core/api.js"></script>
-<script src="/static/js/core/charts.js"></script>
-<script src="/static/js/core/utils.js"></script>
-<script src="/static/js/core/tooltips.js"></script>
+    <script src="/static/js/core/refresh-manager.js"></script>
+    <script src="/static/js/core/api.js"></script>
+    <script src="/static/js/core/utils.js"></script>
+    <script src="/static/js/core/charts.js"></script>
+    <script src="/static/js/core/tooltips.js"></script>
 {{end}}

@@ -260,8 +260,9 @@
                 .then(data => {
                     if (errorTimelineChartInstance) LogLynxCharts.destroyChart(errorTimelineChartInstance);
                     
+                    const timelineLabels = LogLynxCharts.formatTimelineLabels(data, currentTimeRange);
                     errorTimelineChartInstance = LogLynxCharts.createStackedAreaChart('errorTimelineChart', {
-                        labels: data.map(item => item.hour),
+                        labels: timelineLabels,
                         datasets: [
                             {
                                 label: '4xx Errors',

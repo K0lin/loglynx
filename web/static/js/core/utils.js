@@ -188,16 +188,71 @@ const LogLynxUtils = {
     /**
      * Format date/time
      */
-    formatDateTime(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
+    getTimeZone: function() {
+        const configuredTz = window.LOGLYNX_CONFIG?.timeZone;
+        if (!configuredTz || configuredTz === '') {
+            return 'UTC';
+        }
+        try {
+            new Intl.DateTimeFormat(undefined, { timeZone: configuredTz });
+            return configuredTz;
+        } catch (e) {
+            console.warn('Invalid timezone configured:', configuredTz, '- falling back to UTC');
+            return 'UTC';
+        }
+    },
+
+    formatDateTime: function(dateStr, options = {}) {
+        if (!dateStr) return '-';
+        try {
+            const date = new Date(dateStr);
+            const defaultOptions = {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: this.getTimeZone()
+            };
+            return new Intl.DateTimeFormat(undefined, { ...defaultOptions, ...options }).format(date);
+        } catch (e) {
+            return dateStr;
+        }
+    },
+
+    formatDate: function(dateStr, options = {}) {
+        if (!dateStr) return '-';
+        try {
+            const date = new Date(dateStr);
+            const defaultOptions = {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                timeZone: this.getTimeZone()
+            };
+            return new Intl.DateTimeFormat(undefined, { ...defaultOptions, ...options }).format(date);
+        } catch (e) {
+            return dateStr;
+        }
+    },
+
+    formatTime: function(dateStr, options = {}) {
+        if (!dateStr) return '-';
+        try {
+            const date = new Date(dateStr);
+            const defaultOptions = {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: this.getTimeZone()
+            };
+            return new Intl.DateTimeFormat(undefined, { ...defaultOptions, ...options }).format(date);
+        } catch (e) {
+            return dateStr;
+        }
     },
 
     /**

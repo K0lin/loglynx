@@ -67,6 +67,10 @@ func main() {
 		logger.WithCaller().Fatal("Failed to load configuration", logger.Args("error", err))
 	}
 
+	if cfg.Server.TimeZone != "" {
+		logger.Info("Dashboard display timezone configured", logger.Args("timezone", cfg.Server.TimeZone))
+	}
+
 	// Apply configured log level from environment variable LOG_LEVEL (default: info)
 	// Supported values: trace, debug, info, warn, error, fatal
 	lvl := strings.ToLower(cfg.LogLevel)
@@ -259,6 +263,7 @@ func main() {
 		Production:          cfg.Server.Production,
 		DashboardEnabled:    cfg.Server.DashboardEnabled,
 		SplashScreenEnabled: cfg.Server.SplashScreenEnabled,
+		TimeZone:            cfg.Server.TimeZone,
 	}, dashboardHandler, realtimeHandler, systemHandler, logger)
 
 	// Start web server in goroutine
@@ -326,4 +331,3 @@ func main() {
 
 	logger.Info("LogLynx stopped gracefully")
 }
-

@@ -93,6 +93,7 @@ type ServerConfig struct {
 	Production         bool
 	DashboardEnabled   bool // If false, only API routes are exposed
 	SplashScreenEnabled bool // If false, splash screen is disabled on startup
+	TimeZone           string // Dashboard timezone (e.g., "UTC")
 }
 
 // PerformanceConfig contains performance tuning settings
@@ -145,6 +146,7 @@ func Load() (*Config, error) {
 			Production:          getEnvAsBool("SERVER_PRODUCTION", false),
 			DashboardEnabled:    getEnvAsBool("DASHBOARD_ENABLED", true),
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
+			TimeZone:            getEnv("TIMEZONE", "UTC"),
 		},
 		Performance: PerformanceConfig{
 			RealtimeMetricsInterval: getEnvAsDuration("METRICS_INTERVAL", 1*time.Second),

@@ -402,6 +402,8 @@ const LogLynxCharts = {
      * Format timeline labels based on time range
      */
     formatTimelineLabels(dataPoints, hours) {
+        const timeZone = LogLynxUtils.getTimeZone();
+
         if (hours > 0 && hours <= 24) {
             // Hourly labels (HH:MM format)
             return dataPoints.map(d => {
@@ -409,7 +411,8 @@ const LogLynxCharts = {
                 return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false
+                    hour12: false,
+                    timeZone: timeZone
                 });
             });
         } else if (hours > 0 && hours <= 168) {
@@ -419,7 +422,8 @@ const LogLynxCharts = {
                 return date.toLocaleDateString('en-US', {
                     weekday: 'short',
                     month: 'short',
-                    day: 'numeric'
+                    day: 'numeric',
+                    timeZone: timeZone
                 });
             });
         } else if (hours > 0 && hours <= 720) {
@@ -428,7 +432,8 @@ const LogLynxCharts = {
                 const date = new Date(d.hour);
                 return date.toLocaleDateString('en-US', {
                     month: 'short',
-                    day: 'numeric'
+                    day: 'numeric',
+                    timeZone: timeZone
                 });
             });
         } else {
@@ -444,7 +449,8 @@ const LogLynxCharts = {
                 if (!isNaN(date.getTime())) {
                     return date.toLocaleDateString('en-US', {
                         month: 'short',
-                        day: 'numeric'
+                        day: 'numeric',
+                        timeZone: timeZone
                     });
                 }
                 // If all else fails, return the raw value
