@@ -88,6 +88,7 @@ type LogSourcesConfig struct {
 
 // ServerConfig contains web server settings
 type ServerConfig struct {
+<<<<<<< HEAD
 	Host                string
 	Port                int
 	Production          bool
@@ -95,6 +96,14 @@ type ServerConfig struct {
 	SplashScreenEnabled bool   // If false, splash screen is disabled on startup
 	TimeZone            string // Dashboard timezone (e.g., "UTC")
 	WidgetEnabled       bool   // If false, widget page and API endpoints are disabled
+=======
+	Host               string
+	Port               int
+	Production         bool
+	DashboardEnabled   bool // If false, only API routes are exposed
+	SplashScreenEnabled bool // If false, splash screen is disabled on startup
+	TimeZone           string // Dashboard timezone (e.g., "UTC")
+>>>>>>> ac02250d92595967fc6dc65eb48f11dcafc582e3
 }
 
 // PerformanceConfig contains performance tuning settings
@@ -148,7 +157,10 @@ func Load() (*Config, error) {
 			DashboardEnabled:    getEnvAsBool("DASHBOARD_ENABLED", true),
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
 			TimeZone:            getEnv("TIMEZONE", "UTC"),
+<<<<<<< HEAD
 			WidgetEnabled:       getEnvAsBool("WIDGET_ENABLED", false),
+=======
+>>>>>>> ac02250d92595967fc6dc65eb48f11dcafc582e3
 		},
 		Performance: PerformanceConfig{
 			RealtimeMetricsInterval: getEnvAsDuration("METRICS_INTERVAL", 1*time.Second),
