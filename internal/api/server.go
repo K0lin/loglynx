@@ -38,10 +38,10 @@ import (
 // InitialLoadState tracks whether the initial load and index creation is complete
 // This prevents API calls from overwhelming the database during startup
 type InitialLoadState struct {
-	mu              sync.RWMutex
-	isInitialLoad   bool
-	splashEnabled   bool
-	startTime       time.Time
+	mu            sync.RWMutex
+	isInitialLoad bool
+	splashEnabled bool
+	startTime     time.Time
 }
 
 // NewInitialLoadState creates a new initial load state tracker
@@ -91,7 +91,8 @@ type Config struct {
 	Production          bool
 	DashboardEnabled    bool   // If false, only API routes are exposed
 	SplashScreenEnabled bool   // If false, splash screen is disabled on startup
-	TimeZone           string // Dashboard timezone
+	TimeZone            string // Dashboard timezone
+	WidgetEnabled       bool   // If false, widget page and API endpoints are disabled
 }
 
 // NewServer creates a new HTTP server
@@ -184,6 +185,16 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		router.GET("/system", func(c *gin.Context) {
 			renderPage(c, "system", "System Statistics", "fas fa-server")
 		})
+
+		// Widget page route (only if enabled)
+		if cfg.WidgetEnabled {
+			router.GET("/widget", func(c *gin.Context) {
+				theme := c.DefaultQuery("theme", "dark")
+				c.HTML(http.StatusOK, "widget.html", gin.H{
+					"Theme": theme,
+				})
+			})
+		}
 
 		// IP Analytics page
 		router.GET("/ip/:ip", func(c *gin.Context) {
@@ -284,6 +295,13 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		// System Statistics
 		api.GET("/system/stats", systemHandler.GetSystemStats)
 		api.GET("/system/timeline", systemHandler.GetRecordsTimeline)
+
+		// Widget API (compact data for iframe embedding) - only if enabled
+		if cfg.WidgetEnabled {
+			api.GET("/widget/data", dashboardHandler.GetWidgetData)
+			api.GET("/widget/summary", dashboardHandler.GetWidgetSummary)
+			api.GET("/widget/timeline", dashboardHandler.GetWidgetTimeline)
+		}
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -338,8 +356,8 @@ func initialLoadBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) 
 		}
 
 		// Whitelist endpoints that are needed during startup
-		if c.Request.URL.Path == "/api/v1/version" || 
-		   c.Request.URL.Path == "/api/v1/stats/log-processing" {
+		if c.Request.URL.Path == "/api/v1/version" ||
+			c.Request.URL.Path == "/api/v1/stats/log-processing" {
 			c.Next()
 			return
 		}
@@ -351,11 +369,11 @@ func initialLoadBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) 
 			logger.Args("path", c.Request.URL.Path, "elapsed_ms", elapsed.Milliseconds()))
 
 		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":              "Service initializing",
-			"message":            "The application is currently initializing and indexing logs. Please wait...",
-			"status":             "initializing",
-			"elapsed_seconds":    elapsed.Seconds(),
-			"max_wait_estimate":  "This usually takes between 10-120 seconds depending on your log volume",
+			"error":             "Service initializing",
+			"message":           "The application is currently initializing and indexing logs. Please wait...",
+			"status":            "initializing",
+			"elapsed_seconds":   elapsed.Seconds(),
+			"max_wait_estimate": "This usually takes between 10-120 seconds depending on your log volume",
 		})
 
 		c.Abort()
@@ -378,4 +396,3 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-

@@ -86,6 +86,8 @@ tags:
     description: System information and log processing stats
   - name: IP Analytics
     description: IP-specific statistics and analytics
+  - name: Widget
+    description: Compact widget endpoints for iframe embedding
 
 paths:
   /stats/summary:
@@ -880,6 +882,109 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ServiceInfo'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /widget/data:
+    get:
+      tags:
+        - Widget
+      summary: Get real-time widget data
+      description: |
+        Returns compact real-time metrics optimized for widget embedding.
+        Shows data from the last hour with requests per minute calculation.
+        
+        **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
+      operationId: getWidgetData
+      responses:
+        '200':
+          description: Real-time widget data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetRealtimeData'
+        '404':
+          description: Widget endpoints disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /widget/summary:
+    get:
+      tags:
+        - Widget
+      summary: Get widget summary data for a time period
+      description: |
+        Returns compact summary statistics for embedding in widgets.
+        Optimized for displaying aggregated data over a time period.
+        
+        **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
+      operationId: getWidgetSummary
+      parameters:
+        - name: hours
+          in: query
+          description: Number of hours to analyze (1-720 for up to 30 days, default 24)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 720
+            default: 24
+            example: 24
+      responses:
+        '200':
+          description: Widget summary data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetSummaryData'
+        '404':
+          description: Widget endpoints disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /widget/timeline:
+    get:
+      tags:
+        - Widget
+      summary: Get widget timeline data
+      description: |
+        Returns compact timeline data optimized for sparkline charts in widgets.
+        Returns up to 30 data points for periods <= 24 hours, or 50 points for longer periods.
+        
+        **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
+      operationId: getWidgetTimeline
+      parameters:
+        - name: hours
+          in: query
+          description: Number of hours to analyze (1-720 for up to 30 days, default 24)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 720
+            default: 24
+            example: 24
+      responses:
+        '200':
+          description: Widget timeline data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WidgetTimelinePoint'
+        '404':
+          description: Widget endpoints disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2260,6 +2365,91 @@ components:
           format: date-time
           description: Last time this IP was seen
           example: "2025-11-03T14:32:15Z"
+
+    WidgetRealtimeData:
+      type: object
+      description: Compact real-time metrics for widget embedding
+      properties:
+        status:
+          type: string
+          description: System health status
+          enum: [healthy, warning, danger, error]
+          example: "healthy"
+        requests_per_minute:
+          type: number
+          format: double
+          description: Requests per minute (calculated from last hour)
+          example: 125.5
+        error_rate:
+          type: number
+          format: double
+          description: Combined error rate percentage (4xx + 5xx)
+          example: 2.5
+        avg_response_time:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 145.3
+        unique_ips:
+          type: integer
+          format: int64
+          description: Number of unique IP addresses in the last hour
+          example: 1523
+
+    WidgetSummaryData:
+      type: object
+      description: Compact summary statistics for widget embedding
+      properties:
+        status:
+          type: string
+          description: System health status
+          enum: [healthy, warning, danger, error]
+          example: "healthy"
+        total_requests:
+          type: integer
+          format: int64
+          description: Total number of requests in the time period
+          example: 125643
+        requests_per_hr:
+          type: number
+          format: double
+          description: Average requests per hour
+          example: 5235.1
+        error_rate:
+          type: number
+          format: double
+          description: Combined error rate percentage (4xx + 5xx)
+          example: 2.5
+        avg_response_ms:
+          type: number
+          format: double
+          description: Average response time in milliseconds
+          example: 145.3
+        unique_ips:
+          type: integer
+          format: int64
+          description: Number of unique IP addresses
+          example: 15234
+        bandwidth_mb:
+          type: number
+          format: double
+          description: Total bandwidth in megabytes
+          example: 5123.5
+
+    WidgetTimelinePoint:
+      type: object
+      description: Single point in widget timeline data
+      properties:
+        hour:
+          type: string
+          format: date-time
+          description: Timestamp of this data point
+          example: "2025-11-03T14:00:00Z"
+        requests:
+          type: integer
+          format: int64
+          description: Number of requests in this time bucket
+          example: 1523
 
     ErrorResponse:
       type: object
