@@ -89,8 +89,9 @@ type Config struct {
 	Host                string
 	Port                int
 	Production          bool
-	DashboardEnabled    bool // If false, only API routes are exposed
-	SplashScreenEnabled bool // If false, splash screen is disabled on startup
+	DashboardEnabled    bool   // If false, only API routes are exposed
+	SplashScreenEnabled bool   // If false, splash screen is disabled on startup
+	TimeZone           string // Dashboard timezone
 }
 
 // NewServer creates a new HTTP server
@@ -122,6 +123,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 
 	// Helper function to render pages with common config
 	splashScreenEnabled := cfg.SplashScreenEnabled
+	timezone := cfg.TimeZone
 	renderPage := func(c *gin.Context, pageName, pageTitle, pageIcon string) {
 		c.HTML(http.StatusOK, pageName+".html", gin.H{
 			"Title":               pageTitle,
@@ -130,6 +132,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 			"PageIcon":            pageIcon,
 			"AppVersion":          version.Version,
 			"SplashScreenEnabled": splashScreenEnabled,
+			"TimeZone":            timezone,
 		})
 	}
 

@@ -339,12 +339,7 @@ function updateRealtimeMetrics(metrics) {
     $('#live5xx').text(metrics.status_5xx || 0);
 
     // Update live chart with millisecond precision to avoid duplicate keys
-    const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    });
+    const timeLabel = LogLynxUtils.formatTime(metricsTimestamp, { second: '2-digit' });
 
     // Use timestamp millis as unique key internally
     const uniqueKey = metricsTimestamp.getTime();
@@ -666,12 +661,7 @@ function processBufferedMetrics() {
     // 1. Update Charts Data Arrays (History)
     pausedMetricsBuffer.forEach(metrics => {
         const metricsTimestamp = metrics.timestamp ? new Date(metrics.timestamp) : new Date();
-        const timeLabel = metricsTimestamp.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
+        const timeLabel = LogLynxUtils.formatTime(metricsTimestamp, { second: '2-digit' });
 
         // Logic to add to arrays
         if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {

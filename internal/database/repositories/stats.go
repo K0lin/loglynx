@@ -573,13 +573,13 @@ func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, exclude
 
 	switch {
 	case hours > 0 && hours <= 24:
-		groupBy = "substr(timestamp, 1, 13) || ':00'" // hourly
+		groupBy = "strftime('%Y-%m-%dT%H:00:00Z', timestamp)" // hourly UTC
 	case hours > 0 && hours <= 168:
-		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'" // 6-hour blocks
+		groupBy = "strftime('%Y-%m-%dT', timestamp) || printf('%02d', (CAST(strftime('%H', timestamp) AS INTEGER) / 6) * 6) || ':00:00Z'" // 6-hour blocks UTC
 	case hours > 0 && hours <= 720:
-		groupBy = "substr(timestamp, 1, 10)" // daily for ~30 days
+		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)" // daily UTC
 	default:
-		groupBy = "strftime('%Y-W%W', timestamp)" // weekly for long ranges
+		groupBy = "strftime('%Y-W%W', timestamp)" // weekly (special format handled in frontend)
 	}
 
 	query := r.db.Model(&models.HTTPRequest{}).
@@ -612,16 +612,13 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 	var groupBy string
 	if hours > 0 && hours <= 24 {
 		// Group by hour for last 24 hours
-		// Optimize: substr(timestamp, 1, 13) || ':00'
-		groupBy = "substr(timestamp, 1, 13) || ':00'"
+		groupBy = "strftime('%Y-%m-%dT%H:00:00Z', timestamp)"
 	} else if hours > 0 && hours <= 168 {
-		// Group by day for last 7 days (simpler, works reliably)
-		// Optimize: substr(timestamp, 1, 10)
-		groupBy = "substr(timestamp, 1, 10)"
+		// Group by day for last 7 days
+		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)"
 	} else if hours > 0 && hours <= 720 {
 		// Group by day for last 30 days
-		// Optimize: substr(timestamp, 1, 10)
-		groupBy = "substr(timestamp, 1, 10)"
+		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)"
 	} else {
 		// Group by week for longer periods
 		groupBy = "strftime('%Y-W%W', timestamp)"
@@ -671,7 +668,7 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 }
 
 // GetTrafficHeatmap returns traffic metrics grouped by day of week and hour for heatmap visualisation
-// OPTIMIZED: Uses substr() for hour extraction for better performance
+// OPTIMIZED: Uses strftime() for consistent extraction
 func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TrafficHeatmapData, error) {
 	if days <= 0 {
 		days = 30
@@ -684,7 +681,8 @@ func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, exclude
 
 	// Build WHERE clause
 	whereClause := "timestamp > ?"
-	args := []interface{}{since}
+	args := []interface{}{}
+	args = append(args, since)
 
 	// Apply service filters inline for better query planning
 	if len(filters) > 0 {
@@ -710,11 +708,11 @@ func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, exclude
 		}
 	}
 
-	// Optimized raw SQL query - uses substr() for hour extraction
+	// Optimized raw SQL query
 	query := `
 		SELECT
 			CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
-			CAST(substr(timestamp, 12, 2) AS INTEGER) as hour,
+			CAST(strftime('%H', timestamp) AS INTEGER) as hour,
 			COUNT(*) as requests,
 			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
 		FROM http_requests
@@ -1990,13 +1988,13 @@ func (r *statsRepo) GetIPTimelineStats(ip string, hours int) ([]*TimelineData, e
 	var groupBy string
 	if hours <= 24 {
 		// Group by hour
-		groupBy = "substr(timestamp, 1, 13) || ':00'"
+		groupBy = "strftime('%Y-%m-%dT%H:00:00Z', timestamp)"
 	} else if hours <= 168 {
 		// Group by 6-hour blocks
-		groupBy = "substr(timestamp, 1, 10) || ' ' || printf('%02d', (CAST(substr(timestamp, 12, 2) AS INTEGER) / 6) * 6) || ':00'"
+		groupBy = "strftime('%Y-%m-%dT', timestamp) || printf('%02d', (CAST(strftime('%H', timestamp) AS INTEGER) / 6) * 6) || ':00:00Z'"
 	} else if hours <= 720 {
 		// Group by day
-		groupBy = "substr(timestamp, 1, 10)"
+		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)"
 	} else {
 		// Group by week (calendar logic needs strftime)
 		groupBy = "strftime('%Y-W%W', timestamp)"
@@ -2043,7 +2041,7 @@ func (r *statsRepo) GetIPTrafficHeatmap(ip string, days int) ([]*TrafficHeatmapD
 	query := `
 		SELECT
 			CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
-			CAST(substr(timestamp, 12, 2) AS INTEGER) as hour,
+			CAST(strftime('%H', timestamp) AS INTEGER) as hour,
 			COUNT(*) as requests,
 			AVG(response_time_ms) as avg_response_time
 		FROM http_requests
@@ -2459,7 +2457,7 @@ func (r *statsRepo) GetRecordsTimeline(days int) ([]*TimelineData, error) {
 
 	// Group by day for system stats
 	err := r.db.WithContext(ctx).Model(&models.HTTPRequest{}).
-		Select("strftime('%Y-%m-%d', timestamp) as hour, COUNT(*) as requests").
+		Select("strftime('%Y-%m-%dT00:00:00Z', timestamp) as hour, COUNT(*) as requests").
 		Where("timestamp > ?", since).
 		Group("hour").
 		Order("hour").

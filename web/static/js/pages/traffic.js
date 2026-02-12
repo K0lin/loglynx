@@ -139,12 +139,7 @@ function calculatePeakTraffic(timelineData) {
 
     $('#peakTraffic').text(LogLynxUtils.formatNumber(maxRequests));
     if (peakTime) {
-        const date = new Date(peakTime);
-        $('#peakTrafficTime').text(date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit'
-        }));
+        $('#peakTrafficTime').text(LogLynxUtils.formatDateTime(peakTime).replace(/:\d{2}$/, ''));
     }
 }
 
