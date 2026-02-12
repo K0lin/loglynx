@@ -91,12 +91,8 @@ type Config struct {
 	Production          bool
 	DashboardEnabled    bool   // If false, only API routes are exposed
 	SplashScreenEnabled bool   // If false, splash screen is disabled on startup
-<<<<<<< HEAD
 	TimeZone            string // Dashboard timezone
 	WidgetEnabled       bool   // If false, widget page and API endpoints are disabled
-=======
-	TimeZone           string // Dashboard timezone
->>>>>>> ac02250d92595967fc6dc65eb48f11dcafc582e3
 }
 
 // NewServer creates a new HTTP server
