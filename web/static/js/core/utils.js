@@ -188,6 +188,20 @@ const LogLynxUtils = {
     /**
      * Format date/time
      */
+    getTimeZone: function() {
+        const configuredTz = window.LOGLYNX_CONFIG?.timeZone;
+        if (!configuredTz || configuredTz === '') {
+            return 'UTC';
+        }
+        try {
+            new Intl.DateTimeFormat(undefined, { timeZone: configuredTz });
+            return configuredTz;
+        } catch (e) {
+            console.warn('Invalid timezone configured:', configuredTz, '- falling back to UTC');
+            return 'UTC';
+        }
+    },
+
     formatDateTime: function(dateStr, options = {}) {
         if (!dateStr) return '-';
         try {
@@ -200,7 +214,7 @@ const LogLynxUtils = {
                 minute: '2-digit',
                 second: '2-digit',
                 hour12: false,
-                timeZone: window.LOGLYNX_CONFIG?.timeZone || 'UTC'
+                timeZone: this.getTimeZone()
             };
             return new Intl.DateTimeFormat(undefined, { ...defaultOptions, ...options }).format(date);
         } catch (e) {
@@ -208,9 +222,6 @@ const LogLynxUtils = {
         }
     },
 
-    /**
-     * Format date only
-     */
     formatDate: function(dateStr, options = {}) {
         if (!dateStr) return '-';
         try {
@@ -219,7 +230,7 @@ const LogLynxUtils = {
                 year: 'numeric',
                 month: 'short',
                 day: '2-digit',
-                timeZone: window.LOGLYNX_CONFIG?.timeZone || 'UTC'
+                timeZone: this.getTimeZone()
             };
             return new Intl.DateTimeFormat(undefined, { ...defaultOptions, ...options }).format(date);
         } catch (e) {
@@ -227,9 +238,6 @@ const LogLynxUtils = {
         }
     },
 
-    /**
-     * Format time only
-     */
     formatTime: function(dateStr, options = {}) {
         if (!dateStr) return '-';
         try {
@@ -239,7 +247,7 @@ const LogLynxUtils = {
                 minute: '2-digit',
                 second: '2-digit',
                 hour12: false,
-                timeZone: window.LOGLYNX_CONFIG?.timeZone || 'UTC'
+                timeZone: this.getTimeZone()
             };
             return new Intl.DateTimeFormat(undefined, { ...defaultOptions, ...options }).format(date);
         } catch (e) {

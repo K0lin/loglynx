@@ -341,7 +341,8 @@ function updateTimelineChart(data) {
         timelineChart.destroy();
     }
 
-    const labels = data.map(d => d.hour);
+    const hours = parseInt($('#timelineRange').val()) || 168;
+    const labels = LogLynxCharts.formatTimelineLabels(data, hours);
     const requests = data.map(d => d.requests);
     const bandwidth = data.map(d => d.bandwidth);
 

@@ -402,7 +402,7 @@ const LogLynxCharts = {
      * Format timeline labels based on time range
      */
     formatTimelineLabels(dataPoints, hours) {
-        const timeZone = (window.LOGLYNX_CONFIG && window.LOGLYNX_CONFIG.timeZone) ? window.LOGLYNX_CONFIG.timeZone : undefined;
+        const timeZone = LogLynxUtils.getTimeZone();
 
         if (hours > 0 && hours <= 24) {
             // Hourly labels (HH:MM format)
