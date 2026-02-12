@@ -148,10 +148,8 @@ func Load() (*Config, error) {
 			DashboardEnabled:    getEnvAsBool("DASHBOARD_ENABLED", true),
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
 			TimeZone:            getEnv("TIMEZONE", "UTC"),
-<<<<<<< HEAD
 			WidgetEnabled:       getEnvAsBool("WIDGET_ENABLED", false),
-=======
->>>>>>> ac02250d92595967fc6dc65eb48f11dcafc582e3
+
 		},
 		Performance: PerformanceConfig{
 			RealtimeMetricsInterval: getEnvAsDuration("METRICS_INTERVAL", 1*time.Second),
