@@ -79,6 +79,7 @@ func NewCoordinator(
 		initialImportEnable: initialImportEnable,
 		batchSize:           batchSize,
 		workerPoolSize:      workerPoolSize,
+		hasExistingData:     httpRepo.HasExistingData(),
 	}
 }
 
@@ -110,8 +111,6 @@ func (c *Coordinator) Start() error {
 	}
 
 	c.logger.Info("Found log sources", c.logger.Args("count", len(sources)))
-
-	c.hasExistingData = c.httpRepo.HasExistingData()
 
 	// Create and start a processor for each source
 	successCount := 0
