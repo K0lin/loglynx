@@ -66,9 +66,9 @@ type SourceProcessor struct {
 	initialLoadComplete bool // True after reaching EOF on first load
 	initialLoadMu       sync.Mutex
 	// Pause/resume control
-	isPaused   bool
-	pauseCond  *sync.Cond
-	pauseMu    sync.Mutex
+	isPaused  bool
+	pauseCond *sync.Cond
+	pauseMu   sync.Mutex
 }
 
 // NewSourceProcessor creates a new source processor
@@ -82,6 +82,7 @@ func NewSourceProcessor(
 	logger *pterm.Logger,
 	batchSize int,
 	workerPoolSize int,
+	hasExistingData bool,
 ) *SourceProcessor {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -101,8 +102,8 @@ func NewSourceProcessor(
 		workerPoolSize = 4
 	}
 
-	// Check if this is an initial load (first time reading this file)
-	isInitialLoad := (source.LastPosition == 0)
+	// Initial load only if position is 0 AND database is empty (truly fresh install)
+	isInitialLoad := (source.LastPosition == 0) && !hasExistingData
 
 	sp := &SourceProcessor{
 		source:              source,
@@ -113,10 +114,10 @@ func NewSourceProcessor(
 		geoIP:               geoIP,
 		metricsCollector:    metricsCollector,
 		logger:              logger,
-		batchSize:           batchSize,       // Configurable via BATCH_SIZE env var
-		workerPoolSize:      workerPoolSize,  // Configurable via WORKER_POOL_SIZE env var
-		batchTimeout:        500 * time.Millisecond, // OPTIMIZED: Very short timeout for realtime updates (was 1s)
-		pollInterval:        100 * time.Millisecond, // OPTIMIZED: Poll more frequently during initial load (was 1s)
+		batchSize:           batchSize,
+		workerPoolSize:      workerPoolSize,
+		batchTimeout:        500 * time.Millisecond,
+		pollInterval:        100 * time.Millisecond,
 		ctx:                 ctx,
 		cancel:              cancel,
 		totalProcessed:      0,
@@ -579,4 +580,3 @@ func truncate(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
-
