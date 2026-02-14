@@ -42,14 +42,15 @@ type Coordinator struct {
 	parserReg           *parsers.Registry
 	geoIP               *enrichment.GeoIPEnricher
 	metricsCollector    *realtime.MetricsCollector
-	processors          map[string]*SourceProcessor // Changed from slice to map for O(1) lookup by source name
+	processors          map[string]*SourceProcessor
 	logger              *pterm.Logger
 	mu                  sync.RWMutex
 	isRunning           bool
-	initialImportDays   int  // Number of days to import on first run (0 = all)
-	initialImportEnable bool // Enable initial import limiting
-	batchSize           int  // Batch size for log processing
-	workerPoolSize      int  // Worker pool size for parallel parsing
+	initialImportDays   int
+	initialImportEnable bool
+	batchSize           int
+	workerPoolSize      int
+	hasExistingData     bool
 }
 
 // NewCoordinator creates a new ingestion coordinator
@@ -78,6 +79,7 @@ func NewCoordinator(
 		initialImportEnable: initialImportEnable,
 		batchSize:           batchSize,
 		workerPoolSize:      workerPoolSize,
+		hasExistingData:     httpRepo.HasExistingData(),
 	}
 }
 
@@ -169,6 +171,7 @@ func (c *Coordinator) startSourceProcessorLocked(source *models.LogSource) error
 		c.logger,
 		c.batchSize,
 		c.workerPoolSize,
+		c.hasExistingData,
 	)
 
 	// Apply initial import limit if enabled and this is a new source
@@ -473,4 +476,3 @@ func (c *Coordinator) StartSyncLoop(interval time.Duration) {
 		}
 	}()
 }
-

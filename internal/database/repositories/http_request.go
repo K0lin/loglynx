@@ -22,17 +22,16 @@
 package repositories
 
 import (
-    "loglynx/internal/database/indexes"
-    "loglynx/internal/database/models"
-    "strings"
-    "sync"
-    "time"
+	"loglynx/internal/database/indexes"
+	"loglynx/internal/database/models"
+	"strings"
+	"sync"
+	"time"
 
-    "github.com/pterm/pterm"
-    "gorm.io/gorm"
-    "gorm.io/gorm/clause"
+	"github.com/pterm/pterm"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
-
 
 // HTTPRequestRepository handles CRUD operations for HTTP requests
 type HTTPRequestRepository interface {
@@ -50,6 +49,8 @@ type HTTPRequestRepository interface {
 	IsIndexCreationActive() bool
 	// Set processor pauser for coordinated pause during index creation
 	SetProcessorPauser(pauser ProcessorPauser)
+	// HasExistingData checks if database already has data (cached, efficient)
+	HasExistingData() bool
 }
 
 // ProcessorPauser allows pausing/resuming processors during index creation
@@ -61,12 +62,14 @@ type ProcessorPauser interface {
 type httpRequestRepo struct {
 	db                  *gorm.DB
 	logger              *pterm.Logger
-	processorPauser     ProcessorPauser // Optional: pauses processors during index creation
-	isFirstLoad         bool       // Global flag: true when database is empty at startup
-	firstLoadMu         sync.Mutex // Protects isFirstLoad flag
-	firstLoadOnce       sync.Once  // Ensures first-load check happens only once
-	indexCreationActive bool       // True while indexes are being created
-	indexCreationMu     sync.RWMutex // Protects indexCreationActive flag
+	processorPauser     ProcessorPauser
+	isFirstLoad         bool
+	firstLoadMu         sync.Mutex
+	firstLoadOnce       sync.Once
+	indexCreationActive bool
+	indexCreationMu     sync.RWMutex
+	hasExistingData     *bool
+	hasExistingDataMu   sync.RWMutex
 }
 
 // NewHTTPRequestRepository creates a new HTTP request repository
@@ -87,36 +90,35 @@ func (r *httpRequestRepo) SetProcessorPauser(pauser ProcessorPauser) {
 // checkFirstLoad checks if database is empty (only once, at startup)
 // This is thread-safe and executes only on the first call
 func (r *httpRequestRepo) checkFirstLoad() {
-    r.firstLoadOnce.Do(func() {
-        var count int64
-        r.db.Model(&models.HTTPRequest{}).Count(&count)
+	r.firstLoadOnce.Do(func() {
+		var count int64
+		r.db.Model(&models.HTTPRequest{}).Count(&count)
 
-        r.firstLoadMu.Lock()
-        r.isFirstLoad = (count == 0)
-        r.firstLoadMu.Unlock()
+		r.firstLoadMu.Lock()
+		r.isFirstLoad = (count == 0)
+		r.firstLoadMu.Unlock()
 
-        if r.isFirstLoad {
-            r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
-        } else {
-            // For existing databases, reconcile indexes before processing
-            r.reconcileIndexesBackground()
-        }
-    })
+		if r.isFirstLoad {
+			r.logger.Info("First load detected - deduplication checks will be skipped for optimal performance")
+		} else {
+			// For existing databases, reconcile indexes before processing
+			r.reconcileIndexesBackground()
+		}
+	})
 }
 
 func (r *httpRequestRepo) reconcileIndexesBackground() {
-    r.logger.Debug("Reconciling database indexes in background for existing database")
-    go func() {
-        created, dropped, err := indexes.Ensure(r.db, r.logger)
-        if err != nil {
-            r.logger.Error("Failed to reconcile database indexes", r.logger.Args("error", err))
-            return
-        }
-        r.logger.Info("Database indexes reconciled",
-            r.logger.Args("created", created, "dropped", dropped))
-    }()
+	r.logger.Debug("Reconciling database indexes in background for existing database")
+	go func() {
+		created, dropped, err := indexes.Ensure(r.db, r.logger)
+		if err != nil {
+			r.logger.Error("Failed to reconcile database indexes", r.logger.Args("error", err))
+			return
+		}
+		r.logger.Info("Database indexes reconciled",
+			r.logger.Args("created", created, "dropped", dropped))
+	}()
 }
-
 
 // DisableFirstLoadMode disables first-load optimization
 // Called after the initial file load is complete
@@ -144,48 +146,68 @@ func (r *httpRequestRepo) IsIndexCreationActive() bool {
 	return r.indexCreationActive
 }
 
-// createDeferredIndexes creates performance indexes after initial data load
-func (r *httpRequestRepo) createDeferredIndexes() {
-    // Pause all processors to prevent data loss during index creation
-    if r.processorPauser != nil {
-        r.logger.Info("Pausing log processors for safe index creation...")
-        r.processorPauser.PauseAll()
+// HasExistingData checks if the database already contains data
+// Result is cached after first check for optimal performance
+func (r *httpRequestRepo) HasExistingData() bool {
+	r.hasExistingDataMu.RLock()
+	if r.hasExistingData != nil {
+		defer r.hasExistingDataMu.RUnlock()
+		return *r.hasExistingData
+	}
+	r.hasExistingDataMu.RUnlock()
 
-        // Ensure we resume processors when done
-        defer func() {
-            r.logger.Info("Resuming log processors...")
-            r.processorPauser.ResumeAll()
-        }()
-    }
+	var exists int
+	r.db.Raw("SELECT 1 FROM http_requests LIMIT 1").Scan(&exists)
 
-    // Mark index creation as active
-    r.indexCreationMu.Lock()
-    r.indexCreationActive = true
-    r.indexCreationMu.Unlock()
+	r.hasExistingDataMu.Lock()
+	result := exists == 1
+	r.hasExistingData = &result
+	r.hasExistingDataMu.Unlock()
 
-    // Ensure we mark as complete when done
-    defer func() {
-        r.indexCreationMu.Lock()
-        r.indexCreationActive = false
-        r.indexCreationMu.Unlock()
-    }()
-
-    r.logger.Info("Creating performance indexes in background (this may take a few minutes)...")
-
-    startTime := time.Now()
-
-    created, dropped, err := indexes.Ensure(r.db, r.logger)
-    if err != nil {
-        r.logger.Error("Failed to create performance indexes",
-            r.logger.Args("error", err, "elapsed", time.Since(startTime)))
-        return
-    }
-
-    elapsed := time.Since(startTime)
-    r.logger.Info("Performance indexes created successfully",
-        r.logger.Args("elapsed_seconds", elapsed.Seconds(), "created", created, "dropped", dropped))
+	return result
 }
 
+// createDeferredIndexes creates performance indexes after initial data load
+func (r *httpRequestRepo) createDeferredIndexes() {
+	// Pause all processors to prevent data loss during index creation
+	if r.processorPauser != nil {
+		r.logger.Info("Pausing log processors for safe index creation...")
+		r.processorPauser.PauseAll()
+
+		// Ensure we resume processors when done
+		defer func() {
+			r.logger.Info("Resuming log processors...")
+			r.processorPauser.ResumeAll()
+		}()
+	}
+
+	// Mark index creation as active
+	r.indexCreationMu.Lock()
+	r.indexCreationActive = true
+	r.indexCreationMu.Unlock()
+
+	// Ensure we mark as complete when done
+	defer func() {
+		r.indexCreationMu.Lock()
+		r.indexCreationActive = false
+		r.indexCreationMu.Unlock()
+	}()
+
+	r.logger.Info("Creating performance indexes in background (this may take a few minutes)...")
+
+	startTime := time.Now()
+
+	created, dropped, err := indexes.Ensure(r.db, r.logger)
+	if err != nil {
+		r.logger.Error("Failed to create performance indexes",
+			r.logger.Args("error", err, "elapsed", time.Since(startTime)))
+		return
+	}
+
+	elapsed := time.Since(startTime)
+	r.logger.Info("Performance indexes created successfully",
+		r.logger.Args("elapsed_seconds", elapsed.Seconds(), "created", created, "dropped", dropped))
+}
 
 // getFirstLoadStatus returns current first-load status (thread-safe)
 func (r *httpRequestRepo) getFirstLoadStatus() bool {
@@ -643,4 +665,3 @@ func (r *httpRequestRepo) CountBySourceName(sourceName string) (int64, error) {
 	}
 	return count, nil
 }
-

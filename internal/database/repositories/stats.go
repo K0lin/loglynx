@@ -1633,6 +1633,8 @@ func (r *statsRepo) GetLogProcessingStats() ([]*LogProcessingStats, error) {
 		percentage := 0.0
 		if fileSize > 0 {
 			percentage = float64(source.LastPosition) / float64(fileSize) * 100.0
+		} else if source.LastPosition > 0 {
+			percentage = 100.0
 		}
 
 		stats = append(stats, &LogProcessingStats{
