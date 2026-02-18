@@ -93,6 +93,7 @@ type Config struct {
 	SplashScreenEnabled bool   // If false, splash screen is disabled on startup
 	TimeZone            string // Dashboard timezone
 	WidgetEnabled       bool   // If false, widget page and API endpoints are disabled
+	HasExistingData     bool   // If true, database has existing data - skip initial load checks
 }
 
 // NewServer creates a new HTTP server
@@ -125,6 +126,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	// Helper function to render pages with common config
 	splashScreenEnabled := cfg.SplashScreenEnabled
 	timezone := cfg.TimeZone
+	hasExistingData := cfg.HasExistingData
 	renderPage := func(c *gin.Context, pageName, pageTitle, pageIcon string) {
 		c.HTML(http.StatusOK, pageName+".html", gin.H{
 			"Title":               pageTitle,
@@ -134,6 +136,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 			"AppVersion":          version.Version,
 			"SplashScreenEnabled": splashScreenEnabled,
 			"TimeZone":            timezone,
+			"HasExistingData":     hasExistingData,
 		})
 	}
 
@@ -207,6 +210,8 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 				"AppVersion":          version.Version,
 				"IPAddress":           ip,
 				"SplashScreenEnabled": splashScreenEnabled,
+				"TimeZone":            timezone,
+				"HasExistingData":     hasExistingData,
 			})
 		})
 
