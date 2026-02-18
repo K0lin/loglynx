@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package ingestion
 
 import (
@@ -157,6 +156,7 @@ func (r *IncrementalReader) ReadBatch(maxLines int) ([]string, int64, int64, str
 
 	lines := []string{}
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 	firstLine := true
 	rotationDetected := false
 
@@ -515,4 +515,3 @@ func getFileInode(file *os.File) (int64, error) {
 	// This means we won't detect rotation by inode, but we'll still detect truncation
 	return 0, nil
 }
-
