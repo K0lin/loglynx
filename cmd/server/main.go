@@ -269,6 +269,7 @@ func main() {
 		SplashScreenEnabled: cfg.Server.SplashScreenEnabled,
 		TimeZone:            cfg.Server.TimeZone,
 		WidgetEnabled:       cfg.Server.WidgetEnabled,
+		HasExistingData:     httpRepo.HasExistingData(),
 	}, dashboardHandler, realtimeHandler, systemHandler, logger)
 
 	// Start web server in goroutine
