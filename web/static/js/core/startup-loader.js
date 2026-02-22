@@ -29,26 +29,27 @@ SOFTWARE.
 
 const LogLynxStartupLoader = {
     MIN_PROCESSING_PERCENTAGE: 99,
-    CHECK_INTERVAL: 1000, // Check every 1 second
-    CHECK_INTERVAL_ERROR: 3000, // Slower polling when errors occur (3 seconds)
-    DATA_VERIFICATION_WAIT: 5000, // Wait 5 seconds before retrying data verification
-    MAX_CONSECUTIVE_ERRORS: 5, // Max errors before showing warning
+    CHECK_INTERVAL: 1000,
+    CHECK_INTERVAL_ERROR: 3000,
+    DATA_VERIFICATION_WAIT: 5000,
+    MAX_CONSECUTIVE_ERRORS: 5,
     isReady: false,
     checkTimer: null,
-    countdownTimer: null, // Timer for ETA countdown animation
-    elapsedTimer: null, // Timer for elapsed time counter
-    startProcessingTime: null, // When processing started
-    alreadyChecked: false, // Flag to avoid re-checking on subsequent page loads
-    previousPercentage: 0, // Track previous percentage for ETA calculation
-    lastCheckTime: null, // Track last check time for velocity calculation
-    processingHistory: [], // Store recent processing speeds for better ETA
-    consecutiveErrors: 0, // Track consecutive API errors
-    databaseUnderLoad: false, // Flag for database load warning
-    lastSuccessfulPercentage: 0, // Track last known good percentage
-    currentEtaSeconds: null, // Current ETA in seconds for countdown
-    lastEtaUpdateTime: null, // When ETA was last calculated
-    splashScreenEnabled: true, // Default to enabled, will be loaded from config
-    isInitialLoad: true, // Flag to track if this is the first load (needs data verification)
+    countdownTimer: null,
+    elapsedTimer: null,
+    startProcessingTime: null,
+    alreadyChecked: false,
+    previousPercentage: 0,
+    lastCheckTime: null,
+    processingHistory: [],
+    consecutiveErrors: 0,
+    databaseUnderLoad: false,
+    lastSuccessfulPercentage: 0,
+    currentEtaSeconds: null,
+    lastEtaUpdateTime: null,
+    splashScreenEnabled: true,
+    isInitialLoad: true,
+    hasExistingData: false,
     
     /**
      * Initialize the startup loader
@@ -65,10 +66,22 @@ const LogLynxStartupLoader = {
             console.log('[StartupLoader] Configuration loaded, splash screen enabled:', this.splashScreenEnabled);
         }
 
+        if (window.LOGLYNX_CONFIG && typeof window.LOGLYNX_CONFIG.hasExistingData === 'boolean') {
+            this.hasExistingData = window.LOGLYNX_CONFIG.hasExistingData;
+        }
+
         // If splash screen is disabled, skip everything
         if (!this.splashScreenEnabled) {
             console.log('[StartupLoader] Splash screen disabled by configuration');
             this.isReady = true;
+            return;
+        }
+
+        // If database has existing data, skip splash screen entirely
+        if (this.hasExistingData) {
+            console.log('[StartupLoader] Database has existing data, skipping loader');
+            this.isReady = true;
+            this.isInitialLoad = false;
             return;
         }
 
