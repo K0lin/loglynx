@@ -31,6 +31,15 @@ let currentIPAddress = '';
 let ipMap = null;
 let ipMarker = null;
 
+// Page state for Wave 2: Analytics Flexibility
+const currentIPState = {
+    hours: LogLynxUtils.getIPPagePreferredHours(168), // Default to 7 days
+    scope: {
+        services: [],
+        serviceTypes: []
+    }
+};
+
 // Chart instances
 let timelineChart = null;
 let heatmapChart = null;
@@ -63,6 +72,117 @@ let ipAnalyticsData = {
 };
 
 /**
+ * Initialize IP page controls
+ */
+function initIPControls() {
+    // 1. Timeframe Selector (Standard Select)
+    $('#ipTimeframeSelector').on('change', function() {
+        const value = $(this).val();
+        
+        if (value === 'custom') {
+            $('#customHoursContainer').css('display', 'flex');
+            $('#customHoursInput').focus();
+            return;
+        }
+        
+        // Hide custom container if other preset selected
+        $('#customHoursContainer').hide();
+        
+        // State Update
+        const hours = parseInt(value);
+        currentIPState.hours = hours;
+        LogLynxUtils.setIPPagePreferredHours(hours);
+        
+        // Refresh Data
+        loadIPAnalytics(currentIPAddress);
+    });
+
+    // 2. Custom Hours Apply (Button click handled via onclick in HTML or here)
+    // We already have applyCustomHours() global function
+
+    // 3. Scope Selector
+    $('#ipScopeSelector').on('change', function() {
+        const value = $(this).val();
+        
+        if (value === 'all') {
+            currentIPState.scope.services = [];
+            currentIPState.scope.serviceTypes = [];
+        } else {
+            const [name, type] = value.split('|');
+            currentIPState.scope.services = [name];
+            currentIPState.scope.serviceTypes = [type];
+        }
+        
+        // Refresh Data
+        loadIPAnalytics(currentIPAddress);
+    });
+
+    // Initialize UI from saved state
+    const savedHours = currentIPState.hours;
+    const selector = $('#ipTimeframeSelector');
+    
+    // Check if saved hours match a preset
+    const presetOption = selector.find(`option[value="${savedHours}"]`);
+    if (presetOption.length > 0) {
+        selector.val(savedHours);
+        $('#customHoursContainer').hide();
+    } else {
+        // Must be a custom value
+        selector.val('custom');
+        $('#customHoursContainer').css('display', 'flex');
+        $('#customHoursInput').val(savedHours);
+    }
+
+    // Populate scope options
+    populateScopeSelector();
+}
+
+/**
+ * Handle timeframe change (called from HTML onchange if needed, but we used jQuery above)
+ */
+function handleTimeframeChange() {
+    // Handled by jQuery listener in initIPControls
+}
+
+/**
+ * Apply custom hours from input
+ */
+function applyCustomHours() {
+    const hours = parseInt($('#customHoursInput').val());
+    if (isNaN(hours) || hours < 1 || hours > 8760) {
+        LogLynxUtils.showNotification('Please enter hours between 1 and 8760 (1 year)', 'warning');
+        return;
+    }
+
+    currentIPState.hours = hours;
+    LogLynxUtils.setIPPagePreferredHours(hours);
+    
+    // Hide custom input after apply
+    $('#customHoursContainer').hide();
+    
+    // Update data
+    loadIPAnalytics(currentIPAddress);
+}
+
+/**
+ * Populate scope selector with detected log sources/services
+ */
+async function populateScopeSelector() {
+    const result = await LogLynxAPI.getServices();
+    if (result.success && result.data) {
+        const selector = $('#ipScopeSelector');
+        // Keep 'All Components' option
+        selector.find('option:not([value="all"])').remove();
+        
+        result.data.forEach(svc => {
+            const displayName = LogLynxUtils.extractBackendName(svc.name);
+            const typeLabel = LogLynxUtils.formatServiceType(svc.type);
+            selector.append(`<option value="${svc.name}|${svc.type}">${displayName} (${typeLabel})</option>`);
+        });
+    }
+}
+
+/**
  * Load all IP analytics data
  */
 async function loadIPAnalytics(ipAddress) {
@@ -77,21 +197,32 @@ async function loadIPAnalytics(ipAddress) {
     // Show loading overlay
     showLoading();
 
+    // Prepare timeframe labels
+    const hoursText = currentIPState.hours === 0 ? 'all time' : 
+                     currentIPState.hours === 1 ? 'last hour' : 
+                     currentIPState.hours < 24 ? `last ${currentIPState.hours} hours` :
+                     `last ${Math.round(currentIPState.hours / 24)} days`;
+    
+    $('#requestsSubtitle').text(hoursText);
+
     try {
-        // Load all data in parallel
+        const { hours, scope } = currentIPState;
+        const days = hours === 0 ? 0 : Math.max(1, Math.ceil(hours / 24));
+
+        // Load all data in parallel using current state
         const [statsResult, timelineResult, heatmapResult, pathsResult, backendsResult, 
                statusCodesResult, browsersResult, osResult, devicesResult, responseTimeResult, recentRequestsResult] = await Promise.all([
-            LogLynxAPI.getIPStats(ipAddress),
-            LogLynxAPI.getIPTimeline(ipAddress, 168),
-            LogLynxAPI.getIPHeatmap(ipAddress, 30),
-            LogLynxAPI.getIPTopPaths(ipAddress, 50),
-            LogLynxAPI.getIPTopBackends(ipAddress, 20),
-            LogLynxAPI.getIPStatusCodes(ipAddress),
-            LogLynxAPI.getIPTopBrowsers(ipAddress, 10),
-            LogLynxAPI.getIPTopOperatingSystems(ipAddress, 10),
-            LogLynxAPI.getIPDeviceTypes(ipAddress),
-            LogLynxAPI.getIPResponseTime(ipAddress),
-            LogLynxAPI.getIPRecentRequests(ipAddress, 50)
+            LogLynxAPI.getIPStats(ipAddress, hours, scope),
+            LogLynxAPI.getIPTimeline(ipAddress, hours, scope),
+            LogLynxAPI.getIPHeatmap(ipAddress, days, scope),
+            LogLynxAPI.getIPTopPaths(ipAddress, 50, hours, scope),
+            LogLynxAPI.getIPTopBackends(ipAddress, 20, hours, scope),
+            LogLynxAPI.getIPStatusCodes(ipAddress, hours, scope),
+            LogLynxAPI.getIPTopBrowsers(ipAddress, 10, hours, scope),
+            LogLynxAPI.getIPTopOperatingSystems(ipAddress, 10, hours, scope),
+            LogLynxAPI.getIPDeviceTypes(ipAddress, hours, scope),
+            LogLynxAPI.getIPResponseTime(ipAddress, hours, scope),
+            LogLynxAPI.getIPRecentRequests(ipAddress, 50, hours, scope)
         ]);
 
         // Update all visualizations and store data
@@ -152,8 +283,8 @@ async function loadIPAnalytics(ipAddress) {
         }
 
         hideLoading();
-        LogLynxUtils.showNotification('IP analytics loaded successfully', 'success');
-
+        // Standardize notifications - only show on manual refresh or important errors
+        
         if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
             toggleTagging(true);
         }
@@ -293,14 +424,14 @@ function initIPMap(stats) {
     $('#mapCity').text(`${stats.geo_city || 'Unknown'}, ${stats.geo_country || 'Unknown'}`);
 
     // Map view toggle handlers
-    $('#mapViewDark').on('click', function() {
+    $('#mapViewDark').off('click').on('click', function() {
         ipMap.removeLayer(streetLayer);
         ipMap.addLayer(darkLayer);
         $('#mapViewDark').addClass('active');
         $('#mapViewStreet').removeClass('active');
     });
 
-    $('#mapViewStreet').on('click', function() {
+    $('#mapViewStreet').off('click').on('click', function() {
         ipMap.removeLayer(darkLayer);
         ipMap.addLayer(streetLayer);
         $('#mapViewStreet').addClass('active');
@@ -344,7 +475,7 @@ function updateTimelineChart(data) {
         timelineChart.destroy();
     }
 
-    const hours = parseInt($('#timelineRange').val()) || 168;
+    const hours = currentIPState.hours || 168;
     const labels = LogLynxCharts.formatTimelineLabels(data, hours);
     const requests = data.map(d => d.requests);
     const bandwidth = data.map(d => d.bandwidth);
@@ -845,10 +976,10 @@ function initPathsTable(data) {
     pathsTable = $('#pathsTable').DataTable({
         data: tableData,
         pageLength: 10,
-        order: [[3, 'desc']], // Update order column index (was 2, now 3 for Hits)
+        order: [[3, 'desc']],
         columnDefs: [
-            { targets: [3], className: 'text-end' }, // Hits column
-            { targets: [6], orderable: false } // Actions column
+            { targets: [3], className: 'text-end' },
+            { targets: [6], orderable: false }
         ],
         ...LogLynxCharts.defaultDataTableOptions
     });
@@ -904,7 +1035,7 @@ function initRecentRequestsTable(data) {
     recentRequestsTable = $('#recentRequestsTable').DataTable({
         data: tableData,
         pageLength: 25,
-        order: [[0, 'desc']], // Order by time descending
+        order: [[0, 'desc']],
         columnDefs: [
             { targets: [5, 6], className: 'text-end' }
         ],
@@ -917,7 +1048,7 @@ function initRecentRequestsTable(data) {
  */
 async function changeRecentRequestsLimit() {
     const limit = parseInt($('#recentRequestsLimit').val());
-    const result = await LogLynxAPI.getIPRecentRequests(currentIPAddress, limit);
+    const result = await LogLynxAPI.getIPRecentRequests(currentIPAddress, limit, currentIPState.hours, currentIPState.scope);
     if (result.success) {
         ipAnalyticsData.recentRequests = result.data;
         initRecentRequestsTable(result.data);
@@ -930,7 +1061,6 @@ async function changeRecentRequestsLimit() {
 $('#ipSearchInput').on('input', function() {
     const query = $(this).val().trim();
     
-    // Clear previous timer
     if (searchDebounceTimer) {
         clearTimeout(searchDebounceTimer);
     }
@@ -940,10 +1070,8 @@ $('#ipSearchInput').on('input', function() {
         return;
     }
 
-    // Debounce search
     searchDebounceTimer = setTimeout(async () => {
         const results = await LogLynxAPI.searchIPs(query, 10);
-        
         if (results.success && results.data.length > 0) {
             displaySearchResults(results.data);
         } else {
@@ -988,7 +1116,6 @@ function displaySearchResults(results) {
 function selectIP(ipAddress) {
     $('#ipSearchResults').hide();
     $('#ipSearchInput').val(ipAddress);
-    // Navigate to IP page
     window.location.href = `/ip/${ipAddress}`;
 }
 
@@ -1012,211 +1139,8 @@ $(document).on('click', function(e) {
 });
 
 /**
- * Change timeline range
- */
-async function changeTimelineRange() {
-    const hours = parseInt($('#timelineRange').val());
-    const result = await LogLynxAPI.getIPTimeline(currentIPAddress, hours);
-    if (result.success) {
-        updateTimelineChart(result.data);
-    }
-}
-
-/**
- * Change heatmap range
- */
-async function changeHeatmapRange() {
-    const days = parseInt($('#heatmapDays').val());
-    const result = await LogLynxAPI.getIPHeatmap(currentIPAddress, days);
-    if (result.success) {
-        updateHeatmapChart(result.data);
-    }
-}
-
-/**
  * Export functions
  */
-function exportFullReport() {
-    if (!currentIPAddress || !ipAnalyticsData.stats) {
-        LogLynxUtils.showNotification('No data available to export', 'error');
-        return;
-    }
-
-    // Create a printable window with comprehensive report
-    const printWindow = window.open('', '_blank');
-    const stats = ipAnalyticsData.stats;
-    
-    // Calculate bot percentage
-    let botPercentage = 0;
-    if (ipAnalyticsData.devices) {
-        const totalRequests = ipAnalyticsData.devices.reduce((sum, d) => sum + d.count, 0);
-        const botData = ipAnalyticsData.devices.find(d => d.device_type === 'bot');
-        botPercentage = botData && totalRequests > 0 ? ((botData.count / totalRequests) * 100).toFixed(1) : 0;
-    }
-    
-    const reportHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>IP Analytics Report - ${currentIPAddress}</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-        h1 { color: #F46319; border-bottom: 3px solid #F46319; padding-bottom: 10px; }
-        h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-top: 30px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }
-        .stat-box { border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
-        .stat-box strong { display: block; color: #F46319; font-size: 24px; margin-bottom: 5px; }
-        .stat-box span { color: #666; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #f5f5f5; font-weight: bold; }
-        tr:hover { background-color: #f9f9f9; }
-        .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; }
-        @media print {
-            body { margin: 20px; }
-            .no-print { display: none; }
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🔍 IP Analytics Report</h1>
-        <p><strong>IP Address:</strong> ${currentIPAddress}</p>
-        <p><strong>Generated:</strong> ${LogLynxUtils.formatDateTime(new Date())}</p>
-    </div>
-
-    <h2>📊 Overview Statistics</h2>
-    <div class="stat-grid">
-        <div class="stat-box">
-            <strong>${LogLynxUtils.formatNumber(stats.total_requests)}</strong>
-            <span>Total Requests</span>
-        </div>
-        <div class="stat-box">
-            <strong>${LogLynxUtils.formatBytes(stats.total_bandwidth)}</strong>
-            <span>Bandwidth</span>
-        </div>
-        <div class="stat-box">
-            <strong>${LogLynxUtils.formatDuration(stats.avg_response_time)}</strong>
-            <span>Avg Response Time</span>
-        </div>
-        <div class="stat-box">
-            <strong>${stats.unique_paths || 0}</strong>
-            <span>Unique Paths</span>
-        </div>
-        <div class="stat-box">
-            <strong>${stats.unique_backends || 0}</strong>
-            <span>Unique Backends</span>
-        </div>
-        <div class="stat-box">
-            <strong>${stats.error_count || 0}</strong>
-            <span>Errors</span>
-        </div>
-    </div>
-
-    <h2>🌍 Geographic Information</h2>
-    <table>
-        <tr><th>Country</th><td>${stats.country || 'Unknown'}</td></tr>
-        <tr><th>City</th><td>${stats.city || 'Unknown'}</td></tr>
-        <tr><th>ISP</th><td>${stats.isp || 'Unknown'}</td></tr>
-        <tr><th>Coordinates</th><td>${stats.latitude}, ${stats.longitude}</td></tr>
-    </table>
-
-    <h2>🤖 Threat Intelligence</h2>
-    <table>
-        <tr><th>Bot Traffic</th><td>${botPercentage}%</td></tr>
-        <tr><th>Error Rate</th><td>${((stats.error_count / stats.total_requests) * 100).toFixed(2)}%</td></tr>
-        <tr><th>First Seen</th><td>${LogLynxUtils.formatDateTime(stats.first_seen) || 'N/A'}</td></tr>
-        <tr><th>Last Seen</th><td>${LogLynxUtils.formatDateTime(stats.last_seen) || 'N/A'}</td></tr>
-    </table>
-
-    ${ipAnalyticsData.backends && ipAnalyticsData.backends.length > 0 ? `
-    <h2>🔧 Top Backends</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Backend</th>
-                <th>Hits</th>
-                <th>Bandwidth</th>
-                <th>Avg Response</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${ipAnalyticsData.backends.slice(0, 10).map((b, i) => `
-                <tr>
-                    <td>${i + 1}</td>
-                    <td>${b.backend_name || 'N/A'}</td>
-                    <td>${LogLynxUtils.formatNumber(b.hits)}</td>
-                    <td>${LogLynxUtils.formatBytes(b.bandwidth)}</td>
-                    <td>${LogLynxUtils.formatDuration(b.avg_response_time)}</td>
-                </tr>
-            `).join('')}
-        </tbody>
-    </table>
-    ` : ''}
-
-    ${ipAnalyticsData.paths && ipAnalyticsData.paths.length > 0 ? `
-    <h2>📁 Top Paths</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Path</th>
-                <th>Hits</th>
-                <th>Bandwidth</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${ipAnalyticsData.paths.slice(0, 10).map((p, i) => `
-                <tr>
-                    <td>${i + 1}</td>
-                    <td>${p.path}</td>
-                    <td>${LogLynxUtils.formatNumber(p.count)}</td>
-                    <td>${LogLynxUtils.formatBytes(p.bandwidth)}</td>
-                </tr>
-            `).join('')}
-        </tbody>
-    </table>
-    ` : ''}
-
-    ${ipAnalyticsData.statusCodes && ipAnalyticsData.statusCodes.length > 0 ? `
-    <h2>📊 Status Codes</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Status Code</th>
-                <th>Count</th>
-                <th>Percentage</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${ipAnalyticsData.statusCodes.map(s => `
-                <tr>
-                    <td>${s.status_code}</td>
-                    <td>${LogLynxUtils.formatNumber(s.count)}</td>
-                    <td>${((s.count / stats.total_requests) * 100).toFixed(2)}%</td>
-                </tr>
-            `).join('')}
-        </tbody>
-    </table>
-    ` : ''}
-
-    <div class="footer">
-        <p>Generated by LogLynx - Log Analytics Dashboard</p>
-        <p>${LogLynxUtils.formatDateTime(new Date())}</p>
-        <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #F46319; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Report</button>
-    </div>
-</body>
-</html>
-    `;
-    
-    printWindow.document.write(reportHTML);
-    printWindow.document.close();
-    
-    LogLynxUtils.showNotification('Report generated successfully. Click Print in the new window.', 'success');
-}
-
 function exportCSV() {
     if (!currentIPAddress || !ipAnalyticsData.stats) {
         LogLynxUtils.showNotification('No data available to export', 'error');
@@ -1227,7 +1151,6 @@ function exportCSV() {
     let csvContent = 'IP Analytics Report - ' + currentIPAddress + '\n';
     csvContent += 'Generated: ' + LogLynxUtils.formatDateTime(new Date()) + '\n\n';
     
-    // Overview
     csvContent += 'OVERVIEW\n';
     csvContent += 'Metric,Value\n';
     csvContent += `Total Requests,${stats.total_requests}\n`;
@@ -1237,7 +1160,6 @@ function exportCSV() {
     csvContent += `Unique Backends,${stats.unique_backends || 0}\n`;
     csvContent += `Error Count,${stats.error_count || 0}\n\n`;
     
-    // Geographic
     csvContent += 'GEOGRAPHIC INFORMATION\n';
     csvContent += 'Field,Value\n';
     csvContent += `Country,${stats.country || 'Unknown'}\n`;
@@ -1246,7 +1168,6 @@ function exportCSV() {
     csvContent += `Latitude,${stats.latitude || 'N/A'}\n`;
     csvContent += `Longitude,${stats.longitude || 'N/A'}\n\n`;
     
-    // Top Backends
     if (ipAnalyticsData.backends && ipAnalyticsData.backends.length > 0) {
         csvContent += 'TOP BACKENDS\n';
         csvContent += 'Rank,Backend,Hits,Bandwidth,Avg Response Time\n';
@@ -1256,7 +1177,6 @@ function exportCSV() {
         csvContent += '\n';
     }
     
-    // Top Paths
     if (ipAnalyticsData.paths && ipAnalyticsData.paths.length > 0) {
         csvContent += 'TOP PATHS\n';
         csvContent += 'Rank,Path,Count,Bandwidth\n';
@@ -1342,16 +1262,6 @@ function exportJSON() {
     LogLynxUtils.showNotification('JSON exported successfully', 'success');
 }
 
-function blockIP() {
-    if (!currentIPAddress) {
-        LogLynxUtils.showNotification('No IP address selected', 'error');
-        return;
-    }
-
-    // IP blocking functionality not yet implemented
-    LogLynxUtils.showNotification('IP blocking feature coming soon', 'info');
-}
-
 /**
  * Show/hide loading overlay
  */
@@ -1363,3 +1273,7 @@ function hideLoading() {
     $('#loadingOverlay').hide();
 }
 
+// Wave 2 Initialization
+$(document).ready(function() {
+    initIPControls();
+});

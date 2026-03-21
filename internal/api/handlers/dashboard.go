@@ -637,7 +637,14 @@ func (h *DashboardHandler) GetIPDetailedStats(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.statsRepo.GetIPDetailedStats(ip)
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
+	serviceFilters := h.getServiceFilters(c)
+
+	stats, err := h.statsRepo.GetIPDetailedStats(ip, hours, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP stats", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP statistics"})
@@ -657,12 +664,20 @@ func (h *DashboardHandler) GetIPTimeline(c *gin.Context) {
 
 	hours := 168 // Default to 7 days
 	if hoursParam := c.Query("hours"); hoursParam != "" {
-		if h, err := strconv.Atoi(hoursParam); err == nil && h > 0 && h <= 8760 {
-			hours = h
+		if h, err := strconv.Atoi(hoursParam); err == nil && h >= 0 {
+			if h == 0 {
+				hours = 0
+			} else if h <= 8760 {
+				hours = h
+			} else {
+				hours = 8760
+			}
 		}
 	}
 
-	timeline, err := h.statsRepo.GetIPTimelineStats(ip, hours)
+	serviceFilters := h.getServiceFilters(c)
+
+	timeline, err := h.statsRepo.GetIPTimelineStats(ip, hours, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP timeline", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP timeline"})
@@ -682,12 +697,20 @@ func (h *DashboardHandler) GetIPHeatmap(c *gin.Context) {
 
 	days := 30
 	if daysParam := c.Query("days"); daysParam != "" {
-		if d, err := strconv.Atoi(daysParam); err == nil && d > 0 && d <= 365 {
-			days = d
+		if d, err := strconv.Atoi(daysParam); err == nil && d >= 0 {
+			if d == 0 {
+				days = 0 // All time
+			} else if d <= 365 {
+				days = d
+			} else {
+				days = 365
+			}
 		}
 	}
 
-	heatmap, err := h.statsRepo.GetIPTrafficHeatmap(ip, days)
+	serviceFilters := h.getServiceFilters(c)
+
+	heatmap, err := h.statsRepo.GetIPTrafficHeatmap(ip, days, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP heatmap", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP heatmap"})
@@ -705,6 +728,11 @@ func (h *DashboardHandler) GetIPTopPaths(c *gin.Context) {
 		return
 	}
 
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
 	limit := 20
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -712,7 +740,9 @@ func (h *DashboardHandler) GetIPTopPaths(c *gin.Context) {
 		}
 	}
 
-	paths, err := h.statsRepo.GetIPTopPaths(ip, limit)
+	serviceFilters := h.getServiceFilters(c)
+
+	paths, err := h.statsRepo.GetIPTopPaths(ip, hours, limit, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP top paths", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP top paths"})
@@ -730,6 +760,11 @@ func (h *DashboardHandler) GetIPTopBackends(c *gin.Context) {
 		return
 	}
 
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -737,7 +772,9 @@ func (h *DashboardHandler) GetIPTopBackends(c *gin.Context) {
 		}
 	}
 
-	backends, err := h.statsRepo.GetIPTopBackends(ip, limit)
+	serviceFilters := h.getServiceFilters(c)
+
+	backends, err := h.statsRepo.GetIPTopBackends(ip, hours, limit, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP top backends", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP top backends"})
@@ -755,7 +792,14 @@ func (h *DashboardHandler) GetIPStatusCodeDistribution(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.statsRepo.GetIPStatusCodeDistribution(ip)
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
+	serviceFilters := h.getServiceFilters(c)
+
+	stats, err := h.statsRepo.GetIPStatusCodeDistribution(ip, hours, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP status codes", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP status codes"})
@@ -773,6 +817,11 @@ func (h *DashboardHandler) GetIPTopBrowsers(c *gin.Context) {
 		return
 	}
 
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -780,7 +829,9 @@ func (h *DashboardHandler) GetIPTopBrowsers(c *gin.Context) {
 		}
 	}
 
-	browsers, err := h.statsRepo.GetIPTopBrowsers(ip, limit)
+	serviceFilters := h.getServiceFilters(c)
+
+	browsers, err := h.statsRepo.GetIPTopBrowsers(ip, hours, limit, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP top browsers", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP top browsers"})
@@ -798,6 +849,11 @@ func (h *DashboardHandler) GetIPTopOperatingSystems(c *gin.Context) {
 		return
 	}
 
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
 	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
@@ -805,7 +861,9 @@ func (h *DashboardHandler) GetIPTopOperatingSystems(c *gin.Context) {
 		}
 	}
 
-	osList, err := h.statsRepo.GetIPTopOperatingSystems(ip, limit)
+	serviceFilters := h.getServiceFilters(c)
+
+	osList, err := h.statsRepo.GetIPTopOperatingSystems(ip, hours, limit, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP top OS", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP top operating systems"})
@@ -823,7 +881,14 @@ func (h *DashboardHandler) GetIPDeviceTypeDistribution(c *gin.Context) {
 		return
 	}
 
-	devices, err := h.statsRepo.GetIPDeviceTypeDistribution(ip)
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
+	serviceFilters := h.getServiceFilters(c)
+
+	devices, err := h.statsRepo.GetIPDeviceTypeDistribution(ip, hours, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP device types", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP device types"})
@@ -841,7 +906,14 @@ func (h *DashboardHandler) GetIPResponseTimeStats(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.statsRepo.GetIPResponseTimeStats(ip)
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
+	serviceFilters := h.getServiceFilters(c)
+
+	stats, err := h.statsRepo.GetIPResponseTimeStats(ip, hours, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP response time stats", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP response time stats"})
@@ -859,6 +931,11 @@ func (h *DashboardHandler) GetIPRecentRequests(c *gin.Context) {
 		return
 	}
 
+	hours := h.getHours(c)
+	if hours > 8760 {
+		hours = 8760
+	}
+
 	limit := 50
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 500 {
@@ -866,7 +943,9 @@ func (h *DashboardHandler) GetIPRecentRequests(c *gin.Context) {
 		}
 	}
 
-	requests, err := h.statsRepo.GetIPRecentRequests(ip, limit)
+	serviceFilters := h.getServiceFilters(c)
+
+	requests, err := h.statsRepo.GetIPRecentRequests(ip, limit, hours, h.convertToRepoFilters(serviceFilters))
 	if err != nil {
 		h.logger.WithCaller().Error("Failed to get IP recent requests", h.logger.Args("ip", ip, "error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get IP recent requests"})

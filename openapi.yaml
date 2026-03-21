@@ -1209,7 +1209,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get detailed statistics for a specific IP
-      description: Returns comprehensive statistics including request counts, bandwidth, geographic data, and ASN information
+      description: |
+        Returns comprehensive statistics including request counts, bandwidth, geographic data, and ASN information.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPDetailedStats
       parameters:
         - name: ip
@@ -1219,6 +1221,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Detailed IP statistics
@@ -1234,7 +1241,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get timeline statistics for a specific IP
-      description: Returns time-series data for requests from the specified IP address
+      description: |
+        Returns time-series data for requests from the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTimeline
       parameters:
         - name: ip
@@ -1244,14 +1253,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
-        - name: hours
-          in: query
-          description: Number of hours to look back (1-8760, default 168)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-            default: 168
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Timeline data for the IP
@@ -1269,7 +1275,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get traffic heatmap for a specific IP
-      description: Returns hourly traffic data grouped by day of week for the specified IP address
+      description: |
+        Returns hourly traffic data grouped by day of week for the specified IP address.
+        Available from v1.1.1: Supports `days`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTrafficHeatmap
       parameters:
         - name: ip
@@ -1279,14 +1287,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
-        - name: days
-          in: query
-          description: Number of days to analyze (1-365, default 30)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 365
-            default: 30
+        - $ref: '#/components/parameters/DaysParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Traffic heatmap data
@@ -1304,7 +1309,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top paths accessed by a specific IP
-      description: Returns most accessed paths by the specified IP address
+      description: |
+        Returns most accessed paths by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopPaths
       parameters:
         - name: ip
@@ -1315,6 +1322,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top paths for the IP
@@ -1332,7 +1344,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top backends accessed by a specific IP
-      description: Returns backend services most accessed by the specified IP address
+      description: |
+        Returns backend services most accessed by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopBackends
       parameters:
         - name: ip
@@ -1343,6 +1357,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top backends for the IP
@@ -1360,7 +1379,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get status code distribution for a specific IP
-      description: Returns distribution of HTTP status codes for requests from the specified IP address
+      description: |
+        Returns distribution of HTTP status codes for requests from the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPStatusCodeDistribution
       parameters:
         - name: ip
@@ -1370,6 +1391,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Status code distribution
@@ -1387,7 +1413,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top browsers used by a specific IP
-      description: Returns most common browsers used by the specified IP address
+      description: |
+        Returns most common browsers used by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopBrowsers
       parameters:
         - name: ip
@@ -1398,6 +1426,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top browsers for the IP
@@ -1415,7 +1448,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top operating systems used by a specific IP
-      description: Returns most common operating systems used by the specified IP address
+      description: |
+        Returns most common operating systems used by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopOperatingSystems
       parameters:
         - name: ip
@@ -1426,6 +1461,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top operating systems for the IP
@@ -1443,7 +1483,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get device type distribution for a specific IP
-      description: Returns distribution of device types (desktop, mobile, tablet, bot) for the specified IP address
+      description: |
+        Returns distribution of device types (desktop, mobile, tablet, bot) for the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPDeviceTypeDistribution
       parameters:
         - name: ip
@@ -1453,6 +1495,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Device type distribution
@@ -1470,7 +1517,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get response time statistics for a specific IP
-      description: Returns response time metrics including min, max, avg, and percentiles for requests from the specified IP address
+      description: |
+        Returns response time metrics including min, max, avg, and percentiles for requests from the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPResponseTimeStats
       parameters:
         - name: ip
@@ -1480,6 +1529,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Response time statistics
@@ -1495,7 +1549,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get recent requests from a specific IP
-      description: Returns the most recent HTTP requests from the specified IP address with full details
+      description: |
+        Returns the most recent HTTP requests from the specified IP address with full details.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPRecentRequests
       parameters:
         - name: ip
@@ -1507,12 +1563,17 @@ paths:
           example: 192.168.1.100
         - name: limit
           in: query
-          description: Maximum number of results (1-250, default 25)
+          description: Maximum number of results (1-500, default 50)
           schema:
             type: integer
             minimum: 1
-            maximum: 250
-            default: 25
+            maximum: 500
+            default: 50
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Recent requests from the IP

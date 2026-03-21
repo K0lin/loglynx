@@ -64,6 +64,34 @@ const LogLynxUtils = {
     },
 
     /**
+     * Per-page timeframe preference (e.g., for IP detail)
+     */
+    getIPPagePreferredHours(defaultHours = 168) {
+        try {
+            const stored = localStorage.getItem('loglynx_ip_page_time_range_hours');
+            const parsed = parseInt(stored, 10);
+            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 8760) {
+                return parsed;
+            }
+        } catch (error) {
+            console.debug('IP page time range preference unavailable:', error);
+        }
+        return defaultHours;
+    },
+
+    setIPPagePreferredHours(hours) {
+        const parsed = parseInt(hours, 10);
+        if (Number.isNaN(parsed) || parsed < 0 || parsed > 8760) {
+            return;
+        }
+        try {
+            localStorage.setItem('loglynx_ip_page_time_range_hours', parsed.toString());
+        } catch (error) {
+            console.debug('Unable to persist IP page time range preference:', error);
+        }
+    },
+
+    /**
      * Show notification
      */
     showNotification(message, type = 'info', duration = 5000) {

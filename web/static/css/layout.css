@@ -1459,6 +1459,13 @@
     gap: var(--space-sm);
 }
 
+.divider-v {
+    display: inline-block;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 var(--space-xs);
+}
+
 .card-header {
     display: flex;
     align-items: center;
