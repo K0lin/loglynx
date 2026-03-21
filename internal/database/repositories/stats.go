@@ -52,7 +52,7 @@ type StatsRepository interface {
 	GetTrafficHeatmap(days int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TrafficHeatmapData, error)
 	GetTopPaths(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*PathStats, error)
 	GetTopCountries(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*CountryStats, error)
-	GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error)
+	GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter, tagFilter string) ([]*IPStats, error)
 	GetStatusCodeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeStats, error)
 	GetMethodDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*MethodStats, error)
 	GetProtocolDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error)
@@ -284,13 +284,15 @@ type CountryStats struct {
 
 // IPStats holds IP address statistics
 type IPStats struct {
-	IPAddress string  `json:"ip_address"`
-	Country   string  `json:"country"`
-	City      string  `json:"city"`
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-	Hits      int64   `json:"hits"`
-	Bandwidth int64   `json:"bandwidth"`
+	IPAddress    string  `json:"ip_address"`
+	Country      string  `json:"country"`
+	City         string  `json:"city"`
+	Latitude     float64 `json:"latitude"`
+	Longitude    float64 `json:"longitude"`
+	Hits         int64   `json:"hits"`
+	Bandwidth    int64   `json:"bandwidth"`
+	FriendlyName string  `json:"friendly_name"`
+	Tags         string  `json:"tags"`
 }
 
 // StatusCodeStats holds status code distribution
@@ -867,7 +869,7 @@ func (r *statsRepo) GetTopCountries(hours int, limit int, filters []ServiceFilte
 
 // GetTopIPAddresses returns most active IP addresses
 // OPTIMIZED: Uses raw SQL with covering index idx_ip_agg for efficient aggregation
-func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*IPStats, error) {
+func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter, tagFilter string) ([]*IPStats, error) {
 	var ips []*IPStats
 
 	// Build WHERE clause
@@ -904,6 +906,13 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 		}
 	}
 
+	// Apply tag filter if provided
+	tagWhere := ""
+	if tagFilter != "" {
+		tagWhere = " AND it.tags LIKE ?"
+		args = append(args, "%"+tagFilter+"%")
+	}
+
 	// Optimized query - uses idx_ip_agg covering index
 	// First get top IPs by count, then join to get geo data (avoids MAX() scan)
 	query := `
@@ -912,7 +921,8 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 				client_ip,
 				COUNT(*) as hits,
 				COALESCE(SUM(response_size), 0) as bandwidth
-			FROM http_requests
+			FROM http_requests hr
+			LEFT JOIN ip_tags it ON hr.client_ip = it.ip_address` + tagWhere + `
 			WHERE ` + whereClause + `
 			GROUP BY client_ip
 			ORDER BY hits DESC
@@ -925,7 +935,9 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 			COALESCE(g.geo_lat, 0) as latitude,
 			COALESCE(g.geo_lon, 0) as longitude,
 			t.hits,
-			t.bandwidth
+			t.bandwidth,
+			COALESCE(it.friendly_name, '') as friendly_name,
+			COALESCE(it.tags, '') as tags
 		FROM top_ips t
 		LEFT JOIN (
 			SELECT client_ip, geo_country, geo_city, geo_lat, geo_lon
@@ -933,6 +945,7 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 			WHERE geo_country != ''
 			GROUP BY client_ip
 		) g ON t.client_ip = g.client_ip
+		LEFT JOIN ip_tags it ON t.client_ip = it.ip_address
 		ORDER BY t.hits DESC
 	`
 	args = append(args, limit)
@@ -1871,6 +1884,8 @@ type IPDetailedStats struct {
 	ErrorRate       float64   `json:"error_rate"`
 	UniqueBackends  int64     `json:"unique_backends"`
 	UniquePaths     int64     `json:"unique_paths"`
+	FriendlyName    string    `json:"friendly_name"`
+	Tags            string    `json:"tags"`
 }
 
 // IPSearchResult holds basic info for IP search results
@@ -1940,6 +1955,15 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 	var uniquePaths int64
 	r.db.Raw(`SELECT COUNT(*) FROM (SELECT 1 FROM http_requests WHERE client_ip = ? AND timestamp > ? GROUP BY path LIMIT 500)`, ip, since).Scan(&uniquePaths)
 
+	// Get IP tag information
+	var tag models.IPTag
+	err := r.db.Where("ip_address = ?", ip).First(&tag).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		r.logger.WithCaller().Warn("Failed to get IP tag", r.logger.Args("ip", ip, "error", err))
+	}
+	friendlyName := tag.FriendlyName
+	tagString := tag.Tags
+
 	// Parse timestamps from SQLite string format
 	if result.FirstSeen != "" {
 		if firstSeen, err := time.Parse(SQLiteTimeFormat, result.FirstSeen); err == nil {
@@ -1969,6 +1993,8 @@ func (r *statsRepo) GetIPDetailedStats(ip string) (*IPDetailedStats, error) {
 	stats.AvgResponseTime = result.AvgResponseTime
 	stats.UniqueBackends = uniqueBackends
 	stats.UniquePaths = uniquePaths
+	stats.FriendlyName = friendlyName
+	stats.Tags = tagString
 
 	// Calculate rates
 	if stats.TotalRequests > 0 {

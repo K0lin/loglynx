@@ -14,6 +14,7 @@ info:
     - **Performance Metrics**: Track response times and backend health
     - **Geographic Analytics**: Analyze traffic by country and region
     - **IP Analytics**: Deep-dive analytics for specific IP addresses
+    - **IP Tagging**: Assign friendly names and custom tags to IP addresses for better organization (Available from v1.1.1)
     - **Service Filtering**: Filter by backend name, URL, or host with intelligent auto-detection
 
     ## Service Filtering
@@ -55,7 +56,7 @@ info:
     - `hours`: Time range in hours (1-8760, default varies by endpoint)
     - `days`: Time range in days (1-365, default varies by endpoint)
 
-  version: 1.0.3
+  version: 1.1.1
   contact:
     name: LogLynx Support
     url: https://github.com/k0lin/loglynx
@@ -86,6 +87,10 @@ tags:
     description: System information and log processing stats
   - name: IP Analytics
     description: IP-specific statistics and analytics
+  - name: IP Tagging
+    description: |
+      IP tagging and management endpoints (Available from v1.1.1).
+      Allows assigning friendly names and searchable tags to IP addresses.
   - name: Widget
     description: Compact widget endpoints for iframe embedding
 
@@ -1020,6 +1025,182 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/IPSearchResult'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ip/tags:
+    get:
+      tags:
+        - IP Tagging
+      summary: Get all IP tags
+      description: Returns a list of all assigned IP tags and friendly names (Available from v1.1.1)
+      operationId: getAllTags
+      responses:
+        '200':
+          description: List of all IP tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IPTag'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - IP Tagging
+      summary: Create or update IP tag
+      description: Assign a friendly name and tags to an IP address (Available from v1.1.1)
+      operationId: createOrUpdateTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPTagInput'
+      responses:
+        '200':
+          description: Tag updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPTag'
+        '400':
+          description: Invalid input
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ip/tags/{ip}:
+    get:
+      tags:
+        - IP Tagging
+      summary: Get tags for a specific IP
+      description: Returns friendly name and tags for the specified IP address (Available from v1.1.1)
+      operationId: getTag
+      parameters:
+        - name: ip
+          in: path
+          description: IP address to retrieve tags for
+          required: true
+          schema:
+            type: string
+          example: 192.168.1.100
+      responses:
+        '200':
+          description: IP tag details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPTag'
+        '404':
+          description: IP tags not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - IP Tagging
+      summary: Delete IP tags
+      description: Removes all tags and friendly name assigned to the specified IP address (Available from v1.1.1)
+      operationId: deleteTag
+      parameters:
+        - name: ip
+          in: path
+          description: IP address to remove tags from
+          required: true
+          schema:
+            type: string
+          example: 192.168.1.100
+      responses:
+        '200':
+          description: Tags deleted successfully
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ip/tags:
+    get:
+      tags:
+        - IP Tagging
+      summary: Get all IP tags
+      description: Returns a list of all assigned IP tags and friendly names (Available from v1.1.1)
+      operationId: getAllTags
+      responses:
+        '200':
+          description: List of all IP tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IPTag'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - IP Tagging
+      summary: Create or update IP tag
+      description: Assign a friendly name and tags to an IP address (Available from v1.1.1)
+      operationId: createOrUpdateTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPTagInput'
+      responses:
+        '200':
+          description: Tag updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPTag'
+        '400':
+          description: Invalid input
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ip/tags/{ip}:
+    get:
+      tags:
+        - IP Tagging
+      summary: Get tags for a specific IP
+      description: Returns friendly name and tags for the specified IP address (Available from v1.1.1)
+      operationId: getTag
+      parameters:
+        - name: ip
+          in: path
+          description: IP address to retrieve tags for
+          required: true
+          schema:
+            type: string
+          example: 192.168.1.100
+      responses:
+        '200':
+          description: IP tag details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPTag'
+        '404':
+          description: IP tags not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - IP Tagging
+      summary: Delete IP tags
+      description: Removes all tags and friendly name assigned to the specified IP address (Available from v1.1.1)
+      operationId: deleteTag
+      parameters:
+        - name: ip
+          in: path
+          description: IP address to remove tags from
+          required: true
+          schema:
+            type: string
+          example: 192.168.1.100
+      responses:
+        '200':
+          description: Tags deleted successfully
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2337,6 +2518,14 @@ components:
           format: int64
           description: Number of unique paths accessed
           example: 42
+        friendly_name:
+          type: string
+          description: Friendly name assigned to this IP
+          example: "Office VPN"
+        tags:
+          type: string
+          description: Comma-separated tags assigned to this IP
+          example: "internal,trusted"
 
     IPSearchResult:
       type: object
@@ -2365,6 +2554,44 @@ components:
           format: date-time
           description: Last time this IP was seen
           example: "2025-11-03T14:32:15Z"
+
+    IPTag:
+      type: object
+      description: Tag information for an IP address
+      properties:
+        id:
+          type: integer
+          example: 1
+        ip_address:
+          type: string
+          example: "192.168.1.100"
+        friendly_name:
+          type: string
+          example: "Office Server"
+        tags:
+          type: string
+          example: "production,internal"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    IPTagInput:
+      type: object
+      required:
+        - ip_address
+      properties:
+        ip_address:
+          type: string
+          example: "192.168.1.100"
+        friendly_name:
+          type: string
+          example: "Office Server"
+        tags:
+          type: string
+          example: "production,internal"
 
     WidgetRealtimeData:
       type: object

@@ -479,7 +479,13 @@ function updateTopIPsTable(data) {
             html += `
                 <tr>
                     <td>${index + 1}</td>
-                    <td><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></td>
+                    <td>
+                        <div class="tag-input-container" style="display: inline-block;">
+                            <span class="ip-display" data-ip="${item.ip_address}" style="display: inline;"><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></span>
+                            <div class="tag-chips" data-ip="${item.ip_address}" style="display: inline;"></div>
+                            <button class="edit-tag-btn" data-ip="${item.ip_address}" onclick="openTagModal('${item.ip_address}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                        </div>
+                    </td>
                     <td>${countryCodeToFlag(item.country, item.country) || '<i class="fa fa-flag"></i>'} ${countryToContinentMap[item.country]?.name || 'Unknown'}</td>
                     <td>${item.city || 'Unknown'}</td>
                     <td>${LogLynxUtils.formatNumber(item.hits)}</td>
@@ -490,6 +496,10 @@ function updateTopIPsTable(data) {
     }
 
     $('#topIPsTable').html(html);
+
+    if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+        toggleTagging(true);
+    }
 }
 
 // Initialize ASN DataTable
@@ -796,17 +806,17 @@ function exportASNData() {
 
 // Initialize service filter with reload callback
 function initServiceFilterWithReload() {
-    LogLynxUtils.initServiceFilter(() => {
-        loadTrafficData();
-    });
+  LogLynxUtils.initServiceFilter(() => {
+    loadTrafficData();
+  });
 }
 
 // Initialize page
 // Initialize hide my traffic filter with reload callback
 function initHideTrafficFilterWithReload() {
-    LogLynxUtils.initHideMyTrafficFilter(() => {
-        loadTrafficData();
-    });
+  LogLynxUtils.initHideMyTrafficFilter(() => {
+    loadTrafficData();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {

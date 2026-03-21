@@ -154,6 +154,9 @@ async function loadIPAnalytics(ipAddress) {
         hideLoading();
         LogLynxUtils.showNotification('IP analytics loaded successfully', 'success');
 
+        if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+            toggleTagging(true);
+        }
     } catch (error) {
         console.error('Error loading IP analytics:', error);
         hideLoading();

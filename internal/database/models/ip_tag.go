@@ -19,19 +19,23 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-package database
+package models
 
 import (
-	"loglynx/internal/database/models"
-
-	"gorm.io/gorm"
+	"time"
 )
 
-func RunMigrations(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.LogSource{},
-		&models.HTTPRequest{},
-		&models.IPReputation{},
-		&models.IPTag{},
-	)
+// IPTag stores user-defined friendly names and tags for IP addresses
+type IPTag struct {
+	ID           uint   `gorm:"primaryKey;autoIncrement"`
+	IPAddress    string `gorm:"uniqueIndex;not null;index:idx_ip_tag_lookup"`
+	FriendlyName string `gorm:"type:varchar(255)"`
+	Tags         string `gorm:"type:text"` // JSON array of tags for filtering
+
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+}
+
+func (IPTag) TableName() string {
+	return "ip_tags"
 }

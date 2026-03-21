@@ -41,6 +41,13 @@
             <p class="page-description">Geographic distribution, traffic patterns, and visitor insights</p>
         </div>
         <div class="page-actions">
+            <div class="traffic-toggle-group me-3">
+                <label class="traffic-checkbox-label">
+                    <input type="checkbox" id="enable-tagging" class="traffic-toggle-checkbox" onchange="toggleTagging(this.checked)">
+                    <span class="traffic-toggle-slider"></span>
+                    <span class="traffic-toggle-text">Enable IP Tagging</span>
+                </label>
+            </div>
             <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
                 <option value="1">Last 1 Hour</option>
                 <option value="24">Last 24 Hours</option>
@@ -307,8 +314,11 @@
         </div>
     </div>
 
+    {{template "tag-input.html" .}}
+
     {{template "scripts-common" .}}
     <script src="/static/js/pages/traffic.js"></script>
+    <script src="/static/js/tag-management.js"></script>
     <script src="/static/js/core/country-data.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

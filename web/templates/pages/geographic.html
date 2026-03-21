@@ -49,6 +49,13 @@
             <p class="page-description">Interactive world map, geographic distribution, and location intelligence</p>
         </div>
         <div class="page-actions">
+            <div class="traffic-toggle-group me-3">
+                <label class="traffic-checkbox-label">
+                    <input type="checkbox" id="enable-tagging" class="traffic-toggle-checkbox" onchange="toggleTagging(this.checked)">
+                    <span class="traffic-toggle-slider"></span>
+                    <span class="traffic-toggle-text">Enable IP Tagging</span>
+                </label>
+            </div>
             <button class="btn btn-outline btn-sm" onclick="exportGeoData()">
                 <i class="fas fa-file-export"></i> Export Report
             </button>
@@ -442,6 +449,8 @@
         </div>
     </div>
 
+    {{template "tag-input.html" .}}
+
     {{template "scripts-common" .}}
 
     <!-- Leaflet JS -->
@@ -453,6 +462,7 @@
     <!-- Leaflet Heat JS -->
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
+    <script src="/static/js/tag-management.js"></script>
     <script src="/static/js/pages/geographic.js"></script>
     <script src="/static/js/core/country-data.js"></script>
     <script>

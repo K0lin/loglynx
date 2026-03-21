@@ -97,7 +97,7 @@ type Config struct {
 }
 
 // NewServer creates a new HTTP server
-func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, logger *pterm.Logger) *Server {
+func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, ipTagHandler *handlers.IPTagHandler, logger *pterm.Logger) *Server {
 	// Set Gin mode
 	if cfg.Production {
 		gin.SetMode(gin.ReleaseMode)
@@ -144,7 +144,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	if cfg.DashboardEnabled {
 		// Load HTML templates with pattern for nested directories
 		router.LoadHTMLGlob("web/templates/**/*.html")
-
+		
 		// Static files
 		router.Static("/static", "./web/static")
 
@@ -296,6 +296,12 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		api.GET("/ip/:ip/performance/response-time", dashboardHandler.GetIPResponseTimeStats)
 		api.GET("/ip/:ip/recent-requests", dashboardHandler.GetIPRecentRequests)
 		api.GET("/ip/search", dashboardHandler.SearchIPs)
+
+		// IP Tagging
+		api.POST("/ip/tags", ipTagHandler.CreateOrUpdateTag)
+		api.GET("/ip/tags/:ip", ipTagHandler.GetTag)
+		api.DELETE("/ip/tags/:ip", ipTagHandler.DeleteTag)
+		api.GET("/ip/tags", ipTagHandler.GetAllTags)
 
 		// System Statistics
 		api.GET("/system/stats", systemHandler.GetSystemStats)

@@ -438,7 +438,13 @@ function prependLatestRequests(requests) {
                 <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
                 <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
                 <td>${req.geo_country ? `<span>${countryCodeToFlag(req.geo_country, req.geo_country)} ${countryToContinentMap[req.geo_country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.geo_country]?.continent || 'Unknown'}</small>` : '-'}</td>
-                <td>${req.client_ip}</td>
+                <td>
+                    <div class="tag-input-container" style="display: inline-block;">
+                        <span class="ip-display" data-ip="${req.client_ip}" style="display: inline;"><code>${req.client_ip}</code></span>
+                        <div class="tag-chips" data-ip="${req.client_ip}" style="display: inline;"></div>
+                        <button class="edit-tag-btn" data-ip="${req.client_ip}" onclick="openTagModal('${req.client_ip}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                    </div>
+                </td>
             </tr>
         `;
         tbody.prepend(row);
@@ -476,9 +482,11 @@ function updateTopIPsTable(topIPs) {
         html += `
             <tr>
                 <td>
-                    <a href="/ip/${ip.ip}" class="text-decoration-none">
-                        <code>${ip.ip}</code>
-                    </a>
+                    <div class="tag-input-container" style="display: inline-block;">
+                        <span class="ip-display" data-ip="${ip.ip}" style="display: inline;"><a href="/ip/${ip.ip}" class="text-decoration-none"><code>${ip.ip}</code></a></span>
+                        <div class="tag-chips" data-ip="${ip.ip}" id="tag-chips-${ip.ip.replace(/\./g, '-')}" style="display: inline;"></div>
+                        <button class="edit-tag-btn" data-ip="${ip.ip}" onclick="openTagModal('${ip.ip}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: ${localStorage.getItem('loglynx_ip_tagging_enabled') === 'true' ? 'inline' : 'none'};">✏️</button>
+                    </div>
                 </td>
                 <td>
                     ${ip.country ? `<span>${countryCodeToFlag(ip.country, ip.country)} ${countryToContinentMap[ip.country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[ip.country]?.continent || 'Unknown'}</small>` : '<span class="text-muted">-</span>'}
@@ -496,6 +504,10 @@ function updateTopIPsTable(topIPs) {
     });
 
     tbody.html(html);
+
+    if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+        toggleTagging(true);
+    }
 }
 
 // Update per-service metrics
@@ -577,7 +589,13 @@ function updateLiveRequestsTable(requests) {
                     <td>${LogLynxUtils.getStatusBadge(req.StatusCode)}</td>
                     <td>${LogLynxUtils.formatMs(req.ResponseTimeMs || 0)}</td>
                     <td>${req.GeoCountry ? `<span>${countryCodeToFlag(req.GeoCountry, req.GeoCountry)} ${countryToContinentMap[req.GeoCountry]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.GeoCountry]?.continent || 'Unknown'}</small>` : '-'}</td>
-                    <td>${req.ClientIP}</td>
+                    <td>
+                        <div class="tag-input-container" style="display: inline-block;">
+                            <span class="ip-display" data-ip="${req.ClientIP}" style="display: inline;"><code>${req.ClientIP}</code></span>
+                            <div class="tag-chips" data-ip="${req.ClientIP}" style="display: inline;"></div>
+                            <button class="edit-tag-btn" data-ip="${req.ClientIP}" onclick="openTagModal('${req.ClientIP}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                        </div>
+                    </td>
                 </tr>
             `;
         });
@@ -896,13 +914,13 @@ window.showMiniMonitor = showMiniMonitor;
 // Initialize page
 // Initialize hide my traffic filter with reconnect callback
 function initHideTrafficFilterWithReconnect() {
-    LogLynxUtils.initHideMyTrafficFilter(() => {
-        // Reconnect to stream with new filter
-        if (eventSource) {
-            eventSource.close();
-        }
-        connectRealtimeStream();
-    });
+  LogLynxUtils.initHideMyTrafficFilter(() => {
+    // Reconnect to stream with new filter
+    if (eventSource) {
+      eventSource.close();
+    }
+    connectRealtimeStream();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {

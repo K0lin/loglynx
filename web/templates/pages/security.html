@@ -41,6 +41,7 @@
             <p class="page-description">Security metrics, IP reputation, and network analysis</p>
         </div>
         <div class="page-actions">
+            <label style="margin-right: 10px;"><input type="checkbox" id="enable-tagging" onchange="toggleTagging(this.checked)"> Enable IP Tagging</label>
             <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
                 <option value="1">Last 1 Hour</option>
                 <option value="24">Last 24 Hours</option>
@@ -197,9 +198,12 @@
         </div>
     </div>
 
+    {{template "tag-input.html" .}}
+
     {{template "scripts-common" .}}
 
     <script src="/static/js/core/country-data.js"></script>
+    <script src="/static/js/tag-management.js"></script>
     <script>
         let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168);
         let statusCodeChartInstance;
@@ -404,7 +408,12 @@
                     dataSrc: ''
                 },
                 columns: [
-                    { data: 'ip_address' },
+                    { 
+                        data: 'ip', 
+                        render: (data) => {
+                            return `<div class="tag-input-container" style="display: inline-block;"><span class="ip-display" data-ip="${data}" style="display: inline;"><a href="/ip/${data}" class="ip-link"><code>${data}</code></a></span><div class="tag-chips" data-ip="${data}" style="display: inline;"></div><button class="edit-tag-btn" data-ip="${data}" onclick="openTagModal('${data}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button></div>`;
+                        } 
+                    },
                     { data: 'country', defaultContent: '-' },
                     { data: 'hits', render: (data) => data.toLocaleString() },
                     { data: 'bandwidth', render: (data) => LogLynxUtils.formatBytes(data) },
@@ -412,7 +421,12 @@
                     { data: null, render: () => '<span class="badge badge-success">OK</span>', defaultContent: '<span class="badge badge-success">OK</span>' }
                 ],
                 order: [[2, 'desc']],
-                pageLength: 20
+                pageLength: 20,
+                drawCallback: function() {
+                    if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+                        toggleTagging(true);
+                    }
+                }
             });
 
             topCountriesTable = $('#topCountriesTable').DataTable({

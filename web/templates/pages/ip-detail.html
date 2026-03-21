@@ -43,9 +43,16 @@
                 <i class="fas fa-network-wired"></i>
                 IP Analytics
             </h2>
-            <p class="page-description">Comprehensive analysis for IP address: <strong id="currentIP">{{.IPAddress}}</strong></p>
+            <p class="page-description">Comprehensive analysis for IP address: <strong id="currentIP" class="ip-display" data-ip="{{.IPAddress}}">{{.IPAddress}}</strong> <span class="tag-chips" data-ip="{{.IPAddress}}"></span> <button class="edit-tag-btn" data-ip="{{.IPAddress}}" onclick="openTagModal('{{.IPAddress}}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button></p>
         </div>
-        <div class="page-actions" style="min-width: 400px;">
+        <div class="page-actions" style="min-width: 450px;">
+            <div class="traffic-toggle-group me-3">
+                <label class="traffic-checkbox-label">
+                    <input type="checkbox" id="enable-tagging" class="traffic-toggle-checkbox" onchange="toggleTagging(this.checked)">
+                    <span class="traffic-toggle-slider"></span>
+                    <span class="traffic-toggle-text">Enable IP Tagging</span>
+                </label>
+            </div>
             <div class="input-group">
                 <input type="text" id="ipSearchInput" class="form-control" placeholder="Search IP address..." value="{{.IPAddress}}">
                 <button class="btn btn-primary" onclick="searchAndNavigateIP()">
@@ -472,11 +479,14 @@
         </div>
     </div>
 
+    {{template "tag-input.html" .}}
+
     {{template "scripts-common" .}}
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
     <script src="/static/js/core/country-data.js"></script>
+    <script src="/static/js/tag-management.js"></script>
     <script src="/static/js/pages/ip-detail.js"></script>
     <script>
         // Initialize with IP from template
