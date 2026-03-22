@@ -320,6 +320,10 @@ func main() {
 	logger.Debug("Stopping cleanup service...")
 	cleanupService.Stop()
 
+	// Signal real-time streams to close immediately (prevents shutdown delays)
+	logger.Debug("Closing active real-time streams...")
+	realtimeHandler.Shutdown()
+
 	// Create shutdown context with timeout (30s to handle SSE connections gracefully)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*cfg.Performance.RealtimeMetricsInterval)
 	defer cancel()

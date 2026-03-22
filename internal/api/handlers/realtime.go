@@ -23,6 +23,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -47,14 +48,26 @@ type RealtimeHandler struct {
 	activeConnections   int
 	maxConnections      int
 	connectionMutex     sync.Mutex
+	shutdownCtx         context.Context
+	cancelShutdown      context.CancelFunc
 }
 
 // NewRealtimeHandler creates a new realtime handler
 func NewRealtimeHandler(collector *realtime.MetricsCollector, logger *pterm.Logger) *RealtimeHandler {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &RealtimeHandler{
 		collector:      collector,
 		logger:         logger,
 		maxConnections: MaxSSEConnections,
+		shutdownCtx:    ctx,
+		cancelShutdown: cancel,
+	}
+}
+
+// Shutdown signals all active streams to close immediately
+func (h *RealtimeHandler) Shutdown() {
+	if h.cancelShutdown != nil {
+		h.cancelShutdown()
 	}
 }
 
@@ -195,7 +208,13 @@ func (h *RealtimeHandler) StreamMetrics(c *gin.Context) {
 		select {
 		case <-c.Request.Context().Done():
 			// Server is shutting down or request context cancelled
-			h.logger.Debug("Request context cancelled (server shutdown or timeout)",
+			h.logger.Debug("Request context cancelled (client disconnected)",
+				h.logger.Args("client_ip", c.ClientIP()))
+			return
+
+		case <-h.shutdownCtx.Done():
+			// Global handler shutdown signaled
+			h.logger.Info("SSE stream closing due to server shutdown",
 				h.logger.Args("client_ip", c.ClientIP()))
 			return
 

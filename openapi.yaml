@@ -2348,6 +2348,11 @@ components:
           format: double
           description: Error rate (errors per second)
           example: 2.3
+        bandwidth_rate:
+          type: number
+          format: double
+          description: Global bandwidth usage in bytes per second
+          example: 1048576.5
         avg_response_time:
           type: number
           format: double
@@ -2409,6 +2414,16 @@ components:
           format: double
           description: Requests per second
           example: 12.5
+        bandwidth:
+          type: integer
+          format: int64
+          description: Total bytes in current window
+          example: 5242880
+        bandwidth_rate:
+          type: number
+          format: double
+          description: Bandwidth usage in bytes per second
+          example: 349525.3
 
     RequestSummary:
       type: object
