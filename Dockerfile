@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for LogLynx
 # Builder stage: compiles a static binary for the target platform
-FROM golang:1.25.7 AS builder
+FROM golang:1.25.8 AS builder
 
 WORKDIR /src
 
