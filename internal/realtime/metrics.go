@@ -55,6 +55,7 @@ type MetricsCollector struct {
 	mu                sync.RWMutex
 	requestRate       float64 // requests per second
 	errorRate         float64 // errors per second
+	bandwidthRate     float64 // bytes per second
 	avgResponseTime   float64 // milliseconds
 	activeConnections int
 	last2xxCount      int64
@@ -65,6 +66,8 @@ type MetricsCollector struct {
 
 	// Cached per-service metrics (global)
 	perServiceMetrics []ServiceMetrics
+	topIPs            []IPMetrics
+	latestRequests    []RequestSummary
 
 	// Cached JSON for global metrics (optimization)
 	cachedJSON []byte
@@ -403,8 +406,11 @@ func (m *MetricsCollector) collectMetrics() {
 	// Update metrics with lock
 	m.mu.Lock()
 	m.perServiceMetrics = perServiceMetrics
+	m.topIPs = topIPs
+	m.latestRequests = latestRequests
 	m.requestRate = requestRate
 	m.errorRate = errorRate
+	m.bandwidthRate = globalBwRate
 	m.avgResponseTime = avgRespTime
 	m.last2xxCount = status2xx
 	m.last4xxCount = status4xx
@@ -431,12 +437,15 @@ func (m *MetricsCollector) GetMetrics() *RealtimeMetrics {
 	return &RealtimeMetrics{
 		RequestRate:       m.requestRate,
 		ErrorRate:         m.errorRate,
+		BandwidthRate:     m.bandwidthRate,
 		AvgResponseTime:   m.avgResponseTime,
 		ActiveConnections: m.activeConnections,
 		Status2xx:         m.last2xxCount,
 		Status4xx:         m.last4xxCount,
 		Status5xx:         m.last5xxCount,
 		Timestamp:         time.Now(), // Use current time, not lastUpdate
+		TopIPs:            m.topIPs,
+		LatestRequests:    m.latestRequests,
 		PerService:        m.perServiceMetrics,
 	}
 }
@@ -487,6 +496,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		status4xx        int64
 		status5xx        int64
 		count1m          int64
+		totalBwWindow    int64
 		lastRequestTime  time.Time
 		filteredRequests []*models.HTTPRequest
 	)
@@ -532,6 +542,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		if req.Timestamp.After(windowStart) {
 			totalCountWindow++
 			totalRespTime += req.ResponseTimeMs
+			totalBwWindow += req.ResponseSize
 			if req.StatusCode >= 400 {
 				errorCountWindow++
 			}
@@ -543,6 +554,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		// For Top IPs (last 15s)
 		if req.Timestamp.After(ipWindowStart) {
 			ipCounts[req.ClientIP]++
+			ipBandwidth[req.ClientIP] += req.ResponseSize
 			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
 				ipCountries[req.ClientIP] = req.GeoCountry
 			}
@@ -570,6 +582,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	// Calculate rates similar to global metrics for consistency
 	requestRate := 0.0
 	errorRate := 0.0
+	bandwidthRate := 0.0
 
 	if totalCountWindow > 0 && !lastRequestTime.IsZero() {
 		// Check if traffic is still active (last request within window)
@@ -579,6 +592,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 			// Traffic is active - calculate rate over the full window
 			requestRate = float64(totalCountWindow) / windowDuration.Seconds()
 			errorRate = float64(errorCountWindow) / windowDuration.Seconds()
+			bandwidthRate = float64(totalBwWindow) / windowDuration.Seconds()
 		}
 		// else: traffic stopped, rates stay 0
 	}
@@ -618,6 +632,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		if timeSinceLastRequest > windowDuration {
 			requestRate = 0.0
 			errorRate = 0.0
+			bandwidthRate = 0.0
 			status2xx = 0
 			status4xx = 0
 			status5xx = 0
@@ -645,6 +660,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
 		ErrorRate:         errorRate,
+		BandwidthRate:     bandwidthRate,
 		AvgResponseTime:   avgRespTime,
 		ActiveConnections: 0, // Not tracked per filter
 		Status2xx:         status2xx,

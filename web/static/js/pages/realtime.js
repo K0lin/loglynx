@@ -774,10 +774,12 @@ function processBufferedMetrics() {
         if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
              liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
              liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+             liveBandwidthData[liveBandwidthData.length - 1] = (metrics.bandwidth_rate || 0) / 1024 / 1024;
         } else {
             liveChartLabels.push(timeLabel);
             liveRequestRateData.push(metrics.request_rate);
             liveAvgResponseData.push(metrics.avg_response_time);
+            liveBandwidthData.push((metrics.bandwidth_rate || 0) / 1024 / 1024);
         }
         
         // Maintain max points
@@ -785,6 +787,7 @@ function processBufferedMetrics() {
             liveChartLabels.shift();
             liveRequestRateData.shift();
             liveAvgResponseData.shift();
+            liveBandwidthData.shift();
         }
     });
 
@@ -793,6 +796,7 @@ function processBufferedMetrics() {
         liveChart.data.labels = liveChartLabels;
         liveChart.data.datasets[0].data = liveRequestRateData;
         liveChart.data.datasets[1].data = liveAvgResponseData;
+        liveChart.data.datasets[2].data = liveBandwidthData;
         liveChart.update('none');
     }
 
@@ -810,6 +814,10 @@ function processBufferedMetrics() {
     $('#liveRequestRate').text(lastMetric.request_rate.toFixed(2));
     $('#liveErrorRate').text(lastMetric.error_rate.toFixed(2));
     $('#liveAvgResponse').text(lastMetric.avg_response_time.toFixed(1) + 'ms');
+    const bwFormatted = LogLynxUtils.formatBytes(lastMetric.bandwidth_rate || 0);
+    const bwParts = bwFormatted.split(' ');
+    $('#liveBandwidth').text(bwParts[0]);
+    $('#liveBandwidthUnit').text((bwParts[1] || 'B') + '/s');
     $('#live2xx').text(lastMetric.status_2xx || 0);
     $('#live4xx').text(lastMetric.status_4xx || 0);
     $('#live5xx').text(lastMetric.status_5xx || 0);
@@ -840,11 +848,13 @@ function clearLiveData() {
     liveChartLabels = [];
     liveRequestRateData = [];
     liveAvgResponseData = [];
+    liveBandwidthData = [];
 
     if (liveChart) {
         liveChart.data.labels = [];
         liveChart.data.datasets[0].data = [];
         liveChart.data.datasets[1].data = [];
+        liveChart.data.datasets[2].data = [];
         liveChart.update('none');
     }
 
