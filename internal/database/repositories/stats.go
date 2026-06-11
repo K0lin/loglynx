@@ -128,7 +128,7 @@ type ServiceFilter struct {
 
 // ExcludeIPFilter represents IP exclusion filter
 type ExcludeIPFilter struct {
-	ClientIP        string
+	ClientIPs       []string
 	ExcludeServices []ServiceFilter
 }
 
@@ -174,23 +174,23 @@ func (r *statsRepo) applyServiceFilters(query *gorm.DB, filters []ServiceFilter)
 	return query
 }
 
-// applyExcludeOwnIP excludes requests from a specific IP, optionally filtered by services
-// If excludeServices is empty, excludes IP from all services
-// If excludeServices is provided, excludes IP only on those specific services
-func (r *statsRepo) applyExcludeOwnIP(query *gorm.DB, clientIP string, excludeServices []ServiceFilter) *gorm.DB {
-	if clientIP == "" {
+// applyExcludeIPs excludes requests from specific IPs, optionally filtered by services
+// If excludeServices is empty, excludes IPs from all services
+// If excludeServices is provided, excludes IPs only on those specific services
+func (r *statsRepo) applyExcludeIPs(query *gorm.DB, clientIPs []string, excludeServices []ServiceFilter) *gorm.DB {
+	if len(clientIPs) == 0 {
 		return query
 	}
 
 	if len(excludeServices) == 0 {
-		// Exclude IP from all services
-		return query.Where("client_ip != ?", clientIP)
+		// Exclude IPs from all services
+		return query.Where("client_ip NOT IN (?)", clientIPs)
 	}
 
-	// Exclude IP only on specific services
-	// Build condition: NOT (client_ip = ? AND (service conditions))
+	// Exclude IPs only on specific services
+	// Build condition: NOT (client_ip IN (?) AND (service conditions))
 	serviceConds := []string{}
-	args := []interface{}{clientIP}
+	args := []interface{}{clientIPs}
 
 	for _, filter := range excludeServices {
 		switch filter.Type {
@@ -210,7 +210,7 @@ func (r *statsRepo) applyExcludeOwnIP(query *gorm.DB, clientIP string, excludeSe
 	}
 
 	if len(serviceConds) > 0 {
-		whereClause := "NOT (client_ip = ? AND (" + strings.Join(serviceConds, " OR ") + "))"
+		whereClause := "NOT (client_ip IN (?) AND (" + strings.Join(serviceConds, " OR ") + "))"
 		query = query.Where(whereClause, args...)
 	}
 
@@ -445,6 +445,38 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
 		whereClause += " AND timestamp > ?"
 		args = append(args, since)
+	}
+
+	if excludeIP != nil && len(excludeIP.ClientIPs) > 0 {
+		if len(excludeIP.ExcludeServices) == 0 {
+			// Exclude from all services
+			whereClause += " AND client_ip NOT IN (?)"
+			args = append(args, excludeIP.ClientIPs)
+		} else {
+			// Build NOT (client_ip IN (?) AND (service conditions))
+			serviceConds := []string{}
+			serviceArgs := []interface{}{excludeIP.ClientIPs}
+			for _, filter := range excludeIP.ExcludeServices {
+				switch filter.Type {
+				case "backend_name":
+					serviceConds = append(serviceConds, "backend_name = ?")
+					serviceArgs = append(serviceArgs, filter.Name)
+				case "backend_url":
+					serviceConds = append(serviceConds, "backend_url = ?")
+					serviceArgs = append(serviceArgs, filter.Name)
+				case "host":
+					serviceConds = append(serviceConds, "host = ?")
+					serviceArgs = append(serviceArgs, filter.Name)
+				case "auto", "":
+					serviceConds = append(serviceConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+					serviceArgs = append(serviceArgs, filter.Name, filter.Name, filter.Name)
+				}
+			}
+			if len(serviceConds) > 0 {
+				whereClause += " AND NOT (client_ip IN (?) AND (" + strings.Join(serviceConds, " OR ") + "))"
+				args = append(args, serviceArgs...)
+			}
+		}
 	}
 
 	if len(filters) > 0 {
@@ -1385,11 +1417,11 @@ func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter
 
 	// Build exclude IP clause
 	var excludeFilter string
-	var excludeIP_val string
-	hasExcludeIP := excludeIP != nil && excludeIP.ClientIP != "" && len(excludeIP.ExcludeServices) == 0
+	var excludeIPs []string
+	hasExcludeIP := excludeIP != nil && len(excludeIP.ClientIPs) > 0 && len(excludeIP.ExcludeServices) == 0
 	if hasExcludeIP {
-		excludeFilter = " AND client_ip != ?"
-		excludeIP_val = excludeIP.ClientIP
+		excludeFilter = " AND client_ip NOT IN (?)"
+		excludeIPs = excludeIP.ClientIPs
 	}
 
 	// UNION ALL with minimal columns - each uses dedicated partial index
@@ -1447,7 +1479,7 @@ func (r *statsRepo) GetTopBackends(hours int, limit int, filters []ServiceFilter
 			fullArgs = append(fullArgs, since)
 		}
 		if hasExcludeIP {
-			fullArgs = append(fullArgs, excludeIP_val)
+			fullArgs = append(fullArgs, excludeIPs)
 		}
 	}
 	fullArgs = append(fullArgs, limit)

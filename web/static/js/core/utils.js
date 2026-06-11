@@ -796,14 +796,14 @@ const LogLynxUtils = {
         if (isEnabled) {
             hideTrafficBtn.classList.add('active');
 
-            // Show number of services if any are selected
+            const manualIPCount = LogLynxAPI.getHideTrafficManualIPs().length;
             const selectedServices = LogLynxAPI.getHideTrafficFilters();
-            if (selectedServices.length === 0) {
-                hideTrafficStatus.textContent = 'Enabled (All)';
-            } else if (selectedServices.length === 1) {
-                hideTrafficStatus.textContent = 'Enabled (1 service)';
+            if (manualIPCount > 0) {
+                hideTrafficStatus.textContent = manualIPCount === 1 ? 'Enabled (1 IP)' : `Enabled (${manualIPCount} IPs)`;
+            } else if (selectedServices.length === 0) {
+                hideTrafficStatus.textContent = 'Enabled (Current IP)';
             } else {
-                hideTrafficStatus.textContent = `Enabled (${selectedServices.length} services)`;
+                hideTrafficStatus.textContent = selectedServices.length === 1 ? 'Enabled (1 service)' : `Enabled (${selectedServices.length} services)`;
             }
         } else {
             hideTrafficBtn.classList.remove('active');
@@ -1393,6 +1393,9 @@ const LogLynxUtils = {
     initHideMyTrafficFilter(onChangeCallback) {
         const checkbox = document.getElementById('hideMyTrafficCheckbox');
         const container = document.getElementById('hideTrafficServicesContainer');
+        const manualIPsContainer = document.getElementById('hideTrafficManualIPsContainer');
+        const manualIPInput = document.getElementById('hideTrafficIPInput');
+        const addManualIPBtn = document.getElementById('addHideTrafficIP');
         const toggleBtn = document.getElementById('hideTrafficToggle');
         const dropdown = document.getElementById('hideTrafficDropdownMenu');
         const searchInput = document.getElementById('hideTrafficSearchInput');
@@ -1403,20 +1406,31 @@ const LogLynxUtils = {
         // Restore from sessionStorage
         const hideEnabled = sessionStorage.getItem('hideMyTraffic') === 'true';
         const hideServices = sessionStorage.getItem('hideMyTrafficServices');
+        const manualIPs = localStorage.getItem('hideMyTrafficManualIPs');
 
         checkbox.checked = hideEnabled;
         LogLynxAPI.setHideMyTraffic(hideEnabled); // Restore in API object
-
         if (hideEnabled && container) {
             container.style.display = 'block';
         }
-
+        if (hideEnabled && manualIPsContainer) {
+            manualIPsContainer.style.display = 'block';
+        }
         if (hideServices) {
             try {
                 const services = JSON.parse(hideServices);
                 LogLynxAPI.setHideTrafficFilters(services);
             } catch (e) {
                 console.error('Failed to parse hide traffic services:', e);
+            }
+        }
+
+        if (manualIPs) {
+            try {
+                const ips = JSON.parse(manualIPs);
+                LogLynxAPI.setHideTrafficManualIPs(Array.isArray(ips) ? ips : []);
+            } catch (e) {
+                console.error('Failed to parse manual hide traffic IPs:', e);
             }
         }
 
@@ -1430,6 +1444,9 @@ const LogLynxUtils = {
                 if (container) {
                     container.style.display = isEnabled ? 'block' : 'none';
                 }
+                if (manualIPsContainer) {
+                    manualIPsContainer.style.display = isEnabled ? 'block' : 'none';
+                }
 
                 // Update trigger button status
                 this.updateHideTrafficButtonStatus();
@@ -1441,7 +1458,52 @@ const LogLynxUtils = {
         }
 
         // Initial button status update
+        this.renderHideTrafficManualIPs();
         this.updateHideTrafficButtonStatus();
+
+        const addManualIP = () => {
+            if (!manualIPInput) return;
+
+            const ip = manualIPInput.value.trim();
+            const errorEl = document.getElementById('hideTrafficIPError');
+            if (errorEl) {
+                errorEl.style.display = 'none';
+                errorEl.textContent = '';
+            }
+
+            if (!this.isValidIPAddress(ip)) {
+                if (errorEl) {
+                    errorEl.textContent = 'Enter a valid IPv4 or IPv6 address.';
+                    errorEl.style.display = 'block';
+                }
+                return;
+            }
+
+            const currentIPs = LogLynxAPI.getHideTrafficManualIPs();
+            if (!currentIPs.includes(ip)) {
+                const nextIPs = [...currentIPs, ip];
+                LogLynxAPI.setHideTrafficManualIPs(nextIPs);
+                localStorage.setItem('hideMyTrafficManualIPs', JSON.stringify(nextIPs));
+                this.renderHideTrafficManualIPs();
+                this.updateHideTrafficButtonStatus();
+                if (onChangeCallback) onChangeCallback();
+            }
+
+            manualIPInput.value = '';
+        };
+
+        if (addManualIPBtn) {
+            addManualIPBtn.addEventListener('click', addManualIP);
+        }
+
+        if (manualIPInput) {
+            manualIPInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addManualIP();
+                }
+            });
+        }
 
         // Toggle dropdown
         if (toggleBtn && dropdown) {
@@ -1516,6 +1578,61 @@ const LogLynxUtils = {
                 this.loadHideTrafficServices();
             });
         }
+    },
+
+    /**
+     * Validate IPv4 and common IPv6 input formats.
+     */
+    isValidIPAddress(ip) {
+        if (!ip || ip.length > 45) return false;
+
+        const ipv4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+        const ipv6 = /^(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}|::1|::)$/;
+        return ipv4.test(ip) || ipv6.test(ip);
+    },
+
+    /**
+     * Render manually excluded IP addresses in the Hide My Traffic modal.
+     */
+    renderHideTrafficManualIPs() {
+        const list = document.getElementById('hideTrafficIPList');
+        if (!list) return;
+
+        const ips = LogLynxAPI.getHideTrafficManualIPs();
+        list.innerHTML = '';
+
+        if (ips.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'text-muted small p-2';
+            empty.textContent = 'No manual IPs added.';
+            list.appendChild(empty);
+            return;
+        }
+
+        ips.forEach(ip => {
+            const row = document.createElement('div');
+            row.className = 'service-option-modal justify-content-between';
+
+            const label = document.createElement('span');
+            label.textContent = ip;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-sm btn-outline-danger';
+            removeBtn.innerHTML = '<i class="fas fa-times"></i> Remove';
+            removeBtn.addEventListener('click', () => {
+                const nextIPs = LogLynxAPI.getHideTrafficManualIPs().filter(existingIP => existingIP !== ip);
+                LogLynxAPI.setHideTrafficManualIPs(nextIPs);
+                localStorage.setItem('hideMyTrafficManualIPs', JSON.stringify(nextIPs));
+                this.renderHideTrafficManualIPs();
+                this.updateHideTrafficButtonStatus();
+                if (this._hideTrafficCallback) this._hideTrafficCallback();
+            });
+
+            row.appendChild(label);
+            row.appendChild(removeBtn);
+            list.appendChild(row);
+        });
     },
 
     /**

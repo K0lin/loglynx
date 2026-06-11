@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package realtime
 
 import (
@@ -146,9 +145,9 @@ func (m *MetricsCollector) Ingest(req *models.HTTPRequest) {
 	})
 
 	// Insert at correct position
-	m.requestBuffer = append(m.requestBuffer, nil)           // Expand slice
+	m.requestBuffer = append(m.requestBuffer, nil)                   // Expand slice
 	copy(m.requestBuffer[insertIdx+1:], m.requestBuffer[insertIdx:]) // Shift right
-	m.requestBuffer[insertIdx] = req                         // Insert
+	m.requestBuffer[insertIdx] = req                                 // Insert
 }
 
 // Start begins collecting metrics at regular intervals
@@ -184,6 +183,16 @@ func (m *MetricsCollector) Stop() {
 func (m *MetricsCollector) SetActiveConnections(n int) {
 	m.mu.Lock()
 	m.activeConnections = n
+	m.mu.Unlock()
+}
+
+// AdjustActiveConnections increments or decrements the active connection count.
+func (m *MetricsCollector) AdjustActiveConnections(delta int) {
+	m.mu.Lock()
+	m.activeConnections += delta
+	if m.activeConnections < 0 {
+		m.activeConnections = 0
+	}
 	m.mu.Unlock()
 }
 
@@ -440,7 +449,7 @@ type ServiceFilter struct {
 
 // ExcludeIPFilter represents IP exclusion filter
 type ExcludeIPFilter struct {
-	ClientIP        string
+	ClientIPs       []string
 	ExcludeServices []ServiceFilter
 }
 
@@ -492,12 +501,12 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	for i, f := range serviceFilters {
 		repoFilters[i] = repositories.ServiceFilter{Name: f.Name, Type: f.Type}
 	}
-	
+
 	// Convert local ExcludeIPFilter to repositories.ExcludeIPFilter
 	var repoExcludeIP *repositories.ExcludeIPFilter
 	if excludeIPFilter != nil {
 		repoExcludeIP = &repositories.ExcludeIPFilter{
-			ClientIP: excludeIPFilter.ClientIP,
+			ClientIPs:       excludeIPFilter.ClientIPs,
 			ExcludeServices: make([]repositories.ServiceFilter, len(excludeIPFilter.ExcludeServices)),
 		}
 		for i, f := range excludeIPFilter.ExcludeServices {
@@ -658,7 +667,7 @@ type ServiceMetrics struct {
 // GetPerServiceMetrics returns real-time metrics for each service
 func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
 	// If no filters, return cached global metrics
-	if len(filters) == 0 && (excludeIP == nil || excludeIP.ClientIP == "") {
+	if len(filters) == 0 && (excludeIP == nil || len(excludeIP.ClientIPs) == 0) {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
 		return m.perServiceMetrics
@@ -723,15 +732,17 @@ func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPReque
 // matchesFilters checks if a request matches the given filters
 func (m *MetricsCollector) matchesFilters(req *models.HTTPRequest, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) bool {
 	// Apply IP exclusion
-	if excludeIP != nil && excludeIP.ClientIP != "" {
-		if req.ClientIP == excludeIP.ClientIP {
-			if len(excludeIP.ExcludeServices) == 0 {
-				return false // Exclude from all
-			}
-			// Check if excluded from this specific service
-			for _, filter := range excludeIP.ExcludeServices {
-				if m.matchesServiceFilter(req, filter) {
-					return false
+	if excludeIP != nil && len(excludeIP.ClientIPs) > 0 {
+		for _, excludedIP := range excludeIP.ClientIPs {
+			if req.ClientIP == excludedIP {
+				if len(excludeIP.ExcludeServices) == 0 {
+					return false // Exclude from all
+				}
+				// Check if excluded from this specific service
+				for _, filter := range excludeIP.ExcludeServices {
+					if m.matchesServiceFilter(req, filter) {
+						return false
+					}
 				}
 			}
 		}
@@ -825,4 +836,3 @@ func (m *MetricsCollector) getLatestRequests(requests []*models.HTTPRequest, lim
 	}
 	return summary
 }
-

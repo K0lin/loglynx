@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"loglynx/internal/database/models"
 	"loglynx/internal/database/repositories"
@@ -213,83 +214,83 @@ func (m *MockStatsRepository) GetRecordsTimeline(days int) ([]*repositories.Time
 
 func TestIPAnalyticsHoursAndScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	mockRepo := new(MockStatsRepository)
 	logger := pterm.DefaultLogger
-	handler := NewDashboardHandler(mockRepo, nil, logger)
-	
+	handler := NewDashboardHandler(mockRepo, nil, &logger)
+
 	t.Run("GetIPTimeline forwards hours and scope", func(t *testing.T) {
 		ip := "1.2.3.4"
 		expectedHours := 48
 		expectedFilters := []repositories.ServiceFilter{
 			{Name: "svc1", Type: "backend_name"},
 		}
-		
+
 		mockRepo.On("GetIPTimelineStats", ip, expectedHours, expectedFilters).Return([]*repositories.TimelineData{}, nil)
-		
+
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "ip", Value: ip}}
 		c.Request, _ = http.NewRequest("GET", "/api/v1/ip/1.2.3.4/timeline?hours=48&services[]=svc1&service_types[]=backend_name", nil)
-		
+
 		handler.GetIPTimeline(c)
-		
+
 		assert.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})
 
-    t.Run("GetIPTimeline accepts hours=0 for all-time", func(t *testing.T) {
+	t.Run("GetIPTimeline accepts hours=0 for all-time", func(t *testing.T) {
 		ip := "1.2.3.4"
 		expectedHours := 0
-		expectedFilters := []repositories.ServiceFilter{}
-		
+		var expectedFilters []repositories.ServiceFilter
+
 		mockRepo.On("GetIPTimelineStats", ip, expectedHours, expectedFilters).Return([]*repositories.TimelineData{}, nil)
-		
+
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "ip", Value: ip}}
 		c.Request, _ = http.NewRequest("GET", "/api/v1/ip/1.2.3.4/timeline?hours=0", nil)
-		
+
 		handler.GetIPTimeline(c)
-		
+
 		assert.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})
 
-    t.Run("GetIPDetailedStats forwards hours and scope", func(t *testing.T) {
+	t.Run("GetIPDetailedStats forwards hours and scope", func(t *testing.T) {
 		ip := "1.2.3.4"
 		expectedHours := 720 // 30 days
 		expectedFilters := []repositories.ServiceFilter{
 			{Name: "svc2", Type: "host"},
 		}
-		
+
 		mockRepo.On("GetIPDetailedStats", ip, expectedHours, expectedFilters).Return(&repositories.IPDetailedStats{}, nil)
-		
+
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "ip", Value: ip}}
 		c.Request, _ = http.NewRequest("GET", "/api/v1/ip/1.2.3.4/stats?hours=720&service=svc2&service_type=host", nil)
-		
+
 		handler.GetIPDetailedStats(c)
-		
+
 		assert.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})
 
-    t.Run("Hours are clamped to 8760", func(t *testing.T) {
+	t.Run("Hours are clamped to 8760", func(t *testing.T) {
 		ip := "1.2.3.4"
 		expectedHours := 8760
-		expectedFilters := []repositories.ServiceFilter{}
-		
+		var expectedFilters []repositories.ServiceFilter
+
 		mockRepo.On("GetIPTimelineStats", ip, expectedHours, expectedFilters).Return([]*repositories.TimelineData{}, nil)
-		
+
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "ip", Value: ip}}
 		c.Request, _ = http.NewRequest("GET", "/api/v1/ip/1.2.3.4/timeline?hours=999999", nil)
-		
+
 		handler.GetIPTimeline(c)
-		
+
 		assert.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})

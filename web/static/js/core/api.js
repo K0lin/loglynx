@@ -35,6 +35,7 @@ const LogLynxAPI = {
     currentServiceType: 'auto', // Currently selected service type (auto, backend_name, backend_url, host)
     hideMyTraffic: false, // Whether to hide own IP traffic
     hideTrafficServices: [], // Array of services to hide traffic on [{name: 'X', type: 'backend_name'}, ...]
+    hideTrafficManualIPs: [], // Manually excluded IP addresses
     pendingRequests: new Map(), // Track in-flight requests to prevent duplicates
     abortControllers: new Map(), // Track abort controllers for request cancellation
 
@@ -184,6 +185,12 @@ const LogLynxAPI = {
         if (this.hideMyTraffic && params.exclude_own_ip !== 'false') {
             url.searchParams.append('exclude_own_ip', 'true');
 
+            if (this.hideTrafficManualIPs && this.hideTrafficManualIPs.length > 0) {
+                this.hideTrafficManualIPs.forEach(ip => {
+                    url.searchParams.append('excluded_ips[]', ip);
+                });
+            }
+
             // Add exclude services if specified
             if (this.hideTrafficServices && this.hideTrafficServices.length > 0) {
                 this.hideTrafficServices.forEach(service => {
@@ -276,6 +283,22 @@ const LogLynxAPI = {
      */
     getHideMyTraffic() {
         return this.hideMyTraffic;
+    },
+
+    /**
+     * Set manually excluded IP addresses
+     * @param {Array} ips - Array of IP address strings
+     */
+    setHideTrafficManualIPs(ips) {
+        this.hideTrafficManualIPs = Array.isArray(ips) ? ips : [];
+        this.clearCache();
+    },
+
+    /**
+     * Get manually excluded IP addresses
+     */
+    getHideTrafficManualIPs() {
+        return this.hideTrafficManualIPs || [];
     },
 
     /**
