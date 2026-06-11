@@ -104,6 +104,9 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 	}
 
 	go func() {
+		logger.Debug("Anonymous usage telemetry enabled", logger.Args("interval", cfg.Interval))
+
+		// Send immediate heartbeat on startup
 		ping(ctx, endpoint, payload, logger)
 
 		ticker := time.NewTicker(cfg.Interval)
