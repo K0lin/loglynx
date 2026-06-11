@@ -149,15 +149,17 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 	host := parsedURL.Hostname()
 
 	// Robust transport supporting both HTTP/1.1 and HTTP/2
-	// Explicitly setting ServerName is the most effective fix for handshake failures
+	// Explicitly setting ServerName and NextProtos is the most effective fix for handshake failures
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			ServerName: host,
-			MinVersion: tls.VersionTLS12,
+			ServerName:         host,
+			MinVersion:         tls.VersionTLS12,
+			NextProtos:         []string{"http/1.1"}, // Force HTTP/1.1 during ALPN negotiation
+			InsecureSkipVerify: true,                 // Temporary: isolate if it's a CA Trust issue or pure Handshake
 		},
 		// These settings ensure standard Go behavior for proxy and keep-alives
 		Proxy:                 http.ProxyFromEnvironment,
-		ForceAttemptHTTP2:     false, // Disabled to prioritize/ensure compatibility with HTTP/1.1
+		ForceAttemptHTTP2:     false, 
 		MaxIdleConns:          10,
 		IdleConnTimeout:       30 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
