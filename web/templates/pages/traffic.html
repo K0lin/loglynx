@@ -67,28 +67,68 @@
 
 <!-- Traffic Summary KPIs -->
 <div class="grid grid-cols-4 mb-4">
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-drilldown-title="All Traffic" data-drilldown-sort="hits">
         <div class="stat-label" data-tooltip-key="totalRequests" data-tooltip-title="Total Traffic" data-tooltip-position="bottom">Total Traffic</div>
         <div class="stat-value" id="totalTraffic">0</div>
         <div class="stat-subtitle">Last 7 days</div>
     </div>
 
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-drilldown-title="Unique Visitors" data-drilldown-sort="hits">
         <div class="stat-label" data-tooltip-key="uniqueVisitors" data-tooltip-title="Unique Visitors" data-tooltip-position="bottom">Unique Visitors</div>
         <div class="stat-value text-info" id="uniqueVisitors">0</div>
         <div class="stat-subtitle">Unique IP addresses</div>
     </div>
 
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-drilldown-title="Countries" data-drilldown-sort="hits">
         <div class="stat-label" data-tooltip-key="countries" data-tooltip-title="Countries" data-tooltip-position="bottom">Countries</div>
         <div class="stat-value text-success" id="totalCountries">0</div>
         <div class="stat-subtitle">Geographic reach</div>
     </div>
 
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-drilldown-title="Peak Traffic" data-drilldown-sort="hits">
         <div class="stat-label" data-tooltip-key="peakTraffic" data-tooltip-title="Peak Traffic" data-tooltip-position="bottom">Peak Traffic</div>
         <div class="stat-value text-warning" id="peakTraffic">0</div>
         <div class="stat-subtitle" id="peakTrafficTime">req/hour</div>
+    </div>
+</div>
+
+<!-- Interactive IP Drilldown -->
+<div class="card mb-4" id="trafficDrilldownPanel" style="display: none;">
+    <div class="card-header">
+        <div>
+            <h5 class="card-title mb-1">
+                <i class="fas fa-search-location"></i>
+                <span id="trafficDrilldownTitle">Traffic Drilldown</span>
+            </h5>
+            <small class="text-muted" id="trafficDrilldownSubtitle">Top IPs for the selected traffic segment</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <label for="trafficDrilldownSort" class="small text-muted mb-0">Sort</label>
+            <select id="trafficDrilldownSort" class="form-select form-select-sm" style="width: auto;">
+                <option value="hits">Requests</option>
+                <option value="bandwidth">Bandwidth</option>
+            </select>
+            <button class="btn btn-sm btn-outline" id="trafficDrilldownClose" type="button">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>IP Address</th>
+                    <th>Country</th>
+                    <th>City</th>
+                    <th class="text-end">Requests</th>
+                    <th class="text-end">Bandwidth</th>
+                </tr>
+            </thead>
+            <tbody id="trafficDrilldownTable">
+                <tr><td colspan="6" class="text-center text-muted">Select a segment to inspect IPs</td></tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -285,25 +325,25 @@
 
 <!-- Additional Metrics Grid -->
 <div class="grid grid-cols-4 mb-4">
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-device-type="desktop" data-drilldown-title="Desktop Traffic" data-drilldown-sort="bandwidth">
         <div class="stat-label">Desktop Traffic</div>
         <div class="stat-value" id="desktopTraffic">0%</div>
         <div class="stat-subtitle" id="desktopCount">0 requests</div>
     </div>
 
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-device-type="mobile" data-drilldown-title="Mobile Traffic" data-drilldown-sort="bandwidth">
         <div class="stat-label">Mobile Traffic</div>
         <div class="stat-value text-info" id="mobileTraffic">0%</div>
         <div class="stat-subtitle" id="mobileCount">0 requests</div>
     </div>
 
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-device-type="bot" data-drilldown-title="Bot Traffic" data-drilldown-sort="bandwidth">
         <div class="stat-label">Bot Traffic</div>
         <div class="stat-value text-warning" id="botTraffic">0%</div>
         <div class="stat-subtitle" id="botCount">0 requests</div>
     </div>
 
-    <div class="stat-card">
+    <div class="stat-card traffic-drilldown-trigger" data-device-type="tablet" data-drilldown-title="Tablet Traffic" data-drilldown-sort="bandwidth">
         <div class="stat-label">Tablet Traffic</div>
         <div class="stat-value text-success" id="tabletTraffic">0%</div>
         <div class="stat-subtitle" id="tabletCount">0 requests</div>

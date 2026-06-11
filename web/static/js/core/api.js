@@ -436,8 +436,8 @@ const LogLynxAPI = {
      * Get traffic heatmap data
      * @param {number} days - Number of days (1-365)
      */
-    async getTrafficHeatmap(days = 7) {
-        return this.get('/stats/heatmap/traffic', { days });
+    async getTrafficHeatmap(days = 7, options = {}) {
+        return this.get('/stats/heatmap/traffic', { days, ...options });
     },
 
     /**
@@ -463,8 +463,8 @@ const LogLynxAPI = {
      * @param {number} limit - Number of results
      * @param {number} hours - Number of hours to fetch
      */
-    async getTopIPs(limit = 10, hours = 168) {
-        return this.get('/stats/top/ips', { limit, hours });
+    async getTopIPs(limit = 10, hours = 168, options = {}) {
+        return this.get('/stats/top/ips', { limit, hours, ...options });
     },
 
     /**

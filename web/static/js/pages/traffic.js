@@ -31,6 +31,7 @@ let trafficByHourChart, trafficByDayChart;
 let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168); // Default 7 days
 let currentHeatmapDays = 7;
 let allTrafficData = {};
+let currentDrilldown = null;
 
 function getHeatmapDaysForRange(hours) {
     if (hours === 0) return 30; // All time -> cap at 30 days for heatmap
@@ -275,6 +276,18 @@ function initTrafficHeatmapChart() {
                     }
                 }
             }
+        },
+        onClick: (event, elements, chart) => {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (!points.length) return;
+            const point = chart.data.datasets[points[0].datasetIndex].data[points[0].index];
+            if (!point || !point.v) return;
+            showTrafficDrilldown({
+                title: `${point.y} at ${point.x}`,
+                filters: { day_of_week: point.dayOfWeek, hour: point.hour },
+                sort: 'hits',
+                subtitle: `Top IPs active on ${point.y} around ${point.x}`
+            });
         }
     });
 }
@@ -321,6 +334,20 @@ function initDeviceTypeChart() {
                 LogLynxCharts.colors.warning
             ]
         }]
+    }, {
+        onClick: (event, elements, chart) => {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (!points.length) return;
+            const label = chart.data.labels[points[0].index];
+            const value = chart.data.datasets[0].data[points[0].index];
+            if (!value) return;
+            showTrafficDrilldown({
+                title: `${label} Traffic`,
+                filters: { device_type: label.toLowerCase() },
+                sort: 'bandwidth',
+                subtitle: `Top IPs using ${label.toLowerCase()} clients`
+            });
+        }
     });
 }
 
@@ -398,8 +425,24 @@ function initTopCountriesPieChart() {
             backgroundColor: LogLynxCharts.colors.chartPalette
         }]
     }, {
-        cutout: '50%'
+        cutout: '50%',
+        onClick: (event, elements, chart) => {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (!points.length) return;
+            const country = dataCountryAt(points[0].index);
+            if (!country) return;
+            showTrafficDrilldown({
+                title: `${country.country || 'Unknown'} Traffic`,
+                filters: { country: country.country },
+                sort: 'bandwidth',
+                subtitle: `Top IPs from ${country.country_name || country.country || 'Unknown'}`
+            });
+        }
     });
+}
+
+function dataCountryAt(index) {
+    return (allTrafficData.countries || [])[index] || null;
 }
 
 // Update top countries pie chart
@@ -439,7 +482,7 @@ function updateTopCountriesTable(data) {
         data.forEach((item, index) => {
             const percentage = total > 0 ? ((item.hits / total) * 100).toFixed(1) : 0;
             html += `
-                <tr>
+                <tr class="traffic-country-row" data-country="${item.country || ''}" data-country-name="${item.country_name || ''}" style="cursor: pointer;">
                     <td>${index + 1}</td>
                      <td>
                         ${countryCodeToFlag(item.country, item.country)}
@@ -547,7 +590,7 @@ function initASNDataTable() {
             {
                 title: 'ASN',
                 data: 'asn',
-                render: (d) => `<strong>AS${d}</strong>`
+                render: (d) => `<button class="btn btn-link btn-sm p-0 traffic-asn-link" data-asn="${d}" type="button"><strong>AS${d}</strong></button>`
             },
             {
                 title: 'Organization',
@@ -557,6 +600,7 @@ function initASNDataTable() {
             {
                 title: 'Country',
                 data: 'country'
+                ,render: (d) => `${countryCodeToFlag(d, d)} ${d || 'Unknown'}`
             },
             {
                 title: 'Hits',
@@ -596,6 +640,115 @@ function initASNDataTable() {
             emptyTable: 'No ASN data available'
         }
     });
+}
+
+function renderDrilldownRows(data) {
+    if (!data || data.length === 0) {
+        return '<tr><td colspan="6" class="text-center text-muted">No IPs found for this segment</td></tr>';
+    }
+
+    return data.map((item, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>
+                <div class="tag-input-container" style="display: inline-block;">
+                    <span class="ip-display" data-ip="${item.ip_address}" style="display: inline;"><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></span>
+                    <div class="tag-chips" data-ip="${item.ip_address}" style="display: inline;"></div>
+                    <button class="edit-tag-btn" data-ip="${item.ip_address}" onclick="openTagModal('${item.ip_address}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                </div>
+            </td>
+            <td>${countryCodeToFlag(item.country, item.country) || '<i class="fa fa-flag"></i>'} ${countryToContinentMap[item.country]?.name || item.country || 'Unknown'}</td>
+            <td>${item.city || 'Unknown'}</td>
+            <td class="text-end">${LogLynxUtils.formatNumber(item.hits || 0)}</td>
+            <td class="text-end">${LogLynxCharts.formatBytes(item.bandwidth || 0)}</td>
+        </tr>
+    `).join('');
+}
+
+async function showTrafficDrilldown(config) {
+    currentDrilldown = {
+        title: config.title || 'Traffic Drilldown',
+        subtitle: config.subtitle || 'Top IPs for the selected traffic segment',
+        filters: config.filters || {},
+        sort: config.sort || $('#trafficDrilldownSort').val() || 'hits'
+    };
+
+    $('#trafficDrilldownTitle').text(currentDrilldown.title);
+    $('#trafficDrilldownSubtitle').text(currentDrilldown.subtitle);
+    $('#trafficDrilldownSort').val(currentDrilldown.sort);
+    $('#trafficDrilldownPanel').show();
+    $('#trafficDrilldownTable').html('<tr><td colspan="6" class="text-center text-muted">Loading IP overview...</td></tr>');
+
+    const result = await LogLynxAPI.getTopIPs(50, currentTimeRange, {
+        ...currentDrilldown.filters,
+        sort: currentDrilldown.sort
+    });
+
+    if (result.success) {
+        $('#trafficDrilldownTable').html(renderDrilldownRows(result.data));
+        if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+            toggleTagging(true);
+        }
+    } else {
+        $('#trafficDrilldownTable').html('<tr><td colspan="6" class="text-center text-danger">Failed to load IP overview</td></tr>');
+    }
+
+    document.getElementById('trafficDrilldownPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function refreshTrafficDrilldown() {
+    if (currentDrilldown) {
+        showTrafficDrilldown({ ...currentDrilldown, sort: $('#trafficDrilldownSort').val() });
+    }
+}
+
+function initTrafficDrilldowns() {
+    $(document).on('click', '.traffic-drilldown-trigger', function() {
+        showTrafficDrilldown({
+            title: $(this).data('drilldown-title') || 'Traffic Drilldown',
+            filters: {
+                device_type: $(this).data('device-type') || undefined
+            },
+            sort: $(this).data('drilldown-sort') || 'hits'
+        });
+    });
+
+    $(document).on('click', '.traffic-country-row', function() {
+        const country = $(this).data('country');
+        showTrafficDrilldown({
+            title: `${country || 'Unknown'} Traffic`,
+            filters: { country },
+            sort: 'bandwidth',
+            subtitle: `Top IPs from ${$(this).data('country-name') || country || 'Unknown'}`
+        });
+    });
+
+    $(document).on('click', '.traffic-asn-link', function(event) {
+        event.stopPropagation();
+        const asn = parseInt($(this).data('asn'), 10);
+        const row = $('#asnTable').DataTable().row($(this).closest('tr')).data();
+        showTrafficDrilldown({
+            title: `AS${asn} Traffic`,
+            filters: { asn },
+            sort: 'bandwidth',
+            subtitle: `Top IPs for ${row?.asn_org || 'selected ASN'} ${row?.country ? '(' + row.country + ')' : ''}`
+        });
+    });
+
+    $('#trafficDrilldownSort').on('change', refreshTrafficDrilldown);
+    $('#trafficDrilldownClose').on('click', () => {
+        currentDrilldown = null;
+        $('#trafficDrilldownPanel').hide();
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('drilldown') === 'bandwidth') {
+        showTrafficDrilldown({
+            title: 'Bandwidth Overview',
+            sort: 'bandwidth',
+            subtitle: 'Top IPs sorted by transferred bandwidth'
+        });
+    }
 }
 
 // Initialize traffic by hour chart
@@ -834,6 +987,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize controls
     initTimeRangeSelector();
     initHeatmapDaysSelector();
+    initTrafficDrilldowns();
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 

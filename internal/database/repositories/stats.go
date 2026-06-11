@@ -52,7 +52,7 @@ type StatsRepository interface {
 	GetTrafficHeatmap(days int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*TrafficHeatmapData, error)
 	GetTopPaths(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*PathStats, error)
 	GetTopCountries(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*CountryStats, error)
-	GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter, tagFilter string) ([]*IPStats, error)
+	GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter, tagFilter string, ipFilter *IPStatsFilter) ([]*IPStats, error)
 	GetStatusCodeDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*StatusCodeStats, error)
 	GetMethodDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*MethodStats, error)
 	GetProtocolDistribution(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ProtocolStats, error)
@@ -293,6 +293,16 @@ type IPStats struct {
 	Bandwidth    int64   `json:"bandwidth"`
 	FriendlyName string  `json:"friendly_name"`
 	Tags         string  `json:"tags"`
+}
+
+// IPStatsFilter contains optional drilldown filters for IP aggregations.
+type IPStatsFilter struct {
+	Country    string
+	DeviceType string
+	ASN        int
+	DayOfWeek  *int
+	Hour       *int
+	Sort       string
 }
 
 // StatusCodeStats holds status code distribution
@@ -901,7 +911,7 @@ func (r *statsRepo) GetTopCountries(hours int, limit int, filters []ServiceFilte
 
 // GetTopIPAddresses returns most active IP addresses
 // OPTIMIZED: Uses raw SQL with covering index idx_ip_agg for efficient aggregation
-func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter, tagFilter string) ([]*IPStats, error) {
+func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter, tagFilter string, ipFilter *IPStatsFilter) ([]*IPStats, error) {
 	var ips []*IPStats
 
 	// Build WHERE clause
@@ -938,6 +948,29 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 		}
 	}
 
+	if ipFilter != nil {
+		if ipFilter.Country != "" {
+			whereClause += " AND geo_country = ?"
+			args = append(args, ipFilter.Country)
+		}
+		if ipFilter.DeviceType != "" {
+			whereClause += " AND LOWER(device_type) = LOWER(?)"
+			args = append(args, ipFilter.DeviceType)
+		}
+		if ipFilter.ASN > 0 {
+			whereClause += " AND asn = ?"
+			args = append(args, ipFilter.ASN)
+		}
+		if ipFilter.DayOfWeek != nil {
+			whereClause += " AND CAST(strftime('%w', timestamp) AS INTEGER) = ?"
+			args = append(args, *ipFilter.DayOfWeek)
+		}
+		if ipFilter.Hour != nil {
+			whereClause += " AND CAST(strftime('%H', timestamp) AS INTEGER) = ?"
+			args = append(args, *ipFilter.Hour)
+		}
+	}
+
 	// Apply tag filter if provided
 	tagWhere := ""
 	if tagFilter != "" {
@@ -947,6 +980,16 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 
 	// Optimized query - uses idx_ip_agg covering index
 	// First get top IPs by count, then join to get geo data (avoids MAX() scan)
+	orderBy := "hits DESC"
+	if ipFilter != nil {
+		switch ipFilter.Sort {
+		case "bandwidth":
+			orderBy = "bandwidth DESC"
+		case "hits", "requests", "":
+			orderBy = "hits DESC"
+		}
+	}
+
 	query := `
 		WITH top_ips AS (
 			SELECT 
@@ -957,7 +1000,7 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 			LEFT JOIN ip_tags it ON hr.client_ip = it.ip_address` + tagWhere + `
 			WHERE ` + whereClause + `
 			GROUP BY client_ip
-			ORDER BY hits DESC
+			ORDER BY ` + orderBy + `
 			LIMIT ?
 		)
 		SELECT 
@@ -978,7 +1021,7 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 			GROUP BY client_ip
 		) g ON t.client_ip = g.client_ip
 		LEFT JOIN ip_tags it ON t.client_ip = it.ip_address
-		ORDER BY t.hits DESC
+		ORDER BY t.` + strings.Fields(orderBy)[0] + ` DESC
 	`
 	args = append(args, limit)
 

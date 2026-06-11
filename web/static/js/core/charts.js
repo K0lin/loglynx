@@ -490,6 +490,8 @@ const LogLynxCharts = {
                 matrixData.push({
                     x: hourLabels[hour],
                     y: dayNames[day],
+                    dayOfWeek: day,
+                    hour,
                     v: stats.requests,
                     avg: stats.avg
                 });

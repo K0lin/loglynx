@@ -271,8 +271,31 @@ func (h *DashboardHandler) GetTopIPs(c *gin.Context) {
 	}
 
 	tagFilter := c.Query("tag")
+	ipFilter := &repositories.IPStatsFilter{
+		Country:    c.Query("country"),
+		DeviceType: c.Query("device_type"),
+		Sort:       c.DefaultQuery("sort", "hits"),
+	}
+	if asnParam := c.Query("asn"); asnParam != "" {
+		if val, err := strconv.Atoi(asnParam); err == nil && val > 0 {
+			ipFilter.ASN = val
+		}
+	}
+	if dayParam := c.Query("day_of_week"); dayParam != "" {
+		if val, err := strconv.Atoi(dayParam); err == nil && val >= 0 && val <= 6 {
+			ipFilter.DayOfWeek = &val
+		}
+	}
+	if hourParam := c.Query("hour"); hourParam != "" {
+		if val, err := strconv.Atoi(hourParam); err == nil && val >= 0 && val <= 23 {
+			ipFilter.Hour = &val
+		}
+	}
+	if ipFilter.Country == "" && ipFilter.DeviceType == "" && ipFilter.ASN == 0 && ipFilter.DayOfWeek == nil && ipFilter.Hour == nil && ipFilter.Sort == "hits" {
+		ipFilter = nil
+	}
 
-	ips, err := h.statsRepo.GetTopIPAddresses(h.getHours(c), limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c), tagFilter)
+	ips, err := h.statsRepo.GetTopIPAddresses(h.getHours(c), limit, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c), tagFilter, ipFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get top IPs"})
 		return

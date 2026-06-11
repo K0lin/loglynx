@@ -50,8 +50,8 @@ func (m *MockStatsRepository) GetTopCountries(hours int, limit int, filters []re
 	return args.Get(0).([]*repositories.CountryStats), args.Error(1)
 }
 
-func (m *MockStatsRepository) GetTopIPAddresses(hours int, limit int, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter, tagFilter string) ([]*repositories.IPStats, error) {
-	args := m.Called(hours, limit, filters, excludeIP, tagFilter)
+func (m *MockStatsRepository) GetTopIPAddresses(hours int, limit int, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter, tagFilter string, ipFilter *repositories.IPStatsFilter) ([]*repositories.IPStats, error) {
+	args := m.Called(hours, limit, filters, excludeIP, tagFilter, ipFilter)
 	return args.Get(0).([]*repositories.IPStats), args.Error(1)
 }
 
