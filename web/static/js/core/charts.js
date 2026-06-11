@@ -444,6 +444,14 @@ const LogLynxCharts = {
                     const [year, weekStr] = d.hour.split('-W');
                     return `Week ${weekStr}, ${year}`;
                 }
+                if (typeof d.hour === 'string' && d.hour.match(/^\d{4}-\d{2}$/)) {
+                    const [year, month] = d.hour.split('-');
+                    return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', {
+                        month: 'short',
+                        year: 'numeric',
+                        timeZone: timeZone
+                    });
+                }
                 // Fallback to date parsing
                 const date = new Date(d.hour);
                 if (!isNaN(date.getTime())) {

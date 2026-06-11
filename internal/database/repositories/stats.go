@@ -441,8 +441,8 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 		AvgResponseTime  float64 `gorm:"column:avg_response_time"`
 		NotFoundCount    int64   `gorm:"column:not_found_count"`
 		ServerErrorCount int64   `gorm:"column:server_error_count"`
-		TopCountry       string  `gorm:"column:top_country"`
-		TopPath          string  `gorm:"column:top_path"`
+		FirstTimestamp   string  `gorm:"column:first_timestamp"`
+		LastTimestamp    string  `gorm:"column:last_timestamp"`
 	}
 
 	var result aggregatedResult
@@ -513,7 +513,7 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 	}
 
 	baseSQL := `WITH base AS (
-		SELECT status_code, response_size, response_time_ms, client_ip, path, geo_country
+		SELECT timestamp, status_code, response_size, response_time_ms, client_ip, path, geo_country
 		FROM http_requests
 		WHERE ` + whereClause + `
 	)
@@ -528,8 +528,8 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 		COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
 		COUNT(CASE WHEN status_code = 404 THEN 1 END) as not_found_count,
 		COUNT(CASE WHEN status_code >= 500 AND status_code < 600 THEN 1 END) as server_error_count,
-		(SELECT geo_country FROM base WHERE geo_country != '' GROUP BY geo_country ORDER BY COUNT(*) DESC LIMIT 1) AS top_country,
-		(SELECT path FROM base GROUP BY path ORDER BY COUNT(*) DESC LIMIT 1) AS top_path
+		MIN(timestamp) as first_timestamp,
+		MAX(timestamp) as last_timestamp
 	 FROM base`
 	if err := r.db.WithContext(ctx).Raw(baseSQL, args...).Scan(&result).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get summary stats", r.logger.Args("error", err))
@@ -545,8 +545,6 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 	summary.Unique404 = result.Unique404
 	summary.TotalBandwidth = result.TotalBandwidth
 	summary.AvgResponseTime = result.AvgResponseTime
-	summary.TopCountry = result.TopCountry
-	summary.TopPath = result.TopPath
 
 	// Calculate rates
 	if summary.TotalRequests > 0 {
@@ -559,28 +557,20 @@ func (r *statsRepo) GetSummary(hours int, filters []ServiceFilter, excludeIP *Ex
 	if hours > 0 {
 		summary.RequestsPerHour = float64(summary.TotalRequests) / float64(hours)
 	} else {
-		// For all time, calculate based on actual data range
-		var timeRange struct {
-			First string
-			Last  string
-		}
-
-		rangeQuery := r.db.Table("http_requests").Select("MIN(timestamp) as first, MAX(timestamp) as last")
-		rangeQuery = r.applyServiceFilters(rangeQuery, filters)
-
-		if err := rangeQuery.Scan(&timeRange).Error; err == nil && timeRange.First != "" && timeRange.Last != "" {
+		// For all time, calculate from the same summary scan to avoid a second full-table query.
+		if result.FirstTimestamp != "" && result.LastTimestamp != "" {
 			var firstTime, lastTime time.Time
-			if t, err := time.Parse(SQLiteTimeFormat, timeRange.First); err == nil {
+			if t, err := time.Parse(SQLiteTimeFormat, result.FirstTimestamp); err == nil {
 				firstTime = t
-			} else if t, err := time.Parse(time.DateTime, timeRange.First); err == nil {
+			} else if t, err := time.Parse(time.DateTime, result.FirstTimestamp); err == nil {
 				firstTime = t
 			} else {
 				firstTime = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 			}
 
-			if t, err := time.Parse(SQLiteTimeFormat, timeRange.Last); err == nil {
+			if t, err := time.Parse(SQLiteTimeFormat, result.LastTimestamp); err == nil {
 				lastTime = t
-			} else if t, err := time.Parse(time.DateTime, timeRange.Last); err == nil {
+			} else if t, err := time.Parse(time.DateTime, result.LastTimestamp); err == nil {
 				lastTime = t
 			} else {
 				lastTime = time.Now()
@@ -623,7 +613,7 @@ func (r *statsRepo) GetTimelineStats(hours int, filters []ServiceFilter, exclude
 	case hours > 0 && hours <= 720:
 		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)" // daily UTC
 	default:
-		groupBy = "strftime('%Y-W%W', timestamp)" // weekly (special format handled in frontend)
+		groupBy = "substr(timestamp, 1, 7)" // monthly bucket, index-friendly for all-time ranges
 	}
 
 	query := r.db.Model(&models.HTTPRequest{}).
@@ -664,8 +654,8 @@ func (r *statsRepo) GetStatusCodeTimeline(hours int, filters []ServiceFilter, ex
 		// Group by day for last 30 days
 		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)"
 	} else {
-		// Group by week for longer periods
-		groupBy = "strftime('%Y-W%W', timestamp)"
+		// Monthly bucket, index-friendly for all-time ranges
+		groupBy = "substr(timestamp, 1, 7)"
 	}
 
 	// Build the query with explicit grouping
@@ -830,6 +820,54 @@ func (r *statsRepo) GetTopPaths(hours int, limit int, filters []ServiceFilter, e
 		LIMIT ?
 	`
 	args = append(args, limit)
+	if len(filters) == 0 && excludeIP == nil {
+		if hours > 0 {
+			since := args[0]
+			query = `
+				WITH top_paths AS (
+					SELECT path, COUNT(*) as hits
+					FROM http_requests
+					WHERE timestamp > ?
+					GROUP BY path
+					ORDER BY hits DESC
+					LIMIT ?
+				)
+				SELECT
+					tp.path,
+					tp.hits,
+					COUNT(DISTINCT hr.client_ip) as unique_visitors,
+					COALESCE(AVG(CASE WHEN hr.response_time_ms > 0 THEN hr.response_time_ms END), 0) as avg_response_time,
+					COALESCE(SUM(hr.response_size), 0) as total_bandwidth
+				FROM top_paths tp
+				JOIN http_requests hr ON hr.path = tp.path
+				WHERE hr.timestamp > ?
+				GROUP BY tp.path, tp.hits
+				ORDER BY tp.hits DESC
+			`
+			args = []interface{}{since, limit, since}
+		} else {
+			query = `
+				WITH top_paths AS (
+					SELECT path, COUNT(*) as hits
+					FROM http_requests
+					GROUP BY path
+					ORDER BY hits DESC
+					LIMIT ?
+				)
+				SELECT
+					tp.path,
+					tp.hits,
+					COUNT(DISTINCT hr.client_ip) as unique_visitors,
+					COALESCE(AVG(CASE WHEN hr.response_time_ms > 0 THEN hr.response_time_ms END), 0) as avg_response_time,
+					COALESCE(SUM(hr.response_size), 0) as total_bandwidth
+				FROM top_paths tp
+				JOIN http_requests hr ON hr.path = tp.path
+				GROUP BY tp.path, tp.hits
+				ORDER BY tp.hits DESC
+			`
+			args = []interface{}{limit}
+		}
+	}
 
 	err := r.db.Raw(query, args...).Scan(&paths).Error
 
@@ -971,10 +1009,9 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 		}
 	}
 
-	// Apply tag filter if provided
-	tagWhere := ""
+	joinTags := ""
 	if tagFilter != "" {
-		tagWhere = " AND it.tags LIKE ?"
+		joinTags = " JOIN ip_tags it ON hr.client_ip = it.ip_address AND it.tags LIKE ?"
 		args = append(args, "%"+tagFilter+"%")
 	}
 
@@ -995,9 +1032,12 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 			SELECT 
 				client_ip,
 				COUNT(*) as hits,
-				COALESCE(SUM(response_size), 0) as bandwidth
-			FROM http_requests hr
-			LEFT JOIN ip_tags it ON hr.client_ip = it.ip_address` + tagWhere + `
+				COALESCE(SUM(response_size), 0) as bandwidth,
+				MAX(geo_country) as geo_country,
+				MAX(geo_city) as geo_city,
+				MAX(geo_lat) as geo_lat,
+				MAX(geo_lon) as geo_lon
+			FROM http_requests hr` + joinTags + `
 			WHERE ` + whereClause + `
 			GROUP BY client_ip
 			ORDER BY ` + orderBy + `
@@ -1005,21 +1045,15 @@ func (r *statsRepo) GetTopIPAddresses(hours int, limit int, filters []ServiceFil
 		)
 		SELECT 
 			t.client_ip as ip_address,
-			COALESCE(g.geo_country, '') as country,
-			COALESCE(g.geo_city, '') as city,
-			COALESCE(g.geo_lat, 0) as latitude,
-			COALESCE(g.geo_lon, 0) as longitude,
+			COALESCE(t.geo_country, '') as country,
+			COALESCE(t.geo_city, '') as city,
+			COALESCE(t.geo_lat, 0) as latitude,
+			COALESCE(t.geo_lon, 0) as longitude,
 			t.hits,
 			t.bandwidth,
 			COALESCE(it.friendly_name, '') as friendly_name,
 			COALESCE(it.tags, '') as tags
 		FROM top_ips t
-		LEFT JOIN (
-			SELECT client_ip, geo_country, geo_city, geo_lat, geo_lon
-			FROM http_requests
-			WHERE geo_country != ''
-			GROUP BY client_ip
-		) g ON t.client_ip = g.client_ip
 		LEFT JOIN ip_tags it ON t.client_ip = it.ip_address
 		ORDER BY t.` + strings.Fields(orderBy)[0] + ` DESC
 	`
@@ -1665,33 +1699,61 @@ func (r *statsRepo) GetResponseTimeStats(hours int, filters []ServiceFilter, exc
 		}
 	}
 
-	// Single query using window functions for all statistics including percentiles
-	query := `
-		WITH stats_data AS (
-			SELECT
-				response_time_ms,
-				NTILE(100) OVER (ORDER BY response_time_ms) as percentile_bucket
-			FROM http_requests
-			WHERE ` + whereClause + `
-		)
+	countQuery := `
 		SELECT
+			COUNT(*) as count,
 			COALESCE(MIN(response_time_ms), 0) as min,
 			COALESCE(MAX(response_time_ms), 0) as max,
-			COALESCE(AVG(response_time_ms), 0) as avg,
-			COALESCE(MAX(CASE WHEN percentile_bucket <= 50 THEN response_time_ms END), 0) as p50,
-			COALESCE(MAX(CASE WHEN percentile_bucket <= 95 THEN response_time_ms END), 0) as p95,
-			COALESCE(MAX(CASE WHEN percentile_bucket <= 99 THEN response_time_ms END), 0) as p99
-		FROM stats_data
-	`
+			COALESCE(AVG(response_time_ms), 0) as avg
+		FROM http_requests
+		WHERE ` + whereClause
 
-	err := r.db.Raw(query, args...).Scan(stats).Error
-
-	if err != nil {
+	var base struct {
+		Count int64   `gorm:"column:count"`
+		Min   float64 `gorm:"column:min"`
+		Max   float64 `gorm:"column:max"`
+		Avg   float64 `gorm:"column:avg"`
+	}
+	if err := r.db.Raw(countQuery, args...).Scan(&base).Error; err != nil {
 		r.logger.WithCaller().Error("Failed to get response time stats", r.logger.Args("error", err))
 		return nil, err
 	}
 
-	r.logger.Trace("Generated response time stats (optimized with NTILE)",
+	stats.Min = base.Min
+	stats.Max = base.Max
+	stats.Avg = base.Avg
+	if base.Count == 0 {
+		return stats, nil
+	}
+
+	percentileQuery := `SELECT response_time_ms FROM http_requests WHERE ` + whereClause + ` ORDER BY response_time_ms LIMIT 1 OFFSET ?`
+	readPercentile := func(percent float64) (float64, error) {
+		offset := int64(float64(base.Count-1) * percent)
+		percentileArgs := append([]interface{}{}, args...)
+		percentileArgs = append(percentileArgs, offset)
+
+		var value float64
+		if err := r.db.Raw(percentileQuery, percentileArgs...).Scan(&value).Error; err != nil {
+			return 0, err
+		}
+		return value, nil
+	}
+
+	var err error
+	if stats.P50, err = readPercentile(0.50); err != nil {
+		r.logger.WithCaller().Error("Failed to get p50 response time", r.logger.Args("error", err))
+		return nil, err
+	}
+	if stats.P95, err = readPercentile(0.95); err != nil {
+		r.logger.WithCaller().Error("Failed to get p95 response time", r.logger.Args("error", err))
+		return nil, err
+	}
+	if stats.P99, err = readPercentile(0.99); err != nil {
+		r.logger.WithCaller().Error("Failed to get p99 response time", r.logger.Args("error", err))
+		return nil, err
+	}
+
+	r.logger.Trace("Generated response time stats",
 		r.logger.Args("min", stats.Min, "max", stats.Max, "p95", stats.P95, "service_filters", filters))
 
 	return stats, nil

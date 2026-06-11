@@ -177,12 +177,10 @@
             });
         }
 
-        function loadBackendCharts() {
-            const url = LogLynxAPI.buildURL('/stats/top/backends', { limit: 15, hours: currentTimeRange });
+        function renderBackendCharts(data) {
+            data = data || [];
+            const chartData = data.slice(0, 15);
 
-            return fetch(url)
-                .then(response => response.json())
-                .then(data => {
                     // Update KPIs
                     document.getElementById('totalBackends').textContent = data.length.toLocaleString();
 
@@ -196,7 +194,7 @@
                     const errorRate = totalRequests > 0 ? (totalErrors / totalRequests * 100) : 0;
                     document.getElementById('errorRate').textContent = errorRate.toFixed(1) + '%';
 
-                    const labels = data.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access'));
+                    const labels = chartData.map(item => LogLynxUtils.formatHostDisplay(item, item.backend_name || 'Direct Access'));
 
                     if (backendRequestsChart) backendRequestsChart.destroy();
                     if (backendResponseTimeChart) backendResponseTimeChart.destroy();
@@ -208,7 +206,7 @@
                             labels,
                             datasets: [{
                                 label: 'Requests',
-                                data: data.map(item => item.hits),
+                                data: chartData.map(item => item.hits),
                                 backgroundColor: '#F46319'
                             }]
                         },
@@ -225,8 +223,8 @@
                             labels,
                             datasets: [{
                                 label: 'Avg Response Time (ms)',
-                                data: data.map(item => Math.round(item.avg_response_time || 0)),
-                                backgroundColor: data.map(item => {
+                                data: chartData.map(item => Math.round(item.avg_response_time || 0)),
+                                backgroundColor: chartData.map(item => {
                                     const time = item.avg_response_time || 0;
                                     if (time < 100) return '#28a745';
                                     if (time < 500) return '#ffc107';
@@ -239,11 +237,6 @@
                             indexAxis: 'y'
                         }
                     });
-                })
-                .catch(error => {
-                    console.error('Error loading backend data:', error);
-                    document.getElementById('totalBackends').textContent = 'N/A';
-                });
         }
 
         function reloadBackendData() {
@@ -251,7 +244,6 @@
             if (backendTable) {
                 backendTable.ajax.url(LogLynxAPI.buildURL('/stats/top/backends', { limit: 100, hours: currentTimeRange })).load();
             }
-            loadBackendCharts();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -274,7 +266,10 @@
             backendTable = $('#backendTable').DataTable({
                 ajax: {
                     url: LogLynxAPI.buildURL('/stats/top/backends', { limit: 100, hours: currentTimeRange }),
-                    dataSrc: ''
+                    dataSrc: function(data) {
+                        renderBackendCharts(data || []);
+                        return data || [];
+                    }
                 },
                 columns: [
                     {
@@ -346,7 +341,7 @@
                 pageLength: 25
             });
 
-            reloadBackendData();
+            LogLynxUtils.initRefreshControls(reloadBackendData, 30);
         });
 
         function exportBackendReport() {

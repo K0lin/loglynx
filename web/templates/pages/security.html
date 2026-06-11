@@ -362,12 +362,6 @@
                     document.getElementById('uniqueIPs').textContent = (data.unique_visitors || 0).toLocaleString();
                 });
 
-            // Unique countries count
-            fetch(LogLynxAPI.buildURL('/stats/top/countries', { limit: 1000, hours: currentTimeRange }))
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalCountries').textContent = data.length.toLocaleString();
-                });
         }
 
         function reloadTables() {
@@ -375,7 +369,7 @@
                 topIPsTable.ajax.url(LogLynxAPI.buildURL('/stats/top/ips', { limit: 50, hours: currentTimeRange })).load();
             }
             if (topCountriesTable) {
-                topCountriesTable.ajax.url(LogLynxAPI.buildURL('/stats/top/countries', { limit: 20, hours: currentTimeRange })).load();
+                topCountriesTable.ajax.url(LogLynxAPI.buildURL('/stats/top/countries', { limit: 1000, hours: currentTimeRange })).load();
             }
         }
 
@@ -431,8 +425,11 @@
 
             topCountriesTable = $('#topCountriesTable').DataTable({
                 ajax: {
-                    url: LogLynxAPI.buildURL('/stats/top/countries', { limit: 20, hours: currentTimeRange }),
-                    dataSrc: ''
+                    url: LogLynxAPI.buildURL('/stats/top/countries', { limit: 1000, hours: currentTimeRange }),
+                    dataSrc: function(data) {
+                        document.getElementById('totalCountries').textContent = (data || []).length.toLocaleString();
+                        return data || [];
+                    }
                 },
                 columns: [
                     {
