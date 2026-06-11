@@ -144,7 +144,7 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	if cfg.DashboardEnabled {
 		// Load HTML templates with pattern for nested directories
 		router.LoadHTMLGlob("web/templates/**/*.html")
-		
+
 		// Static files
 		router.Static("/static", "./web/static")
 
@@ -193,8 +193,10 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		if cfg.WidgetEnabled {
 			router.GET("/widget", func(c *gin.Context) {
 				theme := c.DefaultQuery("theme", "dark")
+				mode := c.DefaultQuery("time", "realtime")
 				c.HTML(http.StatusOK, "widget.html", gin.H{
 					"Theme": theme,
+					"Mode":  mode,
 				})
 			})
 		}
