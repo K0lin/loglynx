@@ -143,17 +143,36 @@ const LogLynxUtils = {
      */
     async initVersionCheck() {
         const currentVersion = this.normalizeVersion(window.LogLynxVersion || '');
-        if (!currentVersion) return;
+        if (!currentVersion) {
+            this.updateVersionCheckStatus('unknown', 'Version unknown');
+            return;
+        }
+
+        this.updateVersionCheckStatus('checking', 'Checking version...');
 
         try {
             const response = await fetch('https://api.github.com/repos/K0lin/loglynx/releases/latest', {
                 headers: { 'Accept': 'application/vnd.github+json' }
             });
-            if (!response.ok) return;
+            if (!response.ok) {
+                this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+                return;
+            }
 
             const release = await response.json();
             const latestVersion = this.normalizeVersion(release.tag_name || release.name || '');
-            if (!latestVersion || !this.isVersionNewer(latestVersion, currentVersion)) return;
+            if (!latestVersion) {
+                this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+                return;
+            }
+
+            const releaseUrl = release.html_url || 'https://github.com/K0lin/loglynx/releases/latest';
+            if (!this.isVersionNewer(latestVersion, currentVersion)) {
+                this.updateVersionCheckStatus('current', 'Up to date', releaseUrl);
+                return;
+            }
+
+            this.updateVersionCheckStatus('outdated', `Update available: v${latestVersion}`, releaseUrl);
 
             const dismissedKey = `loglynx_update_dismissed_${latestVersion}`;
             const snoozeKey = `loglynx_update_snoozed_${latestVersion}`;
@@ -163,12 +182,43 @@ const LogLynxUtils = {
             this.showVersionUpdateNotice({
                 currentVersion,
                 latestVersion,
-                releaseUrl: release.html_url || 'https://github.com/K0lin/loglynx/releases/latest',
+                releaseUrl,
                 dismissedKey,
                 snoozeKey
             });
         } catch (error) {
             console.debug('Version check unavailable:', error);
+            this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+        }
+    },
+
+    updateVersionCheckStatus(state, text, href = '') {
+        const statusEl = document.getElementById('versionCheckStatus');
+        if (!statusEl) return;
+
+        const iconByState = {
+            checking: 'fa-circle-notch fa-spin',
+            current: 'fa-check-circle',
+            outdated: 'fa-exclamation-circle',
+            unknown: 'fa-info-circle'
+        };
+        const classByState = {
+            checking: 'is-checking',
+            current: 'is-current',
+            outdated: 'is-outdated',
+            unknown: 'is-unknown'
+        };
+
+        statusEl.className = `sidebar-version-status ${classByState[state] || classByState.unknown}`;
+        const content = `
+            <i class="fas ${iconByState[state] || iconByState.unknown}"></i>
+            <span>${text}</span>
+        `;
+
+        if (href) {
+            statusEl.innerHTML = `<a href="${href}" target="_blank" rel="noopener">${content}</a>`;
+        } else {
+            statusEl.innerHTML = content;
         }
     },
 
