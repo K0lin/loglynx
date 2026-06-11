@@ -26,10 +26,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -111,11 +109,14 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 		Event:      "heartbeat",
 	}
 
+	disabled := false
 	go func() {
 		logger.Debug("Anonymous usage telemetry enabled", logger.Args("interval", cfg.Interval))
 
 		// Send immediate heartbeat on startup
-		ping(ctx, endpoint, payload, logger)
+		if !ping(ctx, endpoint, payload, logger) {
+			disabled = true
+		}
 
 		ticker := time.NewTicker(cfg.Interval)
 		defer ticker.Stop()
@@ -125,7 +126,12 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				ping(ctx, endpoint, payload, logger)
+				if disabled {
+					continue
+				}
+				if !ping(ctx, endpoint, payload, logger) {
+					disabled = true
+				}
 			}
 		}
 	}()
@@ -133,42 +139,23 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 	return cancel
 }
 
-func ping(parent context.Context, endpoint string, payload Payload, logger *pterm.Logger) {
+func ping(parent context.Context, endpoint string, payload Payload, logger *pterm.Logger) bool {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		logger.Debug("Failed to encode telemetry payload", logger.Args("error", err))
-		return
+		return false
 	}
 
 	parsedURL, err := url.Parse(endpoint)
 	if err != nil {
 		logger.Debug("Failed to parse telemetry endpoint", logger.Args("error", err))
-		return
+		return false
 	}
 
 	host := parsedURL.Hostname()
 
-	// Robust transport supporting both HTTP/1.1 and HTTP/2
-	// Explicitly setting ServerName and NextProtos is the most effective fix for handshake failures
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			ServerName:         host,
-			MinVersion:         tls.VersionTLS12,
-			NextProtos:         []string{"http/1.1"}, // Force HTTP/1.1 during ALPN negotiation
-			InsecureSkipVerify: true,                 // Temporary: isolate if it's a CA Trust issue or pure Handshake
-		},
-		// These settings ensure standard Go behavior for proxy and keep-alives
-		Proxy:                 http.ProxyFromEnvironment,
-		ForceAttemptHTTP2:     false, 
-		MaxIdleConns:          10,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-
 	client := &http.Client{
-		Timeout:   15 * time.Second,
-		Transport: transport,
+		Timeout: 15 * time.Second,
 	}
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
@@ -177,36 +164,34 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		logger.Debug("Failed to create telemetry request", logger.Args("error", err))
-		return
+		return false
 	}
 
-	// Browser-like User-Agent to bypass restrictive firewalls
-	userAgent := fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) LogLynx/%s", payload.Version)
-	
-	req.Host = host
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Connection", "close")
+	req.Header.Set("User-Agent", "LogLynx/"+payload.Version)
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "handshake failure") {
-			logger.Debug("Telemetry TLS handshake failed. The server actively rejected the connection.", 
+			logger.Debug("Telemetry endpoint rejected TLS handshake; telemetry disabled for this run",
 				logger.Args("error", errMsg, "host", host))
 		} else {
 			logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
 		}
-		return
+		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logger.Debug("Telemetry ping returned non-success status", logger.Args("status", resp.StatusCode))
+		return resp.StatusCode < 500
 	} else {
 		logger.Debug("Telemetry heartbeat sent successfully")
 	}
+
+	return true
 }
 
 func getOrCreateInstanceID(storeDir string) (string, error) {
