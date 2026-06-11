@@ -94,10 +94,16 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 		return func() {}
 	}
 
+	// Ensure version is not empty
+	appVersion := strings.TrimSpace(cfg.Version)
+	if appVersion == "" {
+		appVersion = "1.1.1" // Fallback to current stable
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	payload := Payload{
 		InstanceID: hashInstanceID(instanceID),
-		Version:    cfg.Version,
+		Version:    appVersion,
 		OS:         runtime.GOOS,
 		Arch:       runtime.GOARCH,
 		Event:      "heartbeat",
@@ -122,7 +128,6 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 		}
 	}()
 
-	logger.Debug("Anonymous usage telemetry enabled", logger.Args("interval", cfg.Interval.String()))
 	return cancel
 }
 
@@ -133,7 +138,18 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil {
+		logger.Debug("Failed to parse telemetry endpoint", logger.Args("error", err))
+		return
+	}
+
+	// Custom transport to ensure SNI and modern TLS settings
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -141,18 +157,31 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		logger.Debug("Failed to create telemetry request", logger.Args("error", err))
 		return
 	}
+
+	// Explicitly set Host for SNI safety (though Go usually does this)
+	req.Host = parsedURL.Host
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "LogLynx/"+payload.Version)
+	req.Header.Set("Connection", "close") // Avoid keep-alive issues during handshake debugging
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		logger.Debug("Telemetry ping failed", logger.Args("error", err))
+		// Provide more context on the error
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "handshake failure") {
+			logger.Debug("Telemetry TLS handshake failed. This often happens if the server requires SNI, modern Ciphers, or blocks non-browser agents.", 
+				logger.Args("error", errMsg, "endpoint", endpoint))
+		} else {
+			logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
+		}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logger.Debug("Telemetry ping returned non-success status", logger.Args("status", resp.StatusCode))
+	} else {
+		logger.Debug("Telemetry heartbeat sent successfully")
 	}
 }
 
