@@ -26,7 +26,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	crypto_tls "crypto/tls"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -146,19 +146,27 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		return
 	}
 
-	// Extract hostname for SNI
 	host := parsedURL.Hostname()
 
-	// Custom transport with explicit SNI and modern browser-like TLS config
-	client := &http.Client{
-		Timeout: 15 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &crypto_tls.Config{
-				ServerName: host, // MANDATORY for SNI on many servers
-				MinVersion: crypto_tls.VersionTLS12,
-			},
-			ForceAttemptHTTP2: true,
+	// Robust transport supporting both HTTP/1.1 and HTTP/2
+	// Explicitly setting ServerName is the most effective fix for handshake failures
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			ServerName: host,
+			MinVersion: tls.VersionTLS12,
 		},
+		// These settings ensure standard Go behavior for proxy and keep-alives
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     false, // Disabled to prioritize/ensure compatibility with HTTP/1.1
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	client := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: transport,
 	}
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
@@ -170,20 +178,20 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		return
 	}
 
-	// Use a common browser User-Agent to bypass simple bot filters
+	// Browser-like User-Agent to bypass restrictive firewalls
 	userAgent := fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) LogLynx/%s", payload.Version)
-
+	
 	req.Host = host
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Connection", "close")
 
 	resp, err := client.Do(req)
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "handshake failure") {
-			logger.Debug("Telemetry TLS handshake failed. Possible causes: Server requires specific ALPN, blocks Go fingerprints, or SNI mismatch.",
+			logger.Debug("Telemetry TLS handshake failed. The server actively rejected the connection.", 
 				logger.Args("error", errMsg, "host", host))
 		} else {
 			logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
