@@ -26,8 +26,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	crypto_tls "crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -170,7 +172,7 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 
 	// Use a common browser User-Agent to bypass simple bot filters
 	userAgent := fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) LogLynx/%s", payload.Version)
-	
+
 	req.Host = host
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", userAgent)
@@ -181,7 +183,7 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "handshake failure") {
-			logger.Debug("Telemetry TLS handshake failed. Possible causes: Server requires specific ALPN, blocks Go fingerprints, or SNI mismatch.", 
+			logger.Debug("Telemetry TLS handshake failed. Possible causes: Server requires specific ALPN, blocks Go fingerprints, or SNI mismatch.",
 				logger.Args("error", errMsg, "host", host))
 		} else {
 			logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
