@@ -144,12 +144,22 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		return
 	}
 
-	// Custom transport to ensure SNI and modern TLS settings
+	// Extract hostname for SNI
+	host := parsedURL.Hostname()
+
+	// Custom transport with explicit SNI and modern browser-like TLS config
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &crypto_tls.Config{
+				ServerName: host, // MANDATORY for SNI on many servers
+				MinVersion: crypto_tls.VersionTLS12,
+			},
+			ForceAttemptHTTP2: true,
+		},
 	}
 
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -158,19 +168,21 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		return
 	}
 
-	// Explicitly set Host for SNI safety (though Go usually does this)
-	req.Host = parsedURL.Host
+	// Use a common browser User-Agent to bypass simple bot filters
+	userAgent := fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) LogLynx/%s", payload.Version)
+	
+	req.Host = host
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "LogLynx/"+payload.Version)
-	req.Header.Set("Connection", "close") // Avoid keep-alive issues during handshake debugging
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Connection", "close")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		// Provide more context on the error
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "handshake failure") {
-			logger.Debug("Telemetry TLS handshake failed. This often happens if the server requires SNI, modern Ciphers, or blocks non-browser agents.", 
-				logger.Args("error", errMsg, "endpoint", endpoint))
+			logger.Debug("Telemetry TLS handshake failed. Possible causes: Server requires specific ALPN, blocks Go fingerprints, or SNI mismatch.", 
+				logger.Args("error", errMsg, "host", host))
 		} else {
 			logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
 		}
