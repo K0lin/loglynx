@@ -55,6 +55,9 @@
                 <option value="720">Last 30 Days</option>
                 <option value="0">All Time</option>
             </select>
+            <button class="btn btn-primary btn-sm" id="openTrafficDrilldown" type="button">
+                <i class="fas fa-search-location"></i> IP Drilldown
+            </button>
             <button class="btn btn-outline btn-sm" onclick="exportTrafficReport()">
                 <i class="fas fa-file-export"></i> Export Report
             </button>
@@ -113,7 +116,81 @@
             </button>
         </div>
     </div>
-    <div class="card-body table-responsive">
+    <div class="card-body border-bottom pb-4" id="trafficDrilldownControls">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label for="trafficDrilldownType" class="form-label small text-muted mb-1">Data to inspect</label>
+                <select id="trafficDrilldownType" class="form-select form-select-sm">
+                    <option value="all">All IPs</option>
+                    <option value="bandwidth">Bandwidth usage</option>
+                    <option value="desktop">Desktop traffic</option>
+                    <option value="mobile">Mobile traffic</option>
+                    <option value="bot">Bot traffic</option>
+                    <option value="tablet">Tablet traffic</option>
+                    <option value="country">Specific country</option>
+                    <option value="asn">Specific ASN</option>
+                    <option value="time_bucket">Specific day/hour</option>
+                </select>
+            </div>
+            <div class="col-md-3 traffic-drilldown-extra" data-extra="country" style="display: none;">
+                <label for="trafficDrilldownCountry" class="form-label small text-muted mb-1">Country</label>
+                <select id="trafficDrilldownCountry" class="form-select form-select-sm">
+                    <option value="">Select country</option>
+                </select>
+            </div>
+            <div class="col-md-3 traffic-drilldown-extra" data-extra="asn" style="display: none;">
+                <label for="trafficDrilldownASN" class="form-label small text-muted mb-1">ASN</label>
+                <input id="trafficDrilldownASN" class="form-control form-control-sm" type="number" min="1" placeholder="e.g. 15169">
+            </div>
+            <div class="col-md-2 traffic-drilldown-extra" data-extra="time_bucket" style="display: none;">
+                <label for="trafficDrilldownDay" class="form-label small text-muted mb-1">Day</label>
+                <select id="trafficDrilldownDay" class="form-select form-select-sm">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                </select>
+            </div>
+            <div class="col-md-2 traffic-drilldown-extra" data-extra="time_bucket" style="display: none;">
+                <label for="trafficDrilldownHour" class="form-label small text-muted mb-1">Hour</label>
+                <select id="trafficDrilldownHour" class="form-select form-select-sm">
+                    <option value="0">00:00</option>
+                    <option value="1">01:00</option>
+                    <option value="2">02:00</option>
+                    <option value="3">03:00</option>
+                    <option value="4">04:00</option>
+                    <option value="5">05:00</option>
+                    <option value="6">06:00</option>
+                    <option value="7">07:00</option>
+                    <option value="8">08:00</option>
+                    <option value="9">09:00</option>
+                    <option value="10">10:00</option>
+                    <option value="11">11:00</option>
+                    <option value="12">12:00</option>
+                    <option value="13">13:00</option>
+                    <option value="14">14:00</option>
+                    <option value="15">15:00</option>
+                    <option value="16">16:00</option>
+                    <option value="17">17:00</option>
+                    <option value="18">18:00</option>
+                    <option value="19">19:00</option>
+                    <option value="20">20:00</option>
+                    <option value="21">21:00</option>
+                    <option value="22">22:00</option>
+                    <option value="23">23:00</option>
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-sm btn-primary" id="trafficDrilldownApply" type="button">
+                    <i class="fas fa-filter"></i> Show IPs
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body table-responsive pt-4">
         <table class="table table-sm table-hover mb-0">
             <thead>
                 <tr>
