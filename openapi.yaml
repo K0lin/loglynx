@@ -42,12 +42,13 @@ info:
     ## Hide My Traffic
     Endpoints that return request data support excluding your own IP address:
     - `exclude_own_ip`: Set to `true` to exclude requests from your IP (boolean)
+    - `excluded_ips[]`: Optional array of additional IP addresses to exclude manually
     - `exclude_services[]`: Optional array of service names to exclude your IP from (if omitted, excludes from all services)
     - `exclude_service_types[]`: Corresponding array of service types for exclude_services[]
 
-    **Example**: Hide my traffic only on specific services
+    **Example**: Hide current and manually entered IP traffic only on specific services
     ```
-    /api/v1/requests/recent?exclude_own_ip=true&exclude_services[]=admin-panel&exclude_service_types[]=backend_name
+    /api/v1/requests/recent?exclude_own_ip=true&excluded_ips[]=192.168.1.10&exclude_services[]=admin-panel&exclude_service_types[]=backend_name
     ```
 
     ## Common Query Parameters
@@ -116,6 +117,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -145,6 +147,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -176,6 +179,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -207,6 +211,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/DaysParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -236,6 +241,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -266,6 +272,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -303,6 +310,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -333,6 +341,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -363,6 +372,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -393,6 +403,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -423,6 +434,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -453,6 +465,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -483,6 +496,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -520,6 +534,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -556,6 +571,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -586,6 +602,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -616,6 +633,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -646,6 +664,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -676,6 +695,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -706,6 +726,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -726,13 +747,13 @@ paths:
       summary: Get log processing statistics
       description: |
         Returns information about log file processing progress.
-        
+
         **Percentage Calculation:**
         The processing percentage is intelligently calculated using:
         1. **Record-based estimation**: Calculates average bytes per record and estimates total records in file for accurate progress
         2. **Byte-based fallback**: Uses file position vs file size if records aren't available yet
         3. **Real-time updates**: Position updates every 500ms during active processing for smooth progress tracking
-        
+
         **Use Cases:**
         - Monitor initial log import progress
         - Track ongoing log processing status
@@ -771,6 +792,7 @@ paths:
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -844,7 +866,7 @@ paths:
       description: |
         Server-Sent Events (SSE) endpoint that streams real-time metrics.
         Connect using EventSource API in JavaScript or any SSE client.
-        
+
         Example JavaScript:
         ```javascript
         const eventSource = new EventSource('http://localhost:8080/api/v1/realtime/stream');
@@ -898,7 +920,7 @@ paths:
       description: |
         Returns compact real-time metrics optimized for widget embedding.
         Shows data from the last hour with requests per minute calculation.
-        
+
         **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
       operationId: getWidgetData
       responses:
@@ -925,7 +947,7 @@ paths:
       description: |
         Returns compact summary statistics for embedding in widgets.
         Optimized for displaying aggregated data over a time period.
-        
+
         **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
       operationId: getWidgetSummary
       parameters:
@@ -962,7 +984,7 @@ paths:
       description: |
         Returns compact timeline data optimized for sparkline charts in widgets.
         Returns up to 30 data points for periods <= 24 hours, or 50 points for longer periods.
-        
+
         **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
       operationId: getWidgetTimeline
       parameters:
@@ -1668,12 +1690,31 @@ components:
       description: |
         Set to `true` to exclude requests from your own IP address.
         The server automatically detects your IP from the request.
+        Use `excluded_ips[]` to exclude additional manually entered IP addresses.
         When `true` without `exclude_services[]`, excludes your IP from ALL services.
       required: false
       schema:
         type: boolean
         default: false
       example: true
+
+    ExcludedIPs:
+      name: excluded_ips[]
+      in: query
+      description: |
+        Array of manually entered IP addresses to exclude from analytics.
+        These IPs are combined with the detected client IP when `exclude_own_ip=true`.
+        If `exclude_services[]` is omitted, all listed IPs are excluded from all services.
+        If `exclude_services[]` is provided, all listed IPs are excluded only for those services.
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          format: ip
+      style: form
+      explode: true
+      example: [192.168.1.10, 2001:db8::1]
 
     ExcludeServices:
       name: exclude_services[]
