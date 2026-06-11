@@ -1,0 +1,196 @@
+// MIT License
+//
+// # Copyright (c) 2026 Kolin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+package telemetry
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/pterm/pterm"
+)
+
+// BuildEndpoint can be set at build time with:
+// -ldflags "-X loglynx/internal/telemetry.BuildEndpoint=https://example.com/ping"
+var BuildEndpoint string
+
+// Config contains anonymous usage telemetry settings.
+type Config struct {
+	Enabled  bool
+	Endpoint string
+	Interval time.Duration
+	StoreDir string
+	Version  string
+}
+
+// Payload is the JSON sent to the configured telemetry endpoint.
+type Payload struct {
+	InstanceID string `json:"instance_id"`
+	Version    string `json:"version"`
+	OS         string `json:"os"`
+	Arch       string `json:"arch"`
+	Event      string `json:"event"`
+}
+
+// Start begins non-blocking anonymous usage pings and returns a stop function.
+func Start(cfg Config, logger *pterm.Logger) func() {
+	endpoint := strings.TrimSpace(cfg.Endpoint)
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(BuildEndpoint)
+	}
+
+	if !cfg.Enabled {
+		logger.Debug("Anonymous usage telemetry disabled")
+		return func() {}
+	}
+
+	if endpoint == "" {
+		logger.Debug("Anonymous usage telemetry endpoint not configured")
+		return func() {}
+	}
+
+	parsedEndpoint, err := url.Parse(endpoint)
+	if err != nil || parsedEndpoint.Scheme != "https" || parsedEndpoint.Host == "" {
+		logger.Debug("Anonymous usage telemetry endpoint must be HTTPS")
+		return func() {}
+	}
+
+	if cfg.Interval <= 0 {
+		cfg.Interval = 24 * time.Hour
+	}
+
+	instanceID, err := getOrCreateInstanceID(cfg.StoreDir)
+	if err != nil {
+		logger.Debug("Anonymous usage telemetry unavailable", logger.Args("error", err))
+		return func() {}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	payload := Payload{
+		InstanceID: hashInstanceID(instanceID),
+		Version:    cfg.Version,
+		OS:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
+		Event:      "heartbeat",
+	}
+
+	go func() {
+		ping(ctx, endpoint, payload, logger)
+
+		ticker := time.NewTicker(cfg.Interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				ping(ctx, endpoint, payload, logger)
+			}
+		}
+	}()
+
+	logger.Debug("Anonymous usage telemetry enabled", logger.Args("interval", cfg.Interval.String()))
+	return cancel
+}
+
+func ping(parent context.Context, endpoint string, payload Payload, logger *pterm.Logger) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		logger.Debug("Failed to encode telemetry payload", logger.Args("error", err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		logger.Debug("Failed to create telemetry request", logger.Args("error", err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "LogLynx/"+payload.Version)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		logger.Debug("Telemetry ping failed", logger.Args("error", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		logger.Debug("Telemetry ping returned non-success status", logger.Args("status", resp.StatusCode))
+	}
+}
+
+func getOrCreateInstanceID(storeDir string) (string, error) {
+	if strings.TrimSpace(storeDir) == "" {
+		storeDir = "."
+	}
+
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(storeDir, ".loglynx_instance_id")
+	if data, err := os.ReadFile(path); err == nil {
+		id := strings.TrimSpace(string(data))
+		if id != "" {
+			return id, nil
+		}
+	}
+
+	id, err := newRandomID()
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.WriteFile(path, []byte(id+"\n"), 0o600); err != nil {
+		return "", err
+	}
+
+	return id, nil
+}
+
+func newRandomID() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func hashInstanceID(instanceID string) string {
+	sum := sha256.Sum256([]byte(instanceID))
+	return hex.EncodeToString(sum[:])
+}

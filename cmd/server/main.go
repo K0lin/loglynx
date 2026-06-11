@@ -40,6 +40,8 @@ import (
 	"loglynx/internal/ingestion"
 	parsers "loglynx/internal/parser"
 	"loglynx/internal/realtime"
+	"loglynx/internal/telemetry"
+	"loglynx/internal/version"
 
 	"strings"
 
@@ -104,6 +106,15 @@ func main() {
 			"server_port", cfg.Server.Port,
 			"geoip_enabled", cfg.GeoIP.Enabled,
 		))
+
+	stopTelemetry := telemetry.Start(telemetry.Config{
+		Enabled:  cfg.Telemetry.Enabled,
+		Endpoint: cfg.Telemetry.Endpoint,
+		Interval: cfg.Telemetry.Interval,
+		StoreDir: cfg.Database.Path + ".telemetry",
+		Version:  version.Version,
+	}, logger)
+	defer stopTelemetry()
 
 	// Initialize database connection with configured settings
 	db, err := database.NewConnection(&database.Config{
