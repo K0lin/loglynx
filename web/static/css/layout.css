@@ -1896,6 +1896,99 @@
     color: var(--loglynx-primary-light);
 }
 
+/* Version Update Notice */
+.version-update-notice {
+    position: fixed;
+    left: 18px;
+    bottom: 82px;
+    z-index: 1060;
+    width: min(320px, calc(100vw - 36px));
+    padding: 14px 16px 12px;
+    background: var(--loglynx-card);
+    color: var(--loglynx-text-light);
+    border: 1px solid rgba(244, 99, 25, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
+    animation: versionNoticeIn 180ms ease-out;
+}
+
+.version-update-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--loglynx-text-muted);
+}
+
+.version-update-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--loglynx-text-light);
+}
+
+.version-update-notice-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-right: 28px;
+    color: var(--loglynx-primary-light);
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.version-update-notice-body {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.4;
+    color: var(--loglynx-text-light);
+}
+
+.version-update-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    color: var(--loglynx-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.version-update-option input {
+    margin-top: 2px;
+}
+
+.version-update-actions {
+    margin-top: 10px;
+}
+
+.version-update-actions a {
+    color: var(--loglynx-primary-light);
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.version-update-actions a:hover {
+    color: var(--loglynx-primary);
+}
+
+@keyframes versionNoticeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* ============================================
  * IP Analytics Page Specific Styles
  * ============================================ */

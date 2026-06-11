@@ -543,4 +543,11 @@
     <script src="/static/js/core/utils.js"></script>
     <script src="/static/js/core/charts.js"></script>
     <script src="/static/js/core/tooltips.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.LogLynxUtils && typeof LogLynxUtils.initVersionCheck === 'function') {
+                LogLynxUtils.initVersionCheck();
+            }
+        });
+    </script>
 {{end}}

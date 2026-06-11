@@ -139,6 +139,118 @@ const LogLynxUtils = {
     },
 
     /**
+     * Check GitHub releases and notify when a newer LogLynx version is available.
+     */
+    async initVersionCheck() {
+        const currentVersion = this.normalizeVersion(window.LogLynxVersion || '');
+        if (!currentVersion) return;
+
+        try {
+            const response = await fetch('https://api.github.com/repos/K0lin/loglynx/releases/latest', {
+                headers: { 'Accept': 'application/vnd.github+json' }
+            });
+            if (!response.ok) return;
+
+            const release = await response.json();
+            const latestVersion = this.normalizeVersion(release.tag_name || release.name || '');
+            if (!latestVersion || !this.isVersionNewer(latestVersion, currentVersion)) return;
+
+            const dismissedKey = `loglynx_update_dismissed_${latestVersion}`;
+            const snoozeKey = `loglynx_update_snoozed_${latestVersion}`;
+            if (localStorage.getItem(dismissedKey) === 'true') return;
+            if (this.getSessionCookie(snoozeKey) === 'true') return;
+
+            this.showVersionUpdateNotice({
+                currentVersion,
+                latestVersion,
+                releaseUrl: release.html_url || 'https://github.com/K0lin/loglynx/releases/latest',
+                dismissedKey,
+                snoozeKey
+            });
+        } catch (error) {
+            console.debug('Version check unavailable:', error);
+        }
+    },
+
+    normalizeVersion(version) {
+        return String(version || '').trim().replace(/^v/i, '');
+    },
+
+    isVersionNewer(latestVersion, currentVersion) {
+        const latestParts = this.normalizeVersion(latestVersion).split(/[.-]/).map(part => parseInt(part, 10) || 0);
+        const currentParts = this.normalizeVersion(currentVersion).split(/[.-]/).map(part => parseInt(part, 10) || 0);
+        const length = Math.max(latestParts.length, currentParts.length);
+
+        for (let i = 0; i < length; i++) {
+            const latest = latestParts[i] || 0;
+            const current = currentParts[i] || 0;
+            if (latest > current) return true;
+            if (latest < current) return false;
+        }
+
+        return false;
+    },
+
+    showVersionUpdateNotice({ currentVersion, latestVersion, releaseUrl, dismissedKey, snoozeKey }) {
+        const existing = document.getElementById('versionUpdateNotice');
+        if (existing) existing.remove();
+
+        const noticeEl = document.createElement('div');
+        noticeEl.id = 'versionUpdateNotice';
+        noticeEl.className = 'version-update-notice';
+        noticeEl.innerHTML = `
+            <button type="button" class="version-update-close" aria-label="Close update notice">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="version-update-notice-header">
+                <i class="fas fa-code-branch"></i>
+                <span>Update available</span>
+            </div>
+            <div class="version-update-notice-body">
+                <strong>v${latestVersion}</strong> is available. You are running v${currentVersion}.
+            </div>
+            <label class="version-update-option">
+                <input type="checkbox" id="versionUpdateDontRemind">
+                <span>Don't remind me again for v${latestVersion}</span>
+            </label>
+            <div class="version-update-actions">
+                <a href="${releaseUrl}" target="_blank" rel="noopener">View release</a>
+            </div>
+        `;
+
+        const closeNotice = () => {
+            const dontRemind = noticeEl.querySelector('#versionUpdateDontRemind')?.checked;
+            if (dontRemind) {
+                try {
+                    localStorage.setItem(dismissedKey, 'true');
+                } catch (error) {
+                    console.debug('Unable to persist version update dismissal:', error);
+                }
+            } else {
+                this.setCookie(snoozeKey, 'true', 600);
+            }
+            noticeEl.remove();
+        };
+
+        noticeEl.querySelector('.version-update-close')?.addEventListener('click', closeNotice);
+        document.body.appendChild(noticeEl);
+    },
+
+    getSessionCookie(name) {
+        const encodedName = encodeURIComponent(name) + '=';
+        return document.cookie
+            .split(';')
+            .map(cookie => cookie.trim())
+            .find(cookie => cookie.startsWith(encodedName))
+            ?.substring(encodedName.length) || '';
+    },
+
+    setCookie(name, value, maxAgeSeconds = null) {
+        const maxAge = Number.isInteger(maxAgeSeconds) ? `; max-age=${maxAgeSeconds}` : '';
+        document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; path=/; SameSite=Lax${maxAge}`;
+    },
+
+    /**
      * Show loading overlay
      */
     showLoading(text = 'Loading...') {
