@@ -22,9 +22,13 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"loglynx/internal/database/repositories"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pterm/pterm"
@@ -51,6 +55,24 @@ type ServiceFilter struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
+
+type comparisonRequest struct {
+	Periods  []repositories.ComparisonPeriodRequest `json:"periods"`
+	TopLimit int                                    `json:"top_limit"`
+}
+
+type createComparisonSnapshotRequest struct {
+	Title     string          `json:"title"`
+	Payload   json.RawMessage `json:"payload"`
+	ExpiresAt *time.Time      `json:"expires_at"`
+}
+
+type updateComparisonSnapshotRequest struct {
+	Active    *bool      `json:"active"`
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+const comparisonOwnerCookie = "loglynx_compare_owner"
 
 // getServiceFilter extracts service filter from request
 func (h *DashboardHandler) getServiceFilter(c *gin.Context) (string, string) {
@@ -162,6 +184,24 @@ func (h *DashboardHandler) buildExcludeIPFilter(c *gin.Context) *repositories.Ex
 		ClientIPs:       clientIPs,
 		ExcludeServices: h.convertToRepoFilters(excludeServices),
 	}
+}
+
+func (h *DashboardHandler) getComparisonOwnerID(c *gin.Context) string {
+	if ownerID, err := c.Cookie(comparisonOwnerCookie); err == nil && ownerID != "" {
+		return ownerID
+	}
+
+	ownerID := generateComparisonOwnerID()
+	c.SetCookie(comparisonOwnerCookie, ownerID, 365*24*60*60, "/", "", false, true)
+	return ownerID
+}
+
+func generateComparisonOwnerID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(buf)
 }
 
 // getHours extracts hours parameter from request, defaulting to 168 (7 days)
@@ -480,6 +520,145 @@ func (h *DashboardHandler) GetResponseTimeStats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, stats)
+}
+
+// GetComparison returns multi-period analytics for comparison dashboards.
+func (h *DashboardHandler) GetComparison(c *gin.Context) {
+	var req comparisonRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comparison request"})
+		return
+	}
+	if len(req.Periods) < 2 || len(req.Periods) > 4 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Comparison requires 2 to 4 periods"})
+		return
+	}
+	for i := range req.Periods {
+		if req.Periods[i].Label == "" {
+			req.Periods[i].Label = "Period " + strconv.Itoa(i+1)
+		}
+		if !req.Periods[i].End.After(req.Periods[i].Start) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Each period must have an end after start"})
+			return
+		}
+	}
+
+	comparison, err := h.statsRepo.GetComparison(req.Periods, h.convertToRepoFilters(h.getServiceFilters(c)), h.buildExcludeIPFilter(c), req.TopLimit)
+	if err != nil {
+		h.logger.WithCaller().Error("Failed to get comparison", h.logger.Args("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get comparison"})
+		return
+	}
+	c.JSON(http.StatusOK, comparison)
+}
+
+// CreateComparisonSnapshot stores a precomputed comparison response for sharing.
+func (h *DashboardHandler) CreateComparisonSnapshot(c *gin.Context) {
+	var req createComparisonSnapshotRequest
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Payload) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid snapshot request"})
+		return
+	}
+
+	snapshot, err := h.statsRepo.CreateComparisonSnapshot(h.getComparisonOwnerID(c), req.Title, string(req.Payload), req.ExpiresAt)
+	if err != nil {
+		h.logger.WithCaller().Error("Failed to create comparison snapshot", h.logger.Args("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create snapshot"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"token":      snapshot.Token,
+		"title":      snapshot.Title,
+		"active":     snapshot.Active,
+		"expires_at": snapshot.ExpiresAt,
+		"created_at": snapshot.CreatedAt,
+		"url":        "/compare/" + snapshot.Token,
+	})
+}
+
+// GetComparisonSnapshot returns a stored snapshot if it is active and not expired.
+func (h *DashboardHandler) GetComparisonSnapshot(c *gin.Context) {
+	snapshot, err := h.statsRepo.GetComparisonSnapshot(c.Param("token"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Snapshot not found"})
+		return
+	}
+	if !snapshot.Active {
+		c.JSON(http.StatusGone, gin.H{"error": "Snapshot is disabled"})
+		return
+	}
+	if snapshot.ExpiresAt != nil && time.Now().After(*snapshot.ExpiresAt) {
+		c.JSON(http.StatusGone, gin.H{"error": "Snapshot expired"})
+		return
+	}
+
+	var payload interface{}
+	if err := json.Unmarshal([]byte(snapshot.Payload), &payload); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Snapshot payload is invalid"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"token":      snapshot.Token,
+		"title":      snapshot.Title,
+		"active":     snapshot.Active,
+		"expires_at": snapshot.ExpiresAt,
+		"created_at": snapshot.CreatedAt,
+		"payload":    payload,
+	})
+}
+
+// ListComparisonSnapshots returns stored comparison links for management.
+func (h *DashboardHandler) ListComparisonSnapshots(c *gin.Context) {
+	snapshots, err := h.statsRepo.ListComparisonSnapshots(h.getComparisonOwnerID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list snapshots"})
+		return
+	}
+	c.JSON(http.StatusOK, snapshots)
+}
+
+// UpdateComparisonSnapshot toggles activity or expiration for a snapshot.
+func (h *DashboardHandler) UpdateComparisonSnapshot(c *gin.Context) {
+	ownerID := h.getComparisonOwnerID(c)
+	current, err := h.statsRepo.GetComparisonSnapshot(c.Param("token"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Snapshot not found"})
+		return
+	}
+	if current.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only the creator can manage this snapshot"})
+		return
+	}
+
+	var req updateComparisonSnapshotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid snapshot update"})
+		return
+	}
+	active := current.Active
+	if req.Active != nil {
+		active = *req.Active
+	}
+	expiresAt := current.ExpiresAt
+	if req.ExpiresAt != nil {
+		expiresAt = req.ExpiresAt
+	}
+
+	snapshot, err := h.statsRepo.UpdateComparisonSnapshot(ownerID, current.Token, active, expiresAt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update snapshot"})
+		return
+	}
+	c.JSON(http.StatusOK, snapshot)
+}
+
+// DeleteComparisonSnapshot removes a stored comparison link.
+func (h *DashboardHandler) DeleteComparisonSnapshot(c *gin.Context) {
+	if err := h.statsRepo.DeleteComparisonSnapshot(h.getComparisonOwnerID(c), c.Param("token")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete snapshot"})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // GetRecentRequests returns recent HTTP requests with pagination and filters

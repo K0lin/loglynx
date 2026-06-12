@@ -166,6 +166,27 @@ const LogLynxAPI = {
         return requestPromise;
     },
 
+    async send(endpoint, method, body = null, params = {}) {
+        try {
+            const response = await fetch(this.buildURL(endpoint, params), {
+                method,
+                headers: body ? { 'Content-Type': 'application/json' } : {},
+                body: body ? JSON.stringify(body) : null
+            });
+            if (response.status === 204) {
+                return { success: true, data: null };
+            }
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            return { success: true, data };
+        } catch (error) {
+            console.error(`API Error [${method} ${endpoint}]:`, error);
+            return { success: false, error: error.message };
+        }
+    },
+
     /**
      * Build URL with query parameters and service filter
      */
@@ -576,6 +597,30 @@ const LogLynxAPI = {
      */
     async getResponseTimeStats(hours = 168) {
         return this.get('/stats/performance/response-time', { hours });
+    },
+
+    async getComparison(periods, topLimit = 10, options = {}) {
+        return this.send('/stats/compare', 'POST', { periods, top_limit: topLimit }, options);
+    },
+
+    async createComparisonSnapshot(title, payload, expiresAt = null) {
+        return this.send('/compare/snapshots', 'POST', { title, payload, expires_at: expiresAt });
+    },
+
+    async getComparisonSnapshot(token) {
+        return this.get(`/compare/snapshots/${encodeURIComponent(token)}`);
+    },
+
+    async listComparisonSnapshots() {
+        return this.get('/compare/snapshots');
+    },
+
+    async updateComparisonSnapshot(token, updates) {
+        return this.send(`/compare/snapshots/${encodeURIComponent(token)}`, 'PATCH', updates);
+    },
+
+    async deleteComparisonSnapshot(token) {
+        return this.send(`/compare/snapshots/${encodeURIComponent(token)}`, 'DELETE');
     },
 
     /**

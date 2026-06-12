@@ -120,6 +120,36 @@ func (m *MockStatsRepository) GetResponseTimeStats(hours int, filters []reposito
 	return args.Get(0).(*repositories.ResponseTimeStats), args.Error(1)
 }
 
+func (m *MockStatsRepository) GetComparison(periods []repositories.ComparisonPeriodRequest, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter, topLimit int) (*repositories.ComparisonResult, error) {
+	args := m.Called(periods, filters, excludeIP, topLimit)
+	return args.Get(0).(*repositories.ComparisonResult), args.Error(1)
+}
+
+func (m *MockStatsRepository) CreateComparisonSnapshot(ownerID string, title string, payload string, expiresAt *time.Time) (*models.ComparisonSnapshot, error) {
+	args := m.Called(ownerID, title, payload, expiresAt)
+	return args.Get(0).(*models.ComparisonSnapshot), args.Error(1)
+}
+
+func (m *MockStatsRepository) GetComparisonSnapshot(token string) (*models.ComparisonSnapshot, error) {
+	args := m.Called(token)
+	return args.Get(0).(*models.ComparisonSnapshot), args.Error(1)
+}
+
+func (m *MockStatsRepository) ListComparisonSnapshots(ownerID string) ([]*models.ComparisonSnapshot, error) {
+	args := m.Called(ownerID)
+	return args.Get(0).([]*models.ComparisonSnapshot), args.Error(1)
+}
+
+func (m *MockStatsRepository) UpdateComparisonSnapshot(ownerID string, token string, active bool, expiresAt *time.Time) (*models.ComparisonSnapshot, error) {
+	args := m.Called(ownerID, token, active, expiresAt)
+	return args.Get(0).(*models.ComparisonSnapshot), args.Error(1)
+}
+
+func (m *MockStatsRepository) DeleteComparisonSnapshot(ownerID string, token string) error {
+	args := m.Called(ownerID, token)
+	return args.Error(0)
+}
+
 func (m *MockStatsRepository) GetLogProcessingStats() ([]*repositories.LogProcessingStats, error) {
 	args := m.Called()
 	return args.Get(0).([]*repositories.LogProcessingStats), args.Error(1)

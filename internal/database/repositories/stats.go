@@ -23,6 +23,8 @@ package repositories
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/url"
 	"os"
 	"sort"
@@ -66,6 +68,12 @@ type StatsRepository interface {
 	GetTopReferrers(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerStats, error)
 	GetTopReferrerDomains(hours int, limit int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) ([]*ReferrerDomainStats, error)
 	GetResponseTimeStats(hours int, filters []ServiceFilter, excludeIP *ExcludeIPFilter) (*ResponseTimeStats, error)
+	GetComparison(periods []ComparisonPeriodRequest, filters []ServiceFilter, excludeIP *ExcludeIPFilter, topLimit int) (*ComparisonResult, error)
+	CreateComparisonSnapshot(ownerID string, title string, payload string, expiresAt *time.Time) (*models.ComparisonSnapshot, error)
+	GetComparisonSnapshot(token string) (*models.ComparisonSnapshot, error)
+	ListComparisonSnapshots(ownerID string) ([]*models.ComparisonSnapshot, error)
+	UpdateComparisonSnapshot(ownerID string, token string, active bool, expiresAt *time.Time) (*models.ComparisonSnapshot, error)
+	DeleteComparisonSnapshot(ownerID string, token string) error
 	GetLogProcessingStats() ([]*LogProcessingStats, error)
 	GetDomains() ([]*DomainStats, error)
 	GetServices() ([]*ServiceInfo, error)
@@ -259,6 +267,50 @@ type TrafficHeatmapData struct {
 	Hour            int     `json:"hour"`
 	Requests        int64   `json:"requests"`
 	AvgResponseTime float64 `json:"avg_response_time"`
+}
+
+// ComparisonPeriodRequest defines an absolute period for comparison.
+type ComparisonPeriodRequest struct {
+	Label string    `json:"label"`
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+// ComparisonPeriodResult contains all analytics surfaces for one compared period.
+type ComparisonPeriodResult struct {
+	Label                  string                    `json:"label"`
+	Start                  time.Time                 `json:"start"`
+	End                    time.Time                 `json:"end"`
+	Summary                *StatsSummary             `json:"summary"`
+	Timeline               []*TimelineData           `json:"timeline"`
+	ServiceTimeline        []*ComparisonServicePoint `json:"service_timeline"`
+	StatusCodeTimeline     []*StatusCodeTimelineData `json:"status_code_timeline"`
+	Heatmap                []*TrafficHeatmapData     `json:"heatmap"`
+	TopPaths               []*PathStats              `json:"top_paths"`
+	TopIPs                 []*IPStats                `json:"top_ips"`
+	TopCountries           []*CountryStats           `json:"top_countries"`
+	TopBackends            []*BackendStats           `json:"top_backends"`
+	ServiceBreakdown       []*BackendStats           `json:"service_breakdown"`
+	StatusCodeDistribution []*StatusCodeStats        `json:"status_code_distribution"`
+	DeviceTypes            []*DeviceTypeStats        `json:"device_types"`
+}
+
+// ComparisonServicePoint holds timeline data for a single service inside one period.
+type ComparisonServicePoint struct {
+	ServiceName     string  `json:"service_name"`
+	ServiceType     string  `json:"service_type"`
+	Hour            string  `json:"hour"`
+	Requests        int64   `json:"requests"`
+	Bandwidth       int64   `json:"bandwidth"`
+	AvgResponseTime float64 `json:"avg_response_time"`
+	Errors          int64   `json:"errors"`
+}
+
+// ComparisonResult is the full multi-period comparison response.
+type ComparisonResult struct {
+	GeneratedAt time.Time                 `json:"generated_at"`
+	TopLimit    int                       `json:"top_limit"`
+	Periods     []*ComparisonPeriodResult `json:"periods"`
 }
 
 // PathStats holds path statistics
@@ -762,6 +814,441 @@ func (r *statsRepo) GetTrafficHeatmap(days int, filters []ServiceFilter, exclude
 
 	r.logger.Trace("Generated traffic heatmap", r.logger.Args("days", days, "data_points", len(heatmap), "service_filters", filters))
 	return heatmap, nil
+}
+
+// GetComparison returns all analytics needed by the period comparison page.
+func (r *statsRepo) GetComparison(periods []ComparisonPeriodRequest, filters []ServiceFilter, excludeIP *ExcludeIPFilter, topLimit int) (*ComparisonResult, error) {
+	if topLimit <= 0 {
+		topLimit = 10
+	} else if topLimit > 50 {
+		topLimit = 50
+	}
+
+	result := &ComparisonResult{
+		GeneratedAt: time.Now(),
+		TopLimit:    topLimit,
+		Periods:     make([]*ComparisonPeriodResult, 0, len(periods)),
+	}
+
+	for _, period := range periods {
+		if !period.End.After(period.Start) {
+			continue
+		}
+
+		periodResult, err := r.getComparisonPeriod(period, filters, excludeIP, topLimit)
+		if err != nil {
+			return nil, err
+		}
+		result.Periods = append(result.Periods, periodResult)
+	}
+
+	return result, nil
+}
+
+func (r *statsRepo) getComparisonPeriod(period ComparisonPeriodRequest, filters []ServiceFilter, excludeIP *ExcludeIPFilter, topLimit int) (*ComparisonPeriodResult, error) {
+	whereClause, args := r.buildComparisonWhere(period.Start, period.End, filters, excludeIP)
+	ctx, cancel := r.withTimeout()
+	defer cancel()
+
+	summary, err := r.getComparisonSummary(ctx, whereClause, args, period.Start, period.End)
+	if err != nil {
+		return nil, err
+	}
+
+	periodHours := period.End.Sub(period.Start).Hours()
+	groupBy := "strftime('%Y-%m-%dT%H:00:00Z', timestamp)"
+	if periodHours > 24 && periodHours <= 168 {
+		groupBy = "strftime('%Y-%m-%dT', timestamp) || printf('%02d', (CAST(strftime('%H', timestamp) AS INTEGER) / 6) * 6) || ':00:00Z'"
+	} else if periodHours > 168 && periodHours <= 720 {
+		groupBy = "strftime('%Y-%m-%dT00:00:00Z', timestamp)"
+	} else if periodHours > 720 {
+		groupBy = "substr(timestamp, 1, 7)"
+	}
+
+	timeline := []*TimelineData{}
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT `+groupBy+` as hour,
+			COUNT(*) as requests,
+			COUNT(DISTINCT client_ip) as unique_visitors,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY hour
+		ORDER BY hour
+	`, args...).Scan(&timeline).Error; err != nil {
+		return nil, err
+	}
+
+	serviceTimeline := []*ComparisonServicePoint{}
+	serviceExpr := "COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host, 'unknown')"
+	serviceTypeExpr := "CASE WHEN backend_name != '' THEN 'backend_name' WHEN backend_url != '' THEN 'backend_url' WHEN host != '' THEN 'host' ELSE 'unknown' END"
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT `+serviceExpr+` as service_name,
+			`+serviceTypeExpr+` as service_type,
+			`+groupBy+` as hour,
+			COUNT(*) as requests,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			COUNT(CASE WHEN status_code >= 400 THEN 1 END) as errors
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY service_name, service_type, hour
+		ORDER BY service_name, hour
+	`, args...).Scan(&serviceTimeline).Error; err != nil {
+		return nil, err
+	}
+
+	statusTimeline := []*StatusCodeTimelineData{}
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT `+groupBy+` as hour,
+			COUNT(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 END) as status_2xx,
+			COUNT(CASE WHEN status_code >= 300 AND status_code < 400 THEN 1 END) as status_3xx,
+			COUNT(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 END) as status_4xx,
+			COUNT(CASE WHEN status_code >= 500 THEN 1 END) as status_5xx
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY hour
+		ORDER BY hour
+	`, args...).Scan(&statusTimeline).Error; err != nil {
+		return nil, err
+	}
+
+	heatmap := []*TrafficHeatmapData{}
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
+			CAST(strftime('%H', timestamp) AS INTEGER) as hour,
+			COUNT(*) as requests,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY day_of_week, hour
+		ORDER BY day_of_week, hour
+	`, args...).Scan(&heatmap).Error; err != nil {
+		return nil, err
+	}
+
+	topPaths := []*PathStats{}
+	pathArgs := append([]interface{}{}, args...)
+	pathArgs = append(pathArgs, topLimit)
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT path,
+			COUNT(*) as hits,
+			COUNT(DISTINCT client_ip) as unique_visitors,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			COALESCE(SUM(response_size), 0) as total_bandwidth
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY path
+		ORDER BY hits DESC
+		LIMIT ?
+	`, pathArgs...).Scan(&topPaths).Error; err != nil {
+		return nil, err
+	}
+
+	topIPs := []*IPStats{}
+	ipArgs := append([]interface{}{}, args...)
+	ipArgs = append(ipArgs, topLimit)
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT hr.client_ip as ip_address,
+			MAX(hr.geo_country) as country,
+			MAX(hr.geo_city) as city,
+			MAX(hr.geo_lat) as latitude,
+			MAX(hr.geo_lon) as longitude,
+			COUNT(*) as hits,
+			COALESCE(SUM(hr.response_size), 0) as bandwidth,
+			COALESCE(MAX(it.friendly_name), '') as friendly_name,
+			COALESCE(MAX(it.tags), '') as tags
+		FROM http_requests hr
+		LEFT JOIN ip_tags it ON it.ip_address = hr.client_ip
+		WHERE `+strings.ReplaceAll(whereClause, "client_ip", "hr.client_ip")+`
+		GROUP BY hr.client_ip
+		ORDER BY hits DESC
+		LIMIT ?
+	`, ipArgs...).Scan(&topIPs).Error; err != nil {
+		return nil, err
+	}
+
+	topCountries := []*CountryStats{}
+	countryArgs := append([]interface{}{}, args...)
+	countryArgs = append(countryArgs, topLimit)
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT geo_country as country,
+			geo_country as country_name,
+			COUNT(*) as hits,
+			COUNT(DISTINCT client_ip) as unique_visitors,
+			COALESCE(SUM(response_size), 0) as bandwidth
+		FROM http_requests
+		WHERE `+whereClause+` AND geo_country != ''
+		GROUP BY geo_country
+		ORDER BY hits DESC
+		LIMIT ?
+	`, countryArgs...).Scan(&topCountries).Error; err != nil {
+		return nil, err
+	}
+
+	topBackends := []*BackendStats{}
+	backendArgs := append([]interface{}{}, args...)
+	backendArgs = append(backendArgs, topLimit)
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host) as backend_name,
+			MAX(backend_url) as backend_url,
+			MAX(host) as host,
+			CASE WHEN backend_name != '' THEN 'backend_name' WHEN backend_url != '' THEN 'backend_url' ELSE 'host' END as service_type,
+			COUNT(*) as hits,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			COUNT(CASE WHEN status_code >= 500 THEN 1 END) as error_count
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host)
+		ORDER BY hits DESC
+		LIMIT ?
+	`, backendArgs...).Scan(&topBackends).Error; err != nil {
+		return nil, err
+	}
+
+	serviceBreakdown := []*BackendStats{}
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host, 'unknown') as backend_name,
+			MAX(backend_url) as backend_url,
+			MAX(host) as host,
+			CASE WHEN backend_name != '' THEN 'backend_name' WHEN backend_url != '' THEN 'backend_url' WHEN host != '' THEN 'host' ELSE 'unknown' END as service_type,
+			COUNT(*) as hits,
+			COALESCE(SUM(response_size), 0) as bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			COUNT(CASE WHEN status_code >= 400 THEN 1 END) as error_count
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY COALESCE(NULLIF(backend_name, ''), NULLIF(backend_url, ''), host, 'unknown')
+		ORDER BY hits DESC
+	`, args...).Scan(&serviceBreakdown).Error; err != nil {
+		return nil, err
+	}
+
+	statusDistribution := []*StatusCodeStats{}
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT status_code, COUNT(*) as count
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY status_code
+		ORDER BY count DESC
+	`, args...).Scan(&statusDistribution).Error; err != nil {
+		return nil, err
+	}
+
+	deviceTypes := []*DeviceTypeStats{}
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT COALESCE(NULLIF(device_type, ''), 'unknown') as device_type, COUNT(*) as count
+		FROM http_requests
+		WHERE `+whereClause+`
+		GROUP BY COALESCE(NULLIF(device_type, ''), 'unknown')
+		ORDER BY count DESC
+	`, args...).Scan(&deviceTypes).Error; err != nil {
+		return nil, err
+	}
+
+	return &ComparisonPeriodResult{
+		Label:                  period.Label,
+		Start:                  period.Start,
+		End:                    period.End,
+		Summary:                summary,
+		Timeline:               timeline,
+		ServiceTimeline:        serviceTimeline,
+		StatusCodeTimeline:     statusTimeline,
+		Heatmap:                heatmap,
+		TopPaths:               topPaths,
+		TopIPs:                 topIPs,
+		TopCountries:           topCountries,
+		TopBackends:            topBackends,
+		ServiceBreakdown:       serviceBreakdown,
+		StatusCodeDistribution: statusDistribution,
+		DeviceTypes:            deviceTypes,
+	}, nil
+}
+
+func (r *statsRepo) getComparisonSummary(ctx context.Context, whereClause string, args []interface{}, start time.Time, end time.Time) (*StatsSummary, error) {
+	type aggregatedResult struct {
+		TotalRequests    int64   `gorm:"column:total_requests"`
+		ValidRequests    int64   `gorm:"column:valid_requests"`
+		FailedRequests   int64   `gorm:"column:failed_requests"`
+		UniqueVisitors   int64   `gorm:"column:unique_visitors"`
+		UniqueFiles      int64   `gorm:"column:unique_files"`
+		Unique404        int64   `gorm:"column:unique_404"`
+		TotalBandwidth   int64   `gorm:"column:total_bandwidth"`
+		AvgResponseTime  float64 `gorm:"column:avg_response_time"`
+		NotFoundCount    int64   `gorm:"column:not_found_count"`
+		ServerErrorCount int64   `gorm:"column:server_error_count"`
+	}
+
+	var row aggregatedResult
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT COUNT(*) as total_requests,
+			COUNT(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 END) as valid_requests,
+			COUNT(CASE WHEN status_code >= 400 THEN 1 END) as failed_requests,
+			COUNT(DISTINCT client_ip) as unique_visitors,
+			COUNT(DISTINCT path) as unique_files,
+			COUNT(DISTINCT CASE WHEN status_code = 404 THEN path END) as unique_404,
+			COALESCE(SUM(response_size), 0) as total_bandwidth,
+			COALESCE(AVG(CASE WHEN response_time_ms > 0 THEN response_time_ms END), 0) as avg_response_time,
+			COUNT(CASE WHEN status_code = 404 THEN 1 END) as not_found_count,
+			COUNT(CASE WHEN status_code >= 500 AND status_code < 600 THEN 1 END) as server_error_count
+		FROM http_requests
+		WHERE `+whereClause,
+		args...).Scan(&row).Error; err != nil {
+		return nil, err
+	}
+
+	summary := &StatsSummary{
+		TotalRequests:   row.TotalRequests,
+		ValidRequests:   row.ValidRequests,
+		FailedRequests:  row.FailedRequests,
+		UniqueVisitors:  row.UniqueVisitors,
+		UniqueFiles:     row.UniqueFiles,
+		Unique404:       row.Unique404,
+		TotalBandwidth:  row.TotalBandwidth,
+		AvgResponseTime: row.AvgResponseTime,
+		TopCountry:      "",
+		TopPath:         "",
+	}
+	if summary.TotalRequests > 0 {
+		summary.SuccessRate = float64(summary.ValidRequests) / float64(summary.TotalRequests) * 100
+		summary.NotFoundRate = float64(row.NotFoundCount) / float64(summary.TotalRequests) * 100
+		summary.ServerErrorRate = float64(row.ServerErrorCount) / float64(summary.TotalRequests) * 100
+	}
+	durationHours := end.Sub(start).Hours()
+	if durationHours < 1 {
+		durationHours = 1
+	}
+	summary.RequestsPerHour = float64(summary.TotalRequests) / durationHours
+	return summary, nil
+}
+
+func (r *statsRepo) buildComparisonWhere(start time.Time, end time.Time, filters []ServiceFilter, excludeIP *ExcludeIPFilter) (string, []interface{}) {
+	whereClause := "timestamp >= ? AND timestamp <= ?"
+	args := []interface{}{start, end}
+
+	if excludeIP != nil && len(excludeIP.ClientIPs) > 0 {
+		if len(excludeIP.ExcludeServices) == 0 {
+			whereClause += " AND client_ip NOT IN (?)"
+			args = append(args, excludeIP.ClientIPs)
+		} else {
+			serviceConds := []string{}
+			serviceArgs := []interface{}{excludeIP.ClientIPs}
+			for _, filter := range excludeIP.ExcludeServices {
+				switch filter.Type {
+				case "backend_name":
+					serviceConds = append(serviceConds, "backend_name = ?")
+					serviceArgs = append(serviceArgs, filter.Name)
+				case "backend_url":
+					serviceConds = append(serviceConds, "backend_url = ?")
+					serviceArgs = append(serviceArgs, filter.Name)
+				case "host":
+					serviceConds = append(serviceConds, "host = ?")
+					serviceArgs = append(serviceArgs, filter.Name)
+				case "auto", "":
+					serviceConds = append(serviceConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+					serviceArgs = append(serviceArgs, filter.Name, filter.Name, filter.Name)
+				}
+			}
+			if len(serviceConds) > 0 {
+				whereClause += " AND NOT (client_ip IN (?) AND (" + strings.Join(serviceConds, " OR ") + "))"
+				args = append(args, serviceArgs...)
+			}
+		}
+	}
+
+	if len(filters) > 0 {
+		filterConds := []string{}
+		for _, filter := range filters {
+			switch filter.Type {
+			case "backend_name":
+				filterConds = append(filterConds, "backend_name = ?")
+				args = append(args, filter.Name)
+			case "backend_url":
+				filterConds = append(filterConds, "backend_url = ?")
+				args = append(args, filter.Name)
+			case "host":
+				filterConds = append(filterConds, "host = ?")
+				args = append(args, filter.Name)
+			case "auto", "":
+				filterConds = append(filterConds, "(backend_name = ? OR (backend_name = '' AND backend_url = ?) OR (backend_name = '' AND backend_url = '' AND host = ?))")
+				args = append(args, filter.Name, filter.Name, filter.Name)
+			}
+		}
+		if len(filterConds) > 0 {
+			whereClause += " AND (" + strings.Join(filterConds, " OR ") + ")"
+		}
+	}
+
+	return whereClause, args
+}
+
+func (r *statsRepo) CreateComparisonSnapshot(ownerID string, title string, payload string, expiresAt *time.Time) (*models.ComparisonSnapshot, error) {
+	if title == "" {
+		title = "Comparison snapshot"
+	}
+
+	snapshot := &models.ComparisonSnapshot{
+		Token:     generateSnapshotToken(),
+		OwnerID:   ownerID,
+		Title:     title,
+		Payload:   payload,
+		Active:    true,
+		ExpiresAt: expiresAt,
+	}
+	if err := r.db.Create(snapshot).Error; err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func (r *statsRepo) GetComparisonSnapshot(token string) (*models.ComparisonSnapshot, error) {
+	var snapshot models.ComparisonSnapshot
+	if err := r.db.Where("token = ?", token).First(&snapshot).Error; err != nil {
+		return nil, err
+	}
+	return &snapshot, nil
+}
+
+func (r *statsRepo) ListComparisonSnapshots(ownerID string) ([]*models.ComparisonSnapshot, error) {
+	var snapshots []*models.ComparisonSnapshot
+	if err := r.db.Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&snapshots).Error; err != nil {
+		return nil, err
+	}
+	return snapshots, nil
+}
+
+func (r *statsRepo) UpdateComparisonSnapshot(ownerID string, token string, active bool, expiresAt *time.Time) (*models.ComparisonSnapshot, error) {
+	var snapshot models.ComparisonSnapshot
+	if err := r.db.Where("token = ? AND owner_id = ?", token, ownerID).First(&snapshot).Error; err != nil {
+		return nil, err
+	}
+	snapshot.Active = active
+	snapshot.ExpiresAt = expiresAt
+	if err := r.db.Save(snapshot).Error; err != nil {
+		return nil, err
+	}
+	return &snapshot, nil
+}
+
+func (r *statsRepo) DeleteComparisonSnapshot(ownerID string, token string) error {
+	result := r.db.Where("token = ? AND owner_id = ?", token, ownerID).Delete(&models.ComparisonSnapshot{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func generateSnapshotToken() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "")
+	}
+	return hex.EncodeToString(buf)
 }
 
 // GetTopPaths returns most accessed paths

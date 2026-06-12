@@ -165,6 +165,24 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 			renderPage(c, "performance", "Performance Monitoring", "fas fa-tachometer-alt")
 		})
 
+		router.GET("/compare", initialLoadPageBlockingMiddleware(initialLoadState, logger), func(c *gin.Context) {
+			renderPage(c, "compare", "Period Comparison", "fas fa-code-compare")
+		})
+
+		router.GET("/compare/:token", initialLoadPageBlockingMiddleware(initialLoadState, logger), func(c *gin.Context) {
+			c.HTML(http.StatusOK, "compare.html", gin.H{
+				"Title":               "Period Comparison",
+				"PageName":            "compare",
+				"PageTitle":           "Period Comparison",
+				"PageIcon":            "fas fa-code-compare",
+				"AppVersion":          version.Version,
+				"SplashScreenEnabled": splashScreenEnabled,
+				"TimeZone":            timezone,
+				"HasExistingData":     hasExistingData,
+				"SnapshotToken":       c.Param("token"),
+			})
+		})
+
 		router.GET("/security", func(c *gin.Context) {
 			renderPage(c, "security", "Security & Network", "fas fa-shield-alt")
 		})
@@ -269,7 +287,15 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 
 		// Performance stats
 		api.GET("/stats/performance/response-time", dashboardHandler.GetResponseTimeStats)
+		api.POST("/stats/compare", dashboardHandler.GetComparison)
 		api.GET("/stats/log-processing", dashboardHandler.GetLogProcessingStats)
+
+		// Comparison snapshots
+		api.POST("/compare/snapshots", dashboardHandler.CreateComparisonSnapshot)
+		api.GET("/compare/snapshots", dashboardHandler.ListComparisonSnapshots)
+		api.GET("/compare/snapshots/:token", dashboardHandler.GetComparisonSnapshot)
+		api.PATCH("/compare/snapshots/:token", dashboardHandler.UpdateComparisonSnapshot)
+		api.DELETE("/compare/snapshots/:token", dashboardHandler.DeleteComparisonSnapshot)
 
 		// Recent requests
 		api.GET("/requests/recent", dashboardHandler.GetRecentRequests)
@@ -389,6 +415,29 @@ func initialLoadBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) 
 			"max_wait_estimate": "This usually takes between 10-120 seconds depending on your log volume",
 		})
 
+		c.Abort()
+	}
+}
+
+// initialLoadPageBlockingMiddleware blocks heavy dashboard pages during initial ingestion.
+func initialLoadPageBlockingMiddleware(ils *InitialLoadState, logger *pterm.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if ils.IsInitialLoadComplete() {
+			c.Next()
+			return
+		}
+
+		elapsed := ils.GetElapsedTime()
+		logger.Debug("Blocking dashboard page during initial load",
+			logger.Args("path", c.Request.URL.Path, "elapsed_ms", elapsed.Milliseconds()))
+
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":             "Service initializing",
+			"message":           "The application is currently initializing and indexing logs. Please wait...",
+			"status":            "initializing",
+			"elapsed_seconds":   elapsed.Seconds(),
+			"max_wait_estimate": "This usually takes between 10-120 seconds depending on your log volume",
+		})
 		c.Abort()
 	}
 }
