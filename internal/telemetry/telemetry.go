@@ -188,6 +188,13 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 }
 
 func getOrCreateInstanceID(storeDir string) (string, error) {
+	// Prefer the OS machine-id (stable on bare metal / VMs, absent in most containers).
+	if data, err := os.ReadFile("/etc/machine-id"); err == nil {
+		if id := strings.TrimSpace(string(data)); id != "" {
+			return id, nil
+		}
+	}
+
 	if strings.TrimSpace(storeDir) == "" {
 		storeDir = "."
 	}
@@ -198,8 +205,7 @@ func getOrCreateInstanceID(storeDir string) (string, error) {
 
 	path := filepath.Join(storeDir, ".loglynx_instance_id")
 	if data, err := os.ReadFile(path); err == nil {
-		id := strings.TrimSpace(string(data))
-		if id != "" {
+		if id := strings.TrimSpace(string(data)); id != "" {
 			return id, nil
 		}
 	}
