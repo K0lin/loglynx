@@ -57,7 +57,7 @@ info:
     - `hours`: Time range in hours (1-8760, default varies by endpoint)
     - `days`: Time range in days (1-365, default varies by endpoint)
 
-  version: 1.1.1
+  version: 2.0.0
   contact:
     name: LogLynx Support
     url: https://github.com/k0lin/loglynx
@@ -90,8 +90,12 @@ tags:
     description: IP-specific statistics and analytics
   - name: IP Tagging
     description: |
-      IP tagging and management endpoints (Available from v1.1.1).
+      IP tagging and management endpoints.
       Allows assigning friendly names and searchable tags to IP addresses.
+  - name: Comparison
+    description: |
+      Multi-period comparison endpoints. Compare traffic and analytics across
+      2 to 4 arbitrary time ranges. Supports shareable snapshot links.
   - name: Widget
     description: Compact widget endpoints for iframe embedding
 
@@ -740,6 +744,158 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /stats/compare:
+    post:
+      tags:
+        - Comparison
+      summary: Compare multiple time periods
+      description: |
+        Returns a full analytics comparison across 2 to 4 arbitrary time ranges.
+        Each period yields its own summary, timeline, top lists, and distributions.
+        Supports service filtering and hide-my-traffic parameters.
+      operationId: getComparison
+      parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonRequest'
+      responses:
+        '200':
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonResult'
+        '400':
+          description: Invalid request (wrong number of periods or invalid date range)
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /compare/snapshots:
+    post:
+      tags:
+        - Comparison
+      summary: Create a shareable comparison snapshot
+      description: |
+        Stores a precomputed comparison payload and returns a unique token that
+        can be used to retrieve it later via `GET /compare/snapshots/{token}`.
+        Snapshots are scoped to the session cookie `loglynx_compare_owner`.
+      operationId: createComparisonSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonSnapshotInput'
+      responses:
+        '200':
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonSnapshot'
+        '400':
+          description: Invalid input
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags:
+        - Comparison
+      summary: List comparison snapshots owned by the current session
+      operationId: listComparisonSnapshots
+      responses:
+        '200':
+          description: List of snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ComparisonSnapshot'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /compare/snapshots/{token}:
+    get:
+      tags:
+        - Comparison
+      summary: Retrieve a comparison snapshot by token
+      operationId: getComparisonSnapshot
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "a1b2c3d4e5f6"
+      responses:
+        '200':
+          description: Snapshot found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonSnapshot'
+        '404':
+          description: Snapshot not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Comparison
+      summary: Update a comparison snapshot (deactivate or change expiry)
+      operationId: updateComparisonSnapshot
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonSnapshotUpdate'
+      responses:
+        '200':
+          description: Snapshot updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonSnapshot'
+        '404':
+          description: Snapshot not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Comparison
+      summary: Delete a comparison snapshot
+      operationId: deleteComparisonSnapshot
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Snapshot deleted
+        '404':
+          description: Snapshot not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /stats/log-processing:
     get:
       tags:
@@ -1047,94 +1203,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/IPSearchResult'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /ip/tags:
-    get:
-      tags:
-        - IP Tagging
-      summary: Get all IP tags
-      description: Returns a list of all assigned IP tags and friendly names (Available from v1.1.1)
-      operationId: getAllTags
-      responses:
-        '200':
-          description: List of all IP tags
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/IPTag'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      tags:
-        - IP Tagging
-      summary: Create or update IP tag
-      description: Assign a friendly name and tags to an IP address (Available from v1.1.1)
-      operationId: createOrUpdateTag
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/IPTagInput'
-      responses:
-        '200':
-          description: Tag updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IPTag'
-        '400':
-          description: Invalid input
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /ip/tags/{ip}:
-    get:
-      tags:
-        - IP Tagging
-      summary: Get tags for a specific IP
-      description: Returns friendly name and tags for the specified IP address (Available from v1.1.1)
-      operationId: getTag
-      parameters:
-        - name: ip
-          in: path
-          description: IP address to retrieve tags for
-          required: true
-          schema:
-            type: string
-          example: 192.168.1.100
-      responses:
-        '200':
-          description: IP tag details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IPTag'
-        '404':
-          description: IP tags not found
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    delete:
-      tags:
-        - IP Tagging
-      summary: Delete IP tags
-      description: Removes all tags and friendly name assigned to the specified IP address (Available from v1.1.1)
-      operationId: deleteTag
-      parameters:
-        - name: ip
-          in: path
-          description: IP address to remove tags from
-          required: true
-          schema:
-            type: string
-          example: 192.168.1.100
-      responses:
-        '200':
-          description: Tags deleted successfully
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2802,6 +2870,222 @@ components:
           type: string
           description: Error message
           example: "Failed to retrieve data"
+
+    ComparisonRequest:
+      type: object
+      required:
+        - periods
+      properties:
+        periods:
+          type: array
+          description: Between 2 and 4 time periods to compare
+          minItems: 2
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/ComparisonPeriodRequest'
+        top_limit:
+          type: integer
+          description: Number of top items to return per period (default 10)
+          default: 10
+          example: 10
+
+    ComparisonPeriodRequest:
+      type: object
+      required:
+        - start
+        - end
+      properties:
+        label:
+          type: string
+          description: Human-readable label for this period (auto-generated if omitted)
+          example: "Last 7 days"
+        start:
+          type: string
+          format: date-time
+          description: Period start (inclusive)
+          example: "2025-11-01T00:00:00Z"
+        end:
+          type: string
+          format: date-time
+          description: Period end (exclusive)
+          example: "2025-11-08T00:00:00Z"
+
+    ComparisonResult:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T10:00:00Z"
+        top_limit:
+          type: integer
+          example: 10
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparisonPeriodResult'
+
+    ComparisonPeriodResult:
+      type: object
+      description: Full analytics snapshot for one comparison period
+      properties:
+        label:
+          type: string
+          example: "Last 7 days"
+        start:
+          type: string
+          format: date-time
+          example: "2025-11-01T00:00:00Z"
+        end:
+          type: string
+          format: date-time
+          example: "2025-11-08T00:00:00Z"
+        summary:
+          $ref: '#/components/schemas/StatsSummary'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineData'
+        service_timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparisonServicePoint'
+        status_code_timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusCodeTimelineData'
+        heatmap:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrafficHeatmapData'
+        top_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathStats'
+        top_ips:
+          type: array
+          items:
+            $ref: '#/components/schemas/IPStats'
+        top_countries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CountryStats'
+        top_backends:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackendStats'
+        service_breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackendStats'
+        status_code_distribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusCodeStats'
+        device_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceTypeStats'
+
+    ComparisonServicePoint:
+      type: object
+      description: Timeline data point for a single service within a comparison period
+      properties:
+        service_name:
+          type: string
+          example: "api-service"
+        service_type:
+          type: string
+          example: "backend_name"
+        hour:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:00:00Z"
+        requests:
+          type: integer
+          format: int64
+          example: 345
+        bandwidth:
+          type: integer
+          format: int64
+          example: 10485760
+        avg_response_time:
+          type: number
+          format: double
+          example: 120.3
+        errors:
+          type: integer
+          format: int64
+          example: 5
+
+    ComparisonSnapshot:
+      type: object
+      description: A stored comparison result that can be retrieved by shareable token
+      properties:
+        id:
+          type: integer
+          example: 1
+        token:
+          type: string
+          description: Unique shareable token
+          example: "a1b2c3d4e5f6789abc"
+        title:
+          type: string
+          example: "Q3 vs Q4 comparison"
+        payload:
+          type: string
+          description: Raw JSON payload of the ComparisonResult
+          example: "{...}"
+        active:
+          type: boolean
+          description: Whether the snapshot is publicly accessible
+          example: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-01T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T10:00:00Z"
+
+    ComparisonSnapshotInput:
+      type: object
+      required:
+        - payload
+      properties:
+        title:
+          type: string
+          description: Human-readable label for the snapshot
+          example: "Q3 vs Q4 comparison"
+        payload:
+          type: object
+          description: The raw ComparisonResult JSON to store
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiry timestamp; null means no expiry
+          example: "2026-01-01T00:00:00Z"
+
+    ComparisonSnapshotUpdate:
+      type: object
+      properties:
+        active:
+          type: boolean
+          description: Set to false to deactivate (hide) the snapshot
+          example: false
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: New expiry timestamp; null clears an existing expiry
+          example: "2026-06-01T00:00:00Z"
 
   responses:
     InternalServerError:
