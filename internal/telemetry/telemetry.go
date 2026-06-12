@@ -26,6 +26,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -109,14 +110,11 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 		Event:      "heartbeat",
 	}
 
-	disabled := false
 	go func() {
 		logger.Debug("Anonymous usage telemetry enabled", logger.Args("interval", cfg.Interval))
 
 		// Send immediate heartbeat on startup
-		if !ping(ctx, endpoint, payload, logger) {
-			disabled = true
-		}
+		ping(ctx, endpoint, payload, logger)
 
 		ticker := time.NewTicker(cfg.Interval)
 		defer ticker.Stop()
@@ -126,12 +124,7 @@ func Start(cfg Config, logger *pterm.Logger) func() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if disabled {
-					continue
-				}
-				if !ping(ctx, endpoint, payload, logger) {
-					disabled = true
-				}
+				ping(ctx, endpoint, payload, logger)
 			}
 		}
 	}()
@@ -146,16 +139,20 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 		return false
 	}
 
-	parsedURL, err := url.Parse(endpoint)
-	if err != nil {
-		logger.Debug("Failed to parse telemetry endpoint", logger.Args("error", err))
-		return false
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	host := parsedURL.Hostname()
-
 	client := &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout:   15 * time.Second,
+		Transport: transport,
 	}
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
@@ -168,29 +165,25 @@ func ping(parent context.Context, endpoint string, payload Payload, logger *pter
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "LogLynx/"+payload.Version)
+	// EXACT User-Agent as requested by the user
+	req.Header.Set("User-Agent", "logLynx/"+payload.Version)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Connection", "close")
 
 	resp, err := client.Do(req)
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "handshake failure") {
-			logger.Debug("Telemetry endpoint rejected TLS handshake; telemetry disabled for this run",
-				logger.Args("error", errMsg, "host", host))
-		} else {
-			logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
-		}
+		logger.Debug("Telemetry ping failed", logger.Args("error", errMsg))
 		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logger.Debug("Telemetry ping returned non-success status", logger.Args("status", resp.StatusCode))
-		return resp.StatusCode < 500
-	} else {
-		logger.Debug("Telemetry heartbeat sent successfully")
+		return false
 	}
 
+	logger.Debug("Telemetry heartbeat sent successfully")
 	return true
 }
 
