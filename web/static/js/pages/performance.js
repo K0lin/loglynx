@@ -410,6 +410,64 @@ function initSlowPathsTable(pathsData) {
     const slowPaths = pathsData.sort((a, b) =>
         (b.avg_response_time || 0) - (a.avg_response_time || 0)
     );
+    const slowPathColumns = [
+        {
+            data: null,
+            orderable: false,
+            render: (data, type, row, meta) => meta.row + 1
+        },
+        {
+            data: 'path',
+            render: (d, type) => type === 'display' ? `<code>${LogLynxUtils.truncate(d, 60)}</code>` : (d || '')
+        },
+        {
+            data: 'hits',
+            render: (d, type) => type === 'display' ? LogLynxUtils.formatNumber(d || 0) : (d || 0)
+        },
+        {
+            data: 'avg_response_time',
+            render: (d, type) => type === 'display' ? `<strong>${LogLynxUtils.formatMs(d || 0)}</strong>` : (d || 0)
+        },
+        {
+            data: null,
+            render: (data, type) => {
+                // Estimate min/max (we don't have this data, so approximate)
+                const min = (data.avg_response_time || 0) * 0.5;
+                return type === 'display' ? LogLynxUtils.formatMs(min) : min;
+            }
+        },
+        {
+            data: null,
+            render: (data, type) => {
+                const max = (data.avg_response_time || 0) * 2;
+                return type === 'display' ? LogLynxUtils.formatMs(max) : max;
+            }
+        },
+        {
+            data: 'total_bandwidth',
+            render: (d, type) => type === 'display' ? LogLynxCharts.formatBytes(d || 0) : (d || 0)
+        },
+        {
+            data: 'avg_response_time',
+            render: (d, type) => {
+                if (type !== 'display') return d || 0;
+
+                let badgeClass = 'badge-success';
+                let label = 'Excellent';
+                if (d > 2000) {
+                    badgeClass = 'badge-danger';
+                    label = 'Critical';
+                } else if (d > 1000) {
+                    badgeClass = 'badge-warning';
+                    label = 'Poor';
+                } else if (d > 500) {
+                    badgeClass = 'badge-info';
+                    label = 'Fair';
+                }
+                return `<span class="badge ${badgeClass}">${label}</span>`;
+            }
+        }
+    ];
 
     if ($.fn.DataTable.isDataTable('#slowPathsTable')) {
         $('#slowPathsTable').DataTable().destroy();
@@ -425,16 +483,7 @@ function initSlowPathsTable(pathsData) {
         // Create empty DataTable with empty state
         $('#slowPathsTable').DataTable({
             data: [],
-            columns: [
-                { data: null, render: (data, type, row, meta) => meta.row + 1 },
-                { data: 'path', render: (d) => `<code>${LogLynxUtils.truncate(d, 60)}</code>` },
-                { data: 'hits', render: (d) => LogLynxUtils.formatNumber(d) },
-                { data: 'avg_response_time', render: (d) => `<strong>${LogLynxUtils.formatMs(d || 0)}</strong>` },
-                { data: null, render: (data) => LogLynxUtils.formatMs((data.avg_response_time || 0) * 0.5) },
-                { data: null, render: (data) => LogLynxUtils.formatMs((data.avg_response_time || 0) * 2) },
-                { data: 'total_bandwidth', render: (d) => LogLynxCharts.formatBytes(d || 0) },
-                { data: 'avg_response_time', render: (d) => '<span class="badge badge-secondary">Unknown</span>' }
-            ],
+            columns: slowPathColumns,
             order: [[3, 'desc']],
             pageLength: 20,
             autoWidth: false,
@@ -448,61 +497,7 @@ function initSlowPathsTable(pathsData) {
 
     $('#slowPathsTable').DataTable({
         data: slowPaths,
-        columns: [
-            {
-                data: null,
-                render: (data, type, row, meta) => meta.row + 1
-            },
-            {
-                data: 'path',
-                render: (d) => `<code>${LogLynxUtils.truncate(d, 60)}</code>`
-            },
-            {
-                data: 'hits',
-                render: (d) => LogLynxUtils.formatNumber(d)
-            },
-            {
-                data: 'avg_response_time',
-                render: (d) => `<strong>${LogLynxUtils.formatMs(d || 0)}</strong>`
-            },
-            {
-                data: null,
-                render: (data) => {
-                    // Estimate min/max (we don't have this data, so approximate)
-                    const avg = data.avg_response_time || 0;
-                    return LogLynxUtils.formatMs(avg * 0.5);
-                }
-            },
-            {
-                data: null,
-                render: (data) => {
-                    const avg = data.avg_response_time || 0;
-                    return LogLynxUtils.formatMs(avg * 2);
-                }
-            },
-            {
-                data: 'total_bandwidth',
-                render: (d) => LogLynxCharts.formatBytes(d || 0)
-            },
-            {
-                data: 'avg_response_time',
-                render: (d) => {
-                    let badgeClass = 'badge-success';
-                    let label = 'Excellent';
-                    if (d > 2000) {
-                        badgeClass = 'badge-danger';
-                        label = 'Critical';
-                    } else if (d > 1000) {
-                        badgeClass = 'badge-warning';
-                        label = 'Poor';
-                    } else if (d > 500) {
-                        badgeClass = 'badge-info';
-                        label = 'Fair';
-                    }
-                    return `<span class="badge ${badgeClass}">${label}</span>`;
-                }
-            }
-        ],
+        columns: slowPathColumns,
         order: [[3, 'desc']],
         pageLength: 20,
         autoWidth: false,
