@@ -14,6 +14,7 @@ info:
     - **Performance Metrics**: Track response times and backend health
     - **Geographic Analytics**: Analyze traffic by country and region
     - **IP Analytics**: Deep-dive analytics for specific IP addresses
+    - **IP Tagging**: Assign friendly names and custom tags to IP addresses for better organization (Available from v1.1.1)
     - **Service Filtering**: Filter by backend name, URL, or host with intelligent auto-detection
 
     ## Service Filtering
@@ -41,12 +42,13 @@ info:
     ## Hide My Traffic
     Endpoints that return request data support excluding your own IP address:
     - `exclude_own_ip`: Set to `true` to exclude requests from your IP (boolean)
+    - `excluded_ips[]`: Optional array of additional IP addresses to exclude manually
     - `exclude_services[]`: Optional array of service names to exclude your IP from (if omitted, excludes from all services)
     - `exclude_service_types[]`: Corresponding array of service types for exclude_services[]
 
-    **Example**: Hide my traffic only on specific services
+    **Example**: Hide current and manually entered IP traffic only on specific services
     ```
-    /api/v1/requests/recent?exclude_own_ip=true&exclude_services[]=admin-panel&exclude_service_types[]=backend_name
+    /api/v1/requests/recent?exclude_own_ip=true&excluded_ips[]=192.168.1.10&exclude_services[]=admin-panel&exclude_service_types[]=backend_name
     ```
 
     ## Common Query Parameters
@@ -55,7 +57,7 @@ info:
     - `hours`: Time range in hours (1-8760, default varies by endpoint)
     - `days`: Time range in days (1-365, default varies by endpoint)
 
-  version: 1.0.3
+  version: 2.0.0
   contact:
     name: LogLynx Support
     url: https://github.com/k0lin/loglynx
@@ -86,6 +88,14 @@ tags:
     description: System information and log processing stats
   - name: IP Analytics
     description: IP-specific statistics and analytics
+  - name: IP Tagging
+    description: |
+      IP tagging and management endpoints.
+      Allows assigning friendly names and searchable tags to IP addresses.
+  - name: Comparison
+    description: |
+      Multi-period comparison endpoints. Compare traffic and analytics across
+      2 to 4 arbitrary time ranges. Supports shareable snapshot links.
   - name: Widget
     description: Compact widget endpoints for iframe embedding
 
@@ -111,6 +121,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -140,6 +151,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -171,6 +183,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -202,6 +215,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/DaysParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
       responses:
@@ -231,6 +245,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -261,6 +276,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -298,6 +314,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -328,6 +345,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -358,6 +376,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -388,6 +407,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -418,6 +438,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -448,6 +469,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -478,6 +500,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -515,6 +538,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -551,6 +575,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -581,6 +606,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -611,6 +637,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -641,6 +668,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -671,6 +699,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -701,6 +730,7 @@ paths:
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/HoursParam'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
 
@@ -714,6 +744,158 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /stats/compare:
+    post:
+      tags:
+        - Comparison
+      summary: Compare multiple time periods
+      description: |
+        Returns a full analytics comparison across 2 to 4 arbitrary time ranges.
+        Each period yields its own summary, timeline, top lists, and distributions.
+        Supports service filtering and hide-my-traffic parameters.
+      operationId: getComparison
+      parameters:
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
+        - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
+        - $ref: '#/components/parameters/ExcludeServices'
+        - $ref: '#/components/parameters/ExcludeServiceTypes'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonRequest'
+      responses:
+        '200':
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonResult'
+        '400':
+          description: Invalid request (wrong number of periods or invalid date range)
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /compare/snapshots:
+    post:
+      tags:
+        - Comparison
+      summary: Create a shareable comparison snapshot
+      description: |
+        Stores a precomputed comparison payload and returns a unique token that
+        can be used to retrieve it later via `GET /compare/snapshots/{token}`.
+        Snapshots are scoped to the session cookie `loglynx_compare_owner`.
+      operationId: createComparisonSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonSnapshotInput'
+      responses:
+        '200':
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonSnapshot'
+        '400':
+          description: Invalid input
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags:
+        - Comparison
+      summary: List comparison snapshots owned by the current session
+      operationId: listComparisonSnapshots
+      responses:
+        '200':
+          description: List of snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ComparisonSnapshot'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /compare/snapshots/{token}:
+    get:
+      tags:
+        - Comparison
+      summary: Retrieve a comparison snapshot by token
+      operationId: getComparisonSnapshot
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "a1b2c3d4e5f6"
+      responses:
+        '200':
+          description: Snapshot found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonSnapshot'
+        '404':
+          description: Snapshot not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Comparison
+      summary: Update a comparison snapshot (deactivate or change expiry)
+      operationId: updateComparisonSnapshot
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonSnapshotUpdate'
+      responses:
+        '200':
+          description: Snapshot updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonSnapshot'
+        '404':
+          description: Snapshot not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Comparison
+      summary: Delete a comparison snapshot
+      operationId: deleteComparisonSnapshot
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Snapshot deleted
+        '404':
+          description: Snapshot not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /stats/log-processing:
     get:
       tags:
@@ -721,13 +903,13 @@ paths:
       summary: Get log processing statistics
       description: |
         Returns information about log file processing progress.
-        
+
         **Percentage Calculation:**
         The processing percentage is intelligently calculated using:
         1. **Record-based estimation**: Calculates average bytes per record and estimates total records in file for accurate progress
         2. **Byte-based fallback**: Uses file position vs file size if records aren't available yet
         3. **Real-time updates**: Position updates every 500ms during active processing for smooth progress tracking
-        
+
         **Use Cases:**
         - Monitor initial log import progress
         - Track ongoing log processing status
@@ -766,6 +948,7 @@ paths:
         - $ref: '#/components/parameters/ServiceTypesArray'
         - $ref: '#/components/parameters/HostFilter'
         - $ref: '#/components/parameters/ExcludeOwnIP'
+        - $ref: '#/components/parameters/ExcludedIPs'
         - $ref: '#/components/parameters/ExcludeServices'
         - $ref: '#/components/parameters/ExcludeServiceTypes'
         - name: limit
@@ -839,7 +1022,7 @@ paths:
       description: |
         Server-Sent Events (SSE) endpoint that streams real-time metrics.
         Connect using EventSource API in JavaScript or any SSE client.
-        
+
         Example JavaScript:
         ```javascript
         const eventSource = new EventSource('http://localhost:8080/api/v1/realtime/stream');
@@ -893,7 +1076,7 @@ paths:
       description: |
         Returns compact real-time metrics optimized for widget embedding.
         Shows data from the last hour with requests per minute calculation.
-        
+
         **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
       operationId: getWidgetData
       responses:
@@ -920,7 +1103,7 @@ paths:
       description: |
         Returns compact summary statistics for embedding in widgets.
         Optimized for displaying aggregated data over a time period.
-        
+
         **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
       operationId: getWidgetSummary
       parameters:
@@ -957,7 +1140,7 @@ paths:
       description: |
         Returns compact timeline data optimized for sparkline charts in widgets.
         Returns up to 30 data points for periods <= 24 hours, or 50 points for longer periods.
-        
+
         **Note**: This endpoint is only available when `WIDGET_ENABLED=true` (default).
       operationId: getWidgetTimeline
       parameters:
@@ -1023,12 +1206,102 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /ip/tags:
+    get:
+      tags:
+        - IP Tagging
+      summary: Get all IP tags
+      description: Returns a list of all assigned IP tags and friendly names (Available from v1.1.1)
+      operationId: getAllTags
+      responses:
+        '200':
+          description: List of all IP tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IPTag'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - IP Tagging
+      summary: Create or update IP tag
+      description: Assign a friendly name and tags to an IP address (Available from v1.1.1)
+      operationId: createOrUpdateTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPTagInput'
+      responses:
+        '200':
+          description: Tag updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPTag'
+        '400':
+          description: Invalid input
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ip/tags/{ip}:
+    get:
+      tags:
+        - IP Tagging
+      summary: Get tags for a specific IP
+      description: Returns friendly name and tags for the specified IP address (Available from v1.1.1)
+      operationId: getTag
+      parameters:
+        - name: ip
+          in: path
+          description: IP address to retrieve tags for
+          required: true
+          schema:
+            type: string
+          example: 192.168.1.100
+      responses:
+        '200':
+          description: IP tag details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPTag'
+        '404':
+          description: IP tags not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - IP Tagging
+      summary: Delete IP tags
+      description: Removes all tags and friendly name assigned to the specified IP address (Available from v1.1.1)
+      operationId: deleteTag
+      parameters:
+        - name: ip
+          in: path
+          description: IP address to remove tags from
+          required: true
+          schema:
+            type: string
+          example: 192.168.1.100
+      responses:
+        '200':
+          description: Tags deleted successfully
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /ip/{ip}/stats:
     get:
       tags:
         - IP Analytics
       summary: Get detailed statistics for a specific IP
-      description: Returns comprehensive statistics including request counts, bandwidth, geographic data, and ASN information
+      description: |
+        Returns comprehensive statistics including request counts, bandwidth, geographic data, and ASN information.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPDetailedStats
       parameters:
         - name: ip
@@ -1038,6 +1311,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Detailed IP statistics
@@ -1053,7 +1331,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get timeline statistics for a specific IP
-      description: Returns time-series data for requests from the specified IP address
+      description: |
+        Returns time-series data for requests from the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTimeline
       parameters:
         - name: ip
@@ -1063,14 +1343,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
-        - name: hours
-          in: query
-          description: Number of hours to look back (1-8760, default 168)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-            default: 168
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Timeline data for the IP
@@ -1088,7 +1365,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get traffic heatmap for a specific IP
-      description: Returns hourly traffic data grouped by day of week for the specified IP address
+      description: |
+        Returns hourly traffic data grouped by day of week for the specified IP address.
+        Available from v1.1.1: Supports `days`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTrafficHeatmap
       parameters:
         - name: ip
@@ -1098,14 +1377,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
-        - name: days
-          in: query
-          description: Number of days to analyze (1-365, default 30)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 365
-            default: 30
+        - $ref: '#/components/parameters/DaysParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Traffic heatmap data
@@ -1123,7 +1399,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top paths accessed by a specific IP
-      description: Returns most accessed paths by the specified IP address
+      description: |
+        Returns most accessed paths by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopPaths
       parameters:
         - name: ip
@@ -1134,6 +1412,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top paths for the IP
@@ -1151,7 +1434,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top backends accessed by a specific IP
-      description: Returns backend services most accessed by the specified IP address
+      description: |
+        Returns backend services most accessed by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopBackends
       parameters:
         - name: ip
@@ -1162,6 +1447,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top backends for the IP
@@ -1179,7 +1469,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get status code distribution for a specific IP
-      description: Returns distribution of HTTP status codes for requests from the specified IP address
+      description: |
+        Returns distribution of HTTP status codes for requests from the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPStatusCodeDistribution
       parameters:
         - name: ip
@@ -1189,6 +1481,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Status code distribution
@@ -1206,7 +1503,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top browsers used by a specific IP
-      description: Returns most common browsers used by the specified IP address
+      description: |
+        Returns most common browsers used by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopBrowsers
       parameters:
         - name: ip
@@ -1217,6 +1516,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top browsers for the IP
@@ -1234,7 +1538,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get top operating systems used by a specific IP
-      description: Returns most common operating systems used by the specified IP address
+      description: |
+        Returns most common operating systems used by the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPTopOperatingSystems
       parameters:
         - name: ip
@@ -1245,6 +1551,11 @@ paths:
             type: string
           example: 192.168.1.100
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Top operating systems for the IP
@@ -1262,7 +1573,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get device type distribution for a specific IP
-      description: Returns distribution of device types (desktop, mobile, tablet, bot) for the specified IP address
+      description: |
+        Returns distribution of device types (desktop, mobile, tablet, bot) for the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPDeviceTypeDistribution
       parameters:
         - name: ip
@@ -1272,6 +1585,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Device type distribution
@@ -1289,7 +1607,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get response time statistics for a specific IP
-      description: Returns response time metrics including min, max, avg, and percentiles for requests from the specified IP address
+      description: |
+        Returns response time metrics including min, max, avg, and percentiles for requests from the specified IP address.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPResponseTimeStats
       parameters:
         - name: ip
@@ -1299,6 +1619,11 @@ paths:
           schema:
             type: string
           example: 192.168.1.100
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Response time statistics
@@ -1314,7 +1639,9 @@ paths:
       tags:
         - IP Analytics
       summary: Get recent requests from a specific IP
-      description: Returns the most recent HTTP requests from the specified IP address with full details
+      description: |
+        Returns the most recent HTTP requests from the specified IP address with full details.
+        Available from v1.1.1: Supports `hours`, `service`, `service_type`, `services[]` and `service_types[]` filtering.
       operationId: getIPRecentRequests
       parameters:
         - name: ip
@@ -1326,12 +1653,17 @@ paths:
           example: 192.168.1.100
         - name: limit
           in: query
-          description: Maximum number of results (1-250, default 25)
+          description: Maximum number of results (1-500, default 50)
           schema:
             type: integer
             minimum: 1
-            maximum: 250
-            default: 25
+            maximum: 500
+            default: 50
+        - $ref: '#/components/parameters/HoursParam'
+        - $ref: '#/components/parameters/ServiceFilter'
+        - $ref: '#/components/parameters/ServiceTypeFilter'
+        - $ref: '#/components/parameters/ServicesArray'
+        - $ref: '#/components/parameters/ServiceTypesArray'
       responses:
         '200':
           description: Recent requests from the IP
@@ -1426,12 +1758,31 @@ components:
       description: |
         Set to `true` to exclude requests from your own IP address.
         The server automatically detects your IP from the request.
+        Use `excluded_ips[]` to exclude additional manually entered IP addresses.
         When `true` without `exclude_services[]`, excludes your IP from ALL services.
       required: false
       schema:
         type: boolean
         default: false
       example: true
+
+    ExcludedIPs:
+      name: excluded_ips[]
+      in: query
+      description: |
+        Array of manually entered IP addresses to exclude from analytics.
+        These IPs are combined with the detected client IP when `exclude_own_ip=true`.
+        If `exclude_services[]` is omitted, all listed IPs are excluded from all services.
+        If `exclude_services[]` is provided, all listed IPs are excluded only for those services.
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          format: ip
+      style: form
+      explode: true
+      example: [192.168.1.10, 2001:db8::1]
 
     ExcludeServices:
       name: exclude_services[]
@@ -2106,6 +2457,11 @@ components:
           format: double
           description: Error rate (errors per second)
           example: 2.3
+        bandwidth_rate:
+          type: number
+          format: double
+          description: Global bandwidth usage in bytes per second
+          example: 1048576.5
         avg_response_time:
           type: number
           format: double
@@ -2167,6 +2523,16 @@ components:
           format: double
           description: Requests per second
           example: 12.5
+        bandwidth:
+          type: integer
+          format: int64
+          description: Total bytes in current window
+          example: 5242880
+        bandwidth_rate:
+          type: number
+          format: double
+          description: Bandwidth usage in bytes per second
+          example: 349525.3
 
     RequestSummary:
       type: object
@@ -2337,6 +2703,14 @@ components:
           format: int64
           description: Number of unique paths accessed
           example: 42
+        friendly_name:
+          type: string
+          description: Friendly name assigned to this IP
+          example: "Office VPN"
+        tags:
+          type: string
+          description: Comma-separated tags assigned to this IP
+          example: "internal,trusted"
 
     IPSearchResult:
       type: object
@@ -2365,6 +2739,44 @@ components:
           format: date-time
           description: Last time this IP was seen
           example: "2025-11-03T14:32:15Z"
+
+    IPTag:
+      type: object
+      description: Tag information for an IP address
+      properties:
+        id:
+          type: integer
+          example: 1
+        ip_address:
+          type: string
+          example: "192.168.1.100"
+        friendly_name:
+          type: string
+          example: "Office Server"
+        tags:
+          type: string
+          example: "production,internal"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    IPTagInput:
+      type: object
+      required:
+        - ip_address
+      properties:
+        ip_address:
+          type: string
+          example: "192.168.1.100"
+        friendly_name:
+          type: string
+          example: "Office Server"
+        tags:
+          type: string
+          example: "production,internal"
 
     WidgetRealtimeData:
       type: object
@@ -2458,6 +2870,222 @@ components:
           type: string
           description: Error message
           example: "Failed to retrieve data"
+
+    ComparisonRequest:
+      type: object
+      required:
+        - periods
+      properties:
+        periods:
+          type: array
+          description: Between 2 and 4 time periods to compare
+          minItems: 2
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/ComparisonPeriodRequest'
+        top_limit:
+          type: integer
+          description: Number of top items to return per period (default 10)
+          default: 10
+          example: 10
+
+    ComparisonPeriodRequest:
+      type: object
+      required:
+        - start
+        - end
+      properties:
+        label:
+          type: string
+          description: Human-readable label for this period (auto-generated if omitted)
+          example: "Last 7 days"
+        start:
+          type: string
+          format: date-time
+          description: Period start (inclusive)
+          example: "2025-11-01T00:00:00Z"
+        end:
+          type: string
+          format: date-time
+          description: Period end (exclusive)
+          example: "2025-11-08T00:00:00Z"
+
+    ComparisonResult:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T10:00:00Z"
+        top_limit:
+          type: integer
+          example: 10
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparisonPeriodResult'
+
+    ComparisonPeriodResult:
+      type: object
+      description: Full analytics snapshot for one comparison period
+      properties:
+        label:
+          type: string
+          example: "Last 7 days"
+        start:
+          type: string
+          format: date-time
+          example: "2025-11-01T00:00:00Z"
+        end:
+          type: string
+          format: date-time
+          example: "2025-11-08T00:00:00Z"
+        summary:
+          $ref: '#/components/schemas/StatsSummary'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineData'
+        service_timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparisonServicePoint'
+        status_code_timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusCodeTimelineData'
+        heatmap:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrafficHeatmapData'
+        top_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathStats'
+        top_ips:
+          type: array
+          items:
+            $ref: '#/components/schemas/IPStats'
+        top_countries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CountryStats'
+        top_backends:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackendStats'
+        service_breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackendStats'
+        status_code_distribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusCodeStats'
+        device_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceTypeStats'
+
+    ComparisonServicePoint:
+      type: object
+      description: Timeline data point for a single service within a comparison period
+      properties:
+        service_name:
+          type: string
+          example: "api-service"
+        service_type:
+          type: string
+          example: "backend_name"
+        hour:
+          type: string
+          format: date-time
+          example: "2025-11-03T14:00:00Z"
+        requests:
+          type: integer
+          format: int64
+          example: 345
+        bandwidth:
+          type: integer
+          format: int64
+          example: 10485760
+        avg_response_time:
+          type: number
+          format: double
+          example: 120.3
+        errors:
+          type: integer
+          format: int64
+          example: 5
+
+    ComparisonSnapshot:
+      type: object
+      description: A stored comparison result that can be retrieved by shareable token
+      properties:
+        id:
+          type: integer
+          example: 1
+        token:
+          type: string
+          description: Unique shareable token
+          example: "a1b2c3d4e5f6789abc"
+        title:
+          type: string
+          example: "Q3 vs Q4 comparison"
+        payload:
+          type: string
+          description: Raw JSON payload of the ComparisonResult
+          example: "{...}"
+        active:
+          type: boolean
+          description: Whether the snapshot is publicly accessible
+          example: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-01T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T10:00:00Z"
+
+    ComparisonSnapshotInput:
+      type: object
+      required:
+        - payload
+      properties:
+        title:
+          type: string
+          description: Human-readable label for the snapshot
+          example: "Q3 vs Q4 comparison"
+        payload:
+          type: object
+          description: The raw ComparisonResult JSON to store
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiry timestamp; null means no expiry
+          example: "2026-01-01T00:00:00Z"
+
+    ComparisonSnapshotUpdate:
+      type: object
+      properties:
+        active:
+          type: boolean
+          description: Set to false to deactivate (hide) the snapshot
+          example: false
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: New expiry timestamp; null clears an existing expiry
+          example: "2026-06-01T00:00:00Z"
 
   responses:
     InternalServerError:

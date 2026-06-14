@@ -25,11 +25,15 @@ var expectedDefinitions = []Definition{
 	{Name: "idx_time_backend_url", SQL: `CREATE INDEX IF NOT EXISTS idx_time_backend_url ON http_requests(timestamp DESC, backend_url)`},
 	{Name: "idx_time_client_ip", SQL: `CREATE INDEX IF NOT EXISTS idx_time_client_ip ON http_requests(timestamp DESC, client_ip)`},
 	{Name: "idx_summary_cover", SQL: `CREATE INDEX IF NOT EXISTS idx_summary_cover ON http_requests(status_code, response_size, response_time_ms, client_ip, path)`},
+	{Name: "idx_summary_time_cover", SQL: `CREATE INDEX IF NOT EXISTS idx_summary_time_cover ON http_requests(timestamp, status_code, response_size, response_time_ms, client_ip, path, geo_country)`},
+	{Name: "idx_month_timeline", SQL: `CREATE INDEX IF NOT EXISTS idx_month_timeline ON http_requests(substr(timestamp, 1, 7), client_ip, response_size, response_time_ms, status_code)`},
 
 	// ===== AGGREGATION INDEXES (for GROUP BY queries) =====
 	{Name: "idx_path_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_path_agg ON http_requests(path, timestamp, client_ip, response_time_ms, response_size)`},
+	{Name: "idx_path_hits", SQL: `CREATE INDEX IF NOT EXISTS idx_path_hits ON http_requests(path)`},
 	{Name: "idx_top_paths_cover", SQL: `CREATE INDEX IF NOT EXISTS idx_top_paths_cover ON http_requests(timestamp DESC, path, client_ip, response_size, response_time_ms)`},
 	{Name: "idx_geo_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_geo_agg ON http_requests(geo_country, timestamp, client_ip, response_size) WHERE geo_country != ''`},
+	{Name: "idx_geo_hits", SQL: `CREATE INDEX IF NOT EXISTS idx_geo_hits ON http_requests(geo_country) WHERE geo_country != ''`},
 	{Name: "idx_referer_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_referer_agg ON http_requests(referer, timestamp, client_ip) WHERE referer != ''`},
 	{Name: "idx_service_id", SQL: `CREATE INDEX IF NOT EXISTS idx_service_id ON http_requests(backend_name, backend_url, host)`},
 	{Name: "idx_backend_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_backend_agg ON http_requests(backend_name, timestamp, backend_url, host, response_size, status_code) WHERE backend_name != ''`},
@@ -38,6 +42,7 @@ var expectedDefinitions = []Definition{
 
 	// ===== LOOKUP INDEXES (for filtering and detail queries) =====
 	{Name: "idx_ip_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_ip_agg ON http_requests(client_ip, timestamp, geo_country, geo_city, geo_lat, geo_lon, response_size, asn, asn_org, status_code)`},
+	{Name: "idx_ip_hits_bandwidth", SQL: `CREATE INDEX IF NOT EXISTS idx_ip_hits_bandwidth ON http_requests(client_ip, response_size, geo_country, geo_city, geo_lat, geo_lon)`},
 	{Name: "idx_top_ips_cover", SQL: `CREATE INDEX IF NOT EXISTS idx_top_ips_cover ON http_requests(client_ip, timestamp DESC, geo_country, geo_city, geo_lat, geo_lon, response_size, status_code)`},
 	{Name: "idx_ip_browser_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_ip_browser_agg ON http_requests(client_ip, timestamp, browser) WHERE browser != ''`},
 	{Name: "idx_ip_backend_agg", SQL: `CREATE INDEX IF NOT EXISTS idx_ip_backend_agg ON http_requests(client_ip, timestamp, backend_name, backend_url, response_size, response_time_ms, status_code) WHERE backend_name != ''`},
@@ -57,6 +62,7 @@ var expectedDefinitions = []Definition{
 	{Name: "idx_errors", SQL: `CREATE INDEX IF NOT EXISTS idx_errors ON http_requests(timestamp DESC, status_code, path, client_ip) WHERE status_code >= 400`},
 	{Name: "idx_slow", SQL: `CREATE INDEX IF NOT EXISTS idx_slow ON http_requests(timestamp DESC, response_time_ms, path, host) WHERE response_time_ms > 1000`},
 	{Name: "idx_response_time", SQL: `CREATE INDEX IF NOT EXISTS idx_response_time ON http_requests(timestamp DESC, response_time_ms) WHERE response_time_ms > 0`},
+	{Name: "idx_response_value", SQL: `CREATE INDEX IF NOT EXISTS idx_response_value ON http_requests(response_time_ms) WHERE response_time_ms > 0`},
 
 	// ===== MAINTENANCE INDEX =====
 	{Name: "idx_cleanup", SQL: `CREATE INDEX IF NOT EXISTS idx_cleanup ON http_requests(timestamp)`},
@@ -106,18 +112,6 @@ func Ensure(db *gorm.DB, logger *pterm.Logger) (created int, dropped int, err er
 		existingSet[name] = struct{}{}
 	}
 
-	expectedSet := make(map[string]Definition, len(expectedDefinitions))
-	for _, def := range expectedDefinitions {
-		expectedSet[def.Name] = def
-	}
-
-	var unexpected []string
-	for name := range existingSet {
-		if _, ok := expectedSet[name]; !ok {
-			unexpected = append(unexpected, name)
-		}
-	}
-
 	var missing []Definition
 	for _, def := range expectedDefinitions {
 		if _, ok := existingSet[def.Name]; !ok {
@@ -125,9 +119,11 @@ func Ensure(db *gorm.DB, logger *pterm.Logger) (created int, dropped int, err er
 		}
 	}
 
-	hasMismatch := len(unexpected) > 0 || len(missing) > 0
+	hasMismatch := len(missing) > 0
 	if hasMismatch {
-		namesToDrop := uniqueNames(append(legacyIndexes, unexpected...))
+		// Only drop indexes that LogLynx explicitly owns and has deprecated.
+		// User-created production indexes must survive upgrades.
+		namesToDrop := uniqueNames(legacyIndexes)
 		for _, name := range namesToDrop {
 			if err := db.Exec("DROP INDEX IF EXISTS " + name).Error; err != nil {
 				logger.Warn("Failed to drop index", logger.Args("index", name, "error", err))

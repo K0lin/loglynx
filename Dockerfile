@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for LogLynx
 # Builder stage: compiles a static binary for the target platform
-FROM golang:1.25.7 AS builder
+FROM golang:1.25.11 AS builder
 
 WORKDIR /src
 
@@ -15,8 +15,9 @@ COPY . .
 # TARGETPLATFORM and TARGETARCH are automatically set by Docker Buildx
 ARG TARGETPLATFORM
 ARG TARGETARCH
+ARG LOGLYNX_USAGE_TELEMETRY_ENDPOINT=""
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
-    go build -ldflags "-s -w" -o /out/loglynx ./cmd/server
+    go build -ldflags "-s -w -X 'loglynx/internal/telemetry.BuildEndpoint=${LOGLYNX_USAGE_TELEMETRY_ENDPOINT}'" -o /out/loglynx ./cmd/server
 
 
 # Final image: small, secure runtime that still ships glibc for CGO

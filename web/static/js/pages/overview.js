@@ -423,8 +423,18 @@ function initDataTable() {
                 data: 'GeoCountry',
                 render: (d) => d || '-'
             },
-            { data: 'ClientIP' }
+            {
+                data: 'ClientIP',
+                render: (data, type, row) => {
+                    return `<div class="tag-input-container" style="display: inline-block;"><span class="ip-display" data-ip="${data}" style="display: inline;"><a href="/ip/${data}" class="ip-link"><code>${data}</code></a></span><div class="tag-chips" data-ip="${data}" style="display: inline;"></div><button class="edit-tag-btn" data-ip="${data}" onclick="openTagModal('${data}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button></div>`;
+                }
+            }
         ],
+        drawCallback: function() {
+            if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+                toggleTagging(true);
+            }
+        },
         order: [[0, 'desc']],
         pageLength: 10,
         autoWidth: false,

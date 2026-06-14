@@ -55,3 +55,4 @@ grep
 
 # Standalone example files
 web/static/*-examples.html
+loglynx.db.telemetry/.loglynx_instance_id

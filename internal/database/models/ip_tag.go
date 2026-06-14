@@ -19,7 +19,23 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-package version
+package models
 
-// Version represents the current LogLynx application version.
-const Version = "1.1.1"
+import (
+	"time"
+)
+
+// IPTag stores user-defined friendly names and tags for IP addresses
+type IPTag struct {
+	ID           uint   `gorm:"primaryKey;autoIncrement"`
+	IPAddress    string `gorm:"uniqueIndex;not null;index:idx_ip_tag_lookup"`
+	FriendlyName string `gorm:"type:varchar(255)"`
+	Tags         string `gorm:"type:text"` // JSON array of tags for filtering
+
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+}
+
+func (IPTag) TableName() string {
+	return "ip_tags"
+}

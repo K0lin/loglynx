@@ -19,7 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-package database
+package repositories
 
 import (
 	"loglynx/internal/database/models"
@@ -27,12 +27,46 @@ import (
 	"gorm.io/gorm"
 )
 
-func RunMigrations(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.LogSource{},
-		&models.HTTPRequest{},
-		&models.IPReputation{},
-		&models.IPTag{},
-		&models.ComparisonSnapshot{},
-	)
+// IPTagRepository handles CRUD operations for IP tags
+type IPTagRepository interface {
+	Create(tag *models.IPTag) error
+	Update(tag *models.IPTag) error
+	Delete(ip string) error
+	FindByIP(ip string) (*models.IPTag, error)
+	FindAll() ([]*models.IPTag, error)
+}
+
+type ipTagRepository struct {
+	db *gorm.DB
+}
+
+func NewIPTagRepository(db *gorm.DB) IPTagRepository {
+	return &ipTagRepository{db: db}
+}
+
+func (r *ipTagRepository) Create(tag *models.IPTag) error {
+	return r.db.Create(tag).Error
+}
+
+func (r *ipTagRepository) Update(tag *models.IPTag) error {
+	return r.db.Save(tag).Error
+}
+
+func (r *ipTagRepository) Delete(ip string) error {
+	return r.db.Where("ip_address = ?", ip).Delete(&models.IPTag{}).Error
+}
+
+func (r *ipTagRepository) FindByIP(ip string) (*models.IPTag, error) {
+	var tag models.IPTag
+	err := r.db.Where("ip_address = ?", ip).First(&tag).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tag, nil
+}
+
+func (r *ipTagRepository) FindAll() ([]*models.IPTag, error) {
+	var tags []*models.IPTag
+	err := r.db.Find(&tags).Error
+	return tags, err
 }

@@ -174,6 +174,45 @@
     color: var(--loglynx-text-dark);
 }
 
+.sidebar-version-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 0.55rem;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--loglynx-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
+.sidebar-version-status a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.sidebar-version-status.is-current {
+    border-color: rgba(40, 167, 69, 0.28);
+    background: rgba(40, 167, 69, 0.09);
+    color: #75d48a;
+}
+
+.sidebar-version-status.is-outdated {
+    border-color: rgba(244, 99, 25, 0.35);
+    background: rgba(244, 99, 25, 0.12);
+    color: var(--loglynx-primary-light);
+}
+
+.sidebar-version-status.is-unknown,
+.sidebar-version-status.is-checking {
+    color: var(--loglynx-text-dark);
+}
+
 /* Main Content Area */
 .main-content {
     flex: 1;
@@ -1459,6 +1498,13 @@
     gap: var(--space-sm);
 }
 
+.divider-v {
+    display: inline-block;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 var(--space-xs);
+}
+
 .card-header {
     display: flex;
     align-items: center;
@@ -1887,6 +1933,99 @@
 
 .app-footer a:hover {
     color: var(--loglynx-primary-light);
+}
+
+/* Version Update Notice */
+.version-update-notice {
+    position: fixed;
+    left: 18px;
+    bottom: 82px;
+    z-index: 1060;
+    width: min(320px, calc(100vw - 36px));
+    padding: 14px 16px 12px;
+    background: var(--loglynx-card);
+    color: var(--loglynx-text-light);
+    border: 1px solid rgba(244, 99, 25, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
+    animation: versionNoticeIn 180ms ease-out;
+}
+
+.version-update-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--loglynx-text-muted);
+}
+
+.version-update-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--loglynx-text-light);
+}
+
+.version-update-notice-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-right: 28px;
+    color: var(--loglynx-primary-light);
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.version-update-notice-body {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.4;
+    color: var(--loglynx-text-light);
+}
+
+.version-update-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    color: var(--loglynx-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.version-update-option input {
+    margin-top: 2px;
+}
+
+.version-update-actions {
+    margin-top: 10px;
+}
+
+.version-update-actions a {
+    color: var(--loglynx-primary-light);
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.version-update-actions a:hover {
+    color: var(--loglynx-primary);
+}
+
+@keyframes versionNoticeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* ============================================

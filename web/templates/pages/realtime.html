@@ -42,6 +42,13 @@
             <p class="page-description">Live metrics streaming every 1 second</p>
         </div>
         <div class="page-actions">
+            <div class="traffic-toggle-group me-3">
+                <label class="traffic-checkbox-label">
+                    <input type="checkbox" id="enable-tagging" class="traffic-toggle-checkbox" onchange="toggleTagging(this.checked)">
+                    <span class="traffic-toggle-slider"></span>
+                    <span class="traffic-toggle-text">Enable IP Tagging</span>
+                </label>
+            </div>
             <button class="btn btn-outline btn-sm" id="reconnectStream">
                 <i class="fas fa-plug"></i> Reconnect Stream
             </button>
@@ -64,19 +71,32 @@
     </div>
 
     <div class="stat-card">
+        <div class="stat-label" data-tooltip-key="globalBandwidth" data-tooltip-title="Current Bandwidth Usage">Bandwidth</div>
+        <div class="stat-value text-warning" id="liveBandwidth">0.0</div>
+        <div class="stat-subtitle" id="liveBandwidthUnit">KB/s</div>
+    </div>
+
+    <div class="stat-card">
         <div class="stat-label" data-tooltip-key="avgResponseTime" data-tooltip-title="Avg Response Time">Avg Response Time</div>
         <div class="stat-value text-info" id="liveAvgResponse">0</div>
         <div class="stat-subtitle">Last minute</div>
     </div>
+</div>
 
-    <div class="stat-card">
-        <div class="stat-label" data-tooltip-key="statusCodes" data-tooltip-title="Status Distribution">Status Distribution</div>
-        <div style="font-size: 0.9rem; margin-top: 10px;">
-            <span class="text-success">2xx: <strong id="live2xx">0</strong></span> |
-            <span class="text-warning">4xx: <strong id="live4xx">0</strong></span> |
-            <span class="text-danger">5xx: <strong id="live5xx">0</strong></span>
+<!-- Status Distribution (Long Horizontal Bar) -->
+<div class="stat-card mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="stat-label mb-0"><i class="fas fa-traffic-light me-2"></i>Status Distribution <small class="text-muted ms-2">(Last minute)</small></div>
+        <div class="d-flex gap-4">
+            <span class="text-success small">2xx: <strong id="live2xx">0</strong></span>
+            <span class="text-warning small">4xx: <strong id="live4xx">0</strong></span>
+            <span class="text-danger small">5xx: <strong id="live5xx">0</strong></span>
         </div>
-        <div class="stat-subtitle">Last minute</div>
+    </div>
+    <div class="progress" style="height: 12px; background-color: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden;">
+        <div id="bar2xx" class="progress-bar bg-success" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        <div id="bar4xx" class="progress-bar bg-warning" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        <div id="bar5xx" class="progress-bar bg-danger" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
     </div>
 </div>
 
@@ -134,8 +154,8 @@
                 <thead>
                     <tr>
                         <th>IP Address</th>
-                        <th>Country</th>
-                        <th class="text-end">Req/Sec</th>
+                        <th>Bandwidth</th>
+                        <th class="text-end">Req Rate</th>
                     </tr>
                 </thead>
                 <tbody id="topIPsBody">
@@ -145,6 +165,8 @@
         </div>
     </div>
 </div>
+
+{{template "tag-input.html" .}}
 
 <!-- Recent Requests (Live Updates) -->
 <div class="card">
@@ -251,6 +273,7 @@
     </div>
 
     {{template "scripts-common" .}}
+    <script src="/static/js/tag-management.js"></script>
     <script src="/static/js/pages/realtime.js"></script>
     <script src="/static/js/core/country-data.js"></script>
     <script>

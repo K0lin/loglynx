@@ -18,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.25.7'
+          go-version: '1.25.11'
 
       - name: Cache Go build
         uses: actions/cache@v4
@@ -34,7 +34,7 @@ jobs:
         run: go mod download
 
       - name: Build
-        run: go build ./...
+        run: go build -ldflags "-X 'loglynx/internal/telemetry.BuildEndpoint=${{ secrets.LOGLYNX_USAGE_TELEMETRY_ENDPOINT }}'" ./...
 
       - name: Vet
         run: go vet ./...

@@ -48,6 +48,9 @@ type Config struct {
 
 	// Performance Configuration
 	Performance PerformanceConfig
+
+	// Anonymous usage telemetry
+	Telemetry TelemetryConfig
 }
 
 // DatabaseConfig contains database-related settings
@@ -105,6 +108,13 @@ type PerformanceConfig struct {
 	WorkerPoolSize          int
 }
 
+// TelemetryConfig contains anonymous usage telemetry settings.
+type TelemetryConfig struct {
+	Enabled  bool
+	Endpoint string
+	Interval time.Duration
+}
+
 // Load reads configuration from .env file and environment variables
 func Load() (*Config, error) {
 	// Try to load .env file (ignore error if file doesn't exist)
@@ -149,13 +159,17 @@ func Load() (*Config, error) {
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
 			TimeZone:            getEnv("TIMEZONE", "UTC"),
 			WidgetEnabled:       getEnvAsBool("WIDGET_ENABLED", false),
-
 		},
 		Performance: PerformanceConfig{
 			RealtimeMetricsInterval: getEnvAsDuration("METRICS_INTERVAL", 1*time.Second),
 			GeoIPCacheSize:          getEnvAsInt("GEOIP_CACHE_SIZE", 10000),
 			BatchSize:               getEnvAsInt("BATCH_SIZE", 1000),
 			WorkerPoolSize:          getEnvAsInt("WORKER_POOL_SIZE", 4),
+		},
+		Telemetry: TelemetryConfig{
+			Enabled:  getEnvAsBool("LOGLYNX_USAGE_TELEMETRY", true),
+			Endpoint: getEnv("LOGLYNX_USAGE_TELEMETRY_ENDPOINT", ""),
+			Interval: getEnvAsDuration("LOGLYNX_USAGE_TELEMETRY_INTERVAL", 1*time.Hour),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}

@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2026 Kolin
+// # Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
 package realtime
 
 import (
@@ -56,6 +55,7 @@ type MetricsCollector struct {
 	mu                sync.RWMutex
 	requestRate       float64 // requests per second
 	errorRate         float64 // errors per second
+	bandwidthRate     float64 // bytes per second
 	avgResponseTime   float64 // milliseconds
 	activeConnections int
 	last2xxCount      int64
@@ -66,6 +66,8 @@ type MetricsCollector struct {
 
 	// Cached per-service metrics (global)
 	perServiceMetrics []ServiceMetrics
+	topIPs            []IPMetrics
+	latestRequests    []RequestSummary
 
 	// Cached JSON for global metrics (optimization)
 	cachedJSON []byte
@@ -79,6 +81,7 @@ type MetricsCollector struct {
 type RealtimeMetrics struct {
 	RequestRate       float64          `json:"request_rate"`      // req/sec
 	ErrorRate         float64          `json:"error_rate"`        // errors/sec
+	BandwidthRate     float64          `json:"bandwidth_rate"`    // bytes/sec
 	AvgResponseTime   float64          `json:"avg_response_time"` // ms
 	ActiveConnections int              `json:"active_connections"`
 	Status2xx         int64            `json:"status_2xx"`
@@ -106,9 +109,11 @@ type RequestSummary struct {
 
 // IPMetrics represents metrics for a single IP
 type IPMetrics struct {
-	IP          string  `json:"ip"`
-	Country     string  `json:"country"`
-	RequestRate float64 `json:"request_rate"`
+	IP            string  `json:"ip"`
+	Country       string  `json:"country"`
+	RequestRate   float64 `json:"request_rate"`
+	Bandwidth     int64   `json:"bandwidth"`      // Total bytes in window
+	BandwidthRate float64 `json:"bandwidth_rate"` // bytes/sec
 }
 
 // NewMetricsCollector creates a new real-time metrics collector
@@ -143,9 +148,9 @@ func (m *MetricsCollector) Ingest(req *models.HTTPRequest) {
 	})
 
 	// Insert at correct position
-	m.requestBuffer = append(m.requestBuffer, nil)           // Expand slice
+	m.requestBuffer = append(m.requestBuffer, nil)                   // Expand slice
 	copy(m.requestBuffer[insertIdx+1:], m.requestBuffer[insertIdx:]) // Shift right
-	m.requestBuffer[insertIdx] = req                         // Insert
+	m.requestBuffer[insertIdx] = req                                 // Insert
 }
 
 // Start begins collecting metrics at regular intervals
@@ -184,6 +189,16 @@ func (m *MetricsCollector) SetActiveConnections(n int) {
 	m.mu.Unlock()
 }
 
+// AdjustActiveConnections increments or decrements the active connection count.
+func (m *MetricsCollector) AdjustActiveConnections(delta int) {
+	m.mu.Lock()
+	m.activeConnections += delta
+	if m.activeConnections < 0 {
+		m.activeConnections = 0
+	}
+	m.mu.Unlock()
+}
+
 // GetCachedJSON returns the cached JSON representation of global metrics
 func (m *MetricsCollector) GetCachedJSON() []byte {
 	m.mu.RLock()
@@ -199,6 +214,11 @@ func (m *MetricsCollector) collectMetrics() {
 	// Use a 5-second sliding window for smoother rates and latency tolerance
 	windowDuration := 5 * time.Second
 	windowStart := now.Add(-windowDuration)
+
+	// Wave 2: Raise timeout for Top Active Clients to 15 seconds
+	ipWindowDuration := 15 * time.Second
+	ipWindowStart := now.Add(-ipWindowDuration)
+
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	m.bufferMu.Lock()
@@ -235,6 +255,11 @@ func (m *MetricsCollector) collectMetrics() {
 		lastRequestTime  time.Time
 	)
 
+	// Also prepare data for Top IPs using the 15s window
+	ipCounts := make(map[string]int)
+	ipBandwidth := make(map[string]int64)
+	ipCountries := make(map[string]string)
+
 	for _, req := range m.requestBuffer {
 		// For rates (last 5s)
 		if req.Timestamp.After(windowStart) {
@@ -245,6 +270,15 @@ func (m *MetricsCollector) collectMetrics() {
 			}
 			if req.Timestamp.After(lastRequestTime) {
 				lastRequestTime = req.Timestamp
+			}
+		}
+
+		// For Top IPs (last 15s)
+		if req.Timestamp.After(ipWindowStart) {
+			ipCounts[req.ClientIP]++
+			ipBandwidth[req.ClientIP] += req.ResponseSize
+			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
+				ipCountries[req.ClientIP] = req.GeoCountry
 			}
 		}
 
@@ -266,51 +300,42 @@ func (m *MetricsCollector) collectMetrics() {
 	}
 
 	// Calculate rates per second
-	// Use fixed window duration if traffic is active, zero if traffic stopped
 	requestRate := 0.0
 	errorRate := 0.0
+	globalBwRate := 0.0
 
 	if totalCountWindow > 0 && !lastRequestTime.IsZero() {
-		// Check if traffic is still active (last request within window)
 		timeSinceLastRequest := now.Sub(lastRequestTime)
-
 		if timeSinceLastRequest <= windowDuration {
-			// Traffic is active - calculate rate over the full window
-			// This gives accurate req/s even for bursty traffic
 			requestRate = float64(totalCountWindow) / windowDuration.Seconds()
 			errorRate = float64(errorCountWindow) / windowDuration.Seconds()
-		}
-		// else: timeSinceLastRequest > windowDuration means traffic stopped, rates stay 0
-	}
 
-	// Calculate Top IPs (last 5s)
-	ipCounts := make(map[string]int)
-	ipCountries := make(map[string]string)
-
-	for _, req := range m.requestBuffer {
-		if req.Timestamp.After(windowStart) {
-			// Check filters if any (this logic is shared with GetMetricsWithFilters)
-			// But here we are in collectMetrics which is global.
-			// Wait, collectMetrics is global. GetMetricsWithFilters is per-request.
-			// We should calculate TopIPs here for the global cache.
-
-			ipCounts[req.ClientIP]++
-			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
-				ipCountries[req.ClientIP] = req.GeoCountry
+			// Calculate global bandwidth rate (sum of all BW in 15s window? No, use 5s window for rate)
+			var totalBwWindow int64
+			for _, req := range m.requestBuffer {
+				if req.Timestamp.After(windowStart) {
+					totalBwWindow += req.ResponseSize
+				}
 			}
+			globalBwRate = float64(totalBwWindow) / windowDuration.Seconds()
 		}
 	}
 
+	// Calculate Top IPs (last 15s)
 	var topIPs []IPMetrics
 	for ip, count := range ipCounts {
-		rate := float64(count) / windowDuration.Seconds()
-		// Only include IPs with meaningful activity (> 0.1 req/s)
-		// This prevents showing nearly-inactive IPs that are about to expire from window
-		if rate > 0.1 {
+		// Use ipWindowDuration for rate calculation consistency
+		rate := float64(count) / ipWindowDuration.Seconds()
+		bwRate := float64(ipBandwidth[ip]) / ipWindowDuration.Seconds()
+
+		// Lower threshold to 0.05 to keep IPs with at least 1 request in 15s (1/15 = 0.066)
+		if rate > 0.05 {
 			topIPs = append(topIPs, IPMetrics{
-				IP:          ip,
-				Country:     ipCountries[ip],
-				RequestRate: rate,
+				IP:            ip,
+				Country:       ipCountries[ip],
+				RequestRate:   rate,
+				Bandwidth:     ipBandwidth[ip],
+				BandwidthRate: bwRate,
 			})
 		}
 	}
@@ -325,27 +350,29 @@ func (m *MetricsCollector) collectMetrics() {
 		topIPs = topIPs[:10]
 	}
 
-	// If no recent requests (>windowDuration old), force all metrics to zero immediately
+	// If no recent requests (>windowDuration old), force global rates to zero immediately
+	// But TopIPs stay until ipWindowDuration
 	if !lastRequestTime.IsZero() {
 		timeSinceLastRequest := now.Sub(lastRequestTime)
 		if timeSinceLastRequest > windowDuration {
 			requestRate = 0.0
 			errorRate = 0.0
-			topIPs = nil
-			// Also reset status counts for zero-state
+			// Reset status counts for zero-state
 			status2xx = 0
 			status4xx = 0
 			status5xx = 0
 		}
+
+		if timeSinceLastRequest > ipWindowDuration {
+			topIPs = nil
+		}
 	} else {
-		// No requests in window at all
 		requestRate = 0.0
 		errorRate = 0.0
 		topIPs = nil
 		status2xx = 0
 		status4xx = 0
 		status5xx = 0
-		// Use previous lastRequestTime if available
 		m.mu.RLock()
 		lastRequestTime = m.lastRequestTime
 		m.mu.RUnlock()
@@ -361,6 +388,7 @@ func (m *MetricsCollector) collectMetrics() {
 	metrics := &RealtimeMetrics{
 		RequestRate:       requestRate,
 		ErrorRate:         errorRate,
+		BandwidthRate:     globalBwRate,
 		AvgResponseTime:   avgRespTime,
 		ActiveConnections: m.activeConnections,
 		Status2xx:         status2xx,
@@ -378,8 +406,11 @@ func (m *MetricsCollector) collectMetrics() {
 	// Update metrics with lock
 	m.mu.Lock()
 	m.perServiceMetrics = perServiceMetrics
+	m.topIPs = topIPs
+	m.latestRequests = latestRequests
 	m.requestRate = requestRate
 	m.errorRate = errorRate
+	m.bandwidthRate = globalBwRate
 	m.avgResponseTime = avgRespTime
 	m.last2xxCount = status2xx
 	m.last4xxCount = status4xx
@@ -406,12 +437,15 @@ func (m *MetricsCollector) GetMetrics() *RealtimeMetrics {
 	return &RealtimeMetrics{
 		RequestRate:       m.requestRate,
 		ErrorRate:         m.errorRate,
+		BandwidthRate:     m.bandwidthRate,
 		AvgResponseTime:   m.avgResponseTime,
 		ActiveConnections: m.activeConnections,
 		Status2xx:         m.last2xxCount,
 		Status4xx:         m.last4xxCount,
 		Status5xx:         m.last5xxCount,
 		Timestamp:         time.Now(), // Use current time, not lastUpdate
+		TopIPs:            m.topIPs,
+		LatestRequests:    m.latestRequests,
 		PerService:        m.perServiceMetrics,
 	}
 }
@@ -424,7 +458,7 @@ type ServiceFilter struct {
 
 // ExcludeIPFilter represents IP exclusion filter
 type ExcludeIPFilter struct {
-	ClientIP        string
+	ClientIPs       []string
 	ExcludeServices []ServiceFilter
 }
 
@@ -439,6 +473,11 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	now := time.Now()
 	windowDuration := 5 * time.Second
 	windowStart := now.Add(-windowDuration)
+
+	// Wave 2: Raise timeout for Top Active Clients to 15 seconds
+	ipWindowDuration := 15 * time.Second
+	ipWindowStart := now.Add(-ipWindowDuration)
+
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 
 	// If no filters specified, return global metrics
@@ -457,21 +496,27 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		status4xx        int64
 		status5xx        int64
 		count1m          int64
+		totalBwWindow    int64
 		lastRequestTime  time.Time
 		filteredRequests []*models.HTTPRequest
 	)
+
+	// Also prepare data for Top IPs using the 15s window
+	ipCounts := make(map[string]int)
+	ipBandwidth := make(map[string]int64)
+	ipCountries := make(map[string]string)
 
 	// Convert local ServiceFilter to repositories.ServiceFilter for helper compatibility
 	repoFilters := make([]repositories.ServiceFilter, len(serviceFilters))
 	for i, f := range serviceFilters {
 		repoFilters[i] = repositories.ServiceFilter{Name: f.Name, Type: f.Type}
 	}
-	
+
 	// Convert local ExcludeIPFilter to repositories.ExcludeIPFilter
 	var repoExcludeIP *repositories.ExcludeIPFilter
 	if excludeIPFilter != nil {
 		repoExcludeIP = &repositories.ExcludeIPFilter{
-			ClientIP: excludeIPFilter.ClientIP,
+			ClientIPs:       excludeIPFilter.ClientIPs,
 			ExcludeServices: make([]repositories.ServiceFilter, len(excludeIPFilter.ExcludeServices)),
 		}
 		for i, f := range excludeIPFilter.ExcludeServices {
@@ -497,11 +542,21 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		if req.Timestamp.After(windowStart) {
 			totalCountWindow++
 			totalRespTime += req.ResponseTimeMs
+			totalBwWindow += req.ResponseSize
 			if req.StatusCode >= 400 {
 				errorCountWindow++
 			}
 			if req.Timestamp.After(lastRequestTime) {
 				lastRequestTime = req.Timestamp
+			}
+		}
+
+		// For Top IPs (last 15s)
+		if req.Timestamp.After(ipWindowStart) {
+			ipCounts[req.ClientIP]++
+			ipBandwidth[req.ClientIP] += req.ResponseSize
+			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
+				ipCountries[req.ClientIP] = req.GeoCountry
 			}
 		}
 
@@ -527,6 +582,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	// Calculate rates similar to global metrics for consistency
 	requestRate := 0.0
 	errorRate := 0.0
+	bandwidthRate := 0.0
 
 	if totalCountWindow > 0 && !lastRequestTime.IsZero() {
 		// Check if traffic is still active (last request within window)
@@ -536,43 +592,26 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 			// Traffic is active - calculate rate over the full window
 			requestRate = float64(totalCountWindow) / windowDuration.Seconds()
 			errorRate = float64(errorCountWindow) / windowDuration.Seconds()
+			bandwidthRate = float64(totalBwWindow) / windowDuration.Seconds()
 		}
 		// else: traffic stopped, rates stay 0
 	}
 
-	// Calculate Top IPs (last 5s)
-	ipCounts := make(map[string]int)
-	ipCountries := make(map[string]string)
-
-	for _, req := range m.requestBuffer {
-		// Check host filter
-		if host != "" && !strings.Contains(req.BackendName, strings.ReplaceAll(host, " ", "-")) {
-			continue
-		}
-
-		// Check other filters
-		if !m.matchesFilters(req, repoFilters, repoExcludeIP) {
-			continue
-		}
-
-		if req.Timestamp.After(windowStart) {
-			ipCounts[req.ClientIP]++
-			if _, ok := ipCountries[req.ClientIP]; !ok && req.GeoCountry != "" {
-				ipCountries[req.ClientIP] = req.GeoCountry
-			}
-		}
-	}
-
+	// Calculate Top IPs (last 15s)
 	var topIPs []IPMetrics
 	for ip, count := range ipCounts {
-		rate := float64(count) / windowDuration.Seconds()
-		// Only include IPs with meaningful activity (> 0.1 req/s)
-		// This prevents showing nearly-inactive IPs that are about to expire from window
-		if rate > 0.1 {
+		// Use ipWindowDuration for rate calculation consistency
+		rate := float64(count) / ipWindowDuration.Seconds()
+		bwRate := float64(ipBandwidth[ip]) / ipWindowDuration.Seconds()
+
+		// Lower threshold to 0.05 to keep IPs with at least 1 request in 15s
+		if rate > 0.05 {
 			topIPs = append(topIPs, IPMetrics{
-				IP:          ip,
-				Country:     ipCountries[ip],
-				RequestRate: rate,
+				IP:            ip,
+				Country:       ipCountries[ip],
+				RequestRate:   rate,
+				Bandwidth:     ipBandwidth[ip],
+				BandwidthRate: bwRate,
 			})
 		}
 	}
@@ -587,16 +626,20 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 		topIPs = topIPs[:10]
 	}
 
-	// If no recent requests (>windowDuration old), force all metrics to zero immediately
+	// If no recent requests (>windowDuration old), force global rates to zero immediately
 	if !lastRequestTime.IsZero() {
 		timeSinceLastRequest := now.Sub(lastRequestTime)
 		if timeSinceLastRequest > windowDuration {
 			requestRate = 0.0
 			errorRate = 0.0
-			topIPs = nil
+			bandwidthRate = 0.0
 			status2xx = 0
 			status4xx = 0
 			status5xx = 0
+		}
+
+		if timeSinceLastRequest > ipWindowDuration {
+			topIPs = nil
 		}
 	} else {
 		// No requests at all
@@ -617,6 +660,7 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 	return &RealtimeMetrics{
 		RequestRate:       requestRate,
 		ErrorRate:         errorRate,
+		BandwidthRate:     bandwidthRate,
 		AvgResponseTime:   avgRespTime,
 		ActiveConnections: 0, // Not tracked per filter
 		Status2xx:         status2xx,
@@ -631,14 +675,15 @@ func (m *MetricsCollector) GetMetricsWithFilters(host string, serviceFilters []S
 
 // ServiceMetrics represents metrics for a single service
 type ServiceMetrics struct {
-	ServiceName string  `json:"service_name"`
-	RequestRate float64 `json:"request_rate"` // req/sec
+	ServiceName   string  `json:"service_name"`
+	RequestRate   float64 `json:"request_rate"`   // req/sec
+	BandwidthRate float64 `json:"bandwidth_rate"` // bytes/sec
 }
 
 // GetPerServiceMetrics returns real-time metrics for each service
 func (m *MetricsCollector) GetPerServiceMetrics(filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) []ServiceMetrics {
 	// If no filters, return cached global metrics
-	if len(filters) == 0 && (excludeIP == nil || excludeIP.ClientIP == "") {
+	if len(filters) == 0 && (excludeIP == nil || len(excludeIP.ClientIPs) == 0) {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
 		return m.perServiceMetrics
@@ -657,8 +702,9 @@ func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPReque
 	windowDuration := 5 * time.Second
 	windowStart := now.Add(-windowDuration)
 
-	// Map to aggregate counts by service
+	// Map to aggregate counts and bandwidth by service
 	serviceCounts := make(map[string]int64)
+	serviceBandwidth := make(map[string]int64)
 
 	for _, req := range buffer {
 		if !req.Timestamp.After(windowStart) {
@@ -682,6 +728,7 @@ func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPReque
 
 		if serviceName != "" {
 			serviceCounts[serviceName]++
+			serviceBandwidth[serviceName] += req.ResponseSize
 		}
 	}
 
@@ -689,8 +736,9 @@ func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPReque
 	metrics := make([]ServiceMetrics, 0, len(serviceCounts))
 	for name, count := range serviceCounts {
 		metrics = append(metrics, ServiceMetrics{
-			ServiceName: name,
-			RequestRate: float64(count) / windowDuration.Seconds(),
+			ServiceName:   name,
+			RequestRate:   float64(count) / windowDuration.Seconds(),
+			BandwidthRate: float64(serviceBandwidth[name]) / windowDuration.Seconds(),
 		})
 	}
 
@@ -700,15 +748,17 @@ func (m *MetricsCollector) calculatePerServiceMetrics(buffer []*models.HTTPReque
 // matchesFilters checks if a request matches the given filters
 func (m *MetricsCollector) matchesFilters(req *models.HTTPRequest, filters []repositories.ServiceFilter, excludeIP *repositories.ExcludeIPFilter) bool {
 	// Apply IP exclusion
-	if excludeIP != nil && excludeIP.ClientIP != "" {
-		if req.ClientIP == excludeIP.ClientIP {
-			if len(excludeIP.ExcludeServices) == 0 {
-				return false // Exclude from all
-			}
-			// Check if excluded from this specific service
-			for _, filter := range excludeIP.ExcludeServices {
-				if m.matchesServiceFilter(req, filter) {
-					return false
+	if excludeIP != nil && len(excludeIP.ClientIPs) > 0 {
+		for _, excludedIP := range excludeIP.ClientIPs {
+			if req.ClientIP == excludedIP {
+				if len(excludeIP.ExcludeServices) == 0 {
+					return false // Exclude from all
+				}
+				// Check if excluded from this specific service
+				for _, filter := range excludeIP.ExcludeServices {
+					if m.matchesServiceFilter(req, filter) {
+						return false
+					}
 				}
 			}
 		}
@@ -802,4 +852,3 @@ func (m *MetricsCollector) getLatestRequests(requests []*models.HTTPRequest, lim
 	}
 	return summary
 }
-

@@ -1,0 +1,272 @@
+{{define "compare.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+    <style>
+        .compare-period-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+        .compare-period-card { border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; background: rgba(255, 255, 255, 0.02); }
+        .compare-period-card.is-disabled { opacity: 0.45; }
+        .delta-positive { color: var(--success-color, #28a745); }
+        .delta-negative { color: var(--danger-color, #dc3545); }
+        .delta-neutral { color: var(--text-muted, #9ca3af); }
+        .snapshot-banner { border: 1px solid rgba(244, 99, 25, 0.4); background: rgba(244, 99, 25, 0.08); border-radius: 12px; padding: 0.85rem 1rem; }
+        .share-url-input { font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+                <div class="page-header">
+                    <div class="page-header-top">
+                        <div>
+                            <h2 class="page-title"><i class="fas fa-code-compare"></i> Period Comparison</h2>
+                            <p class="page-description">Compare deploys, incidents, recurring trends, and network changes across 2-4 exact periods.</p>
+                            <div id="smartChangesHeaderBadges" class="d-flex gap-2 flex-wrap align-items-center mt-1" style="display:none!important"></div>
+                        </div>
+                        <div class="page-actions">
+                            <button id="manageSnapshotsBtn" class="btn btn-outline btn-sm" data-bs-toggle="modal" data-bs-target="#snapshotManagerModal">
+                                <i class="fas fa-link"></i> Manage Links
+                            </button>
+                            <button id="exportJsonBtn" class="btn btn-outline btn-sm">
+                                <i class="fas fa-file-code"></i> JSON
+                            </button>
+                            <button id="exportCsvBtn" class="btn btn-outline btn-sm">
+                                <i class="fas fa-file-csv"></i> CSV
+                            </button>
+                            <button id="createSnapshotBtn" class="btn btn-primary btn-sm">
+                                <i class="fas fa-share-nodes"></i> Create Snapshot Link
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="snapshotBanner" class="snapshot-banner mb-4" style="display: none;">
+                    <strong><i class="fas fa-lock"></i> Snapshot mode</strong>
+                    <span class="ms-2">This report is frozen at creation time and does not re-query logs.</span>
+                </div>
+
+                <div id="compareControls" class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title"><i class="fas fa-sliders"></i> Comparison Setup</h5>
+                        <div class="d-flex gap-2 align-items-center">
+                            <button id="toggleCompareSetupBtn" class="btn btn-outline btn-sm" type="button" title="Collapse setup">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                            <select id="presetSelector" class="form-select form-select-sm" style="width: auto;">
+                                <option value="custom">Custom exact periods</option>
+                                <option value="24v24">Last 24h vs previous 24h</option>
+                                <option value="7v7">Last 7d vs previous 7d</option>
+                                <option value="30v30">Last 30d vs previous 30d</option>
+                                <option value="same-hour-week">Today same hours vs last week</option>
+                            </select>
+                            <select id="periodCount" class="form-select form-select-sm" style="width: auto;">
+                                <option value="2" selected>2 periods</option>
+                                <option value="3">3 periods</option>
+                                <option value="4">4 periods</option>
+                            </select>
+                            <select id="topLimit" class="form-select form-select-sm" style="width: auto;">
+                                <option value="5">Top 5</option>
+                                <option value="10" selected>Top 10</option>
+                                <option value="20">Top 20</option>
+                                <option value="50">Top 50</option>
+                            </select>
+                            <button id="runCompareBtn" class="btn btn-primary btn-sm"><i class="fas fa-chart-line"></i> Compare</button>
+                        </div>
+                    </div>
+                    <div id="compareSetupBody" class="card-body">
+                        <div id="periodEditor" class="compare-period-grid"></div>
+                    </div>
+                </div>
+
+                <div id="compareEmpty" class="card mb-4">
+                    <div class="card-body text-center py-5 text-muted">
+                        <i class="fas fa-code-compare mb-3" style="font-size: 2.5rem;"></i>
+                        <h5>Choose periods and run a comparison</h5>
+                        <p class="mb-0">Use presets for quick before/after analysis or exact date+hour ranges for deploy investigations.</p>
+                    </div>
+                </div>
+
+                <div id="compareResults" style="display: none;">
+                    <div id="kpiDeltaCards" class="grid grid-cols-4 mb-4"></div>
+
+                    <div class="d-flex align-items-center gap-3 flex-wrap mb-4 px-1 py-2" style="border-bottom: 1px solid var(--border-color);">
+                        <span class="text-muted small fw-semibold"><i class="fas fa-crosshairs me-1"></i>Focus on service:</span>
+                        <select id="serviceFocusSelect" class="form-select form-select-sm" style="width: auto; min-width: 160px;">
+                            <option value="__all__">All services</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 mb-4">
+                        <div class="chart-container medium">
+                            <div class="chart-header"><h5 class="chart-title"><i class="fas fa-chart-line"></i> Requests Timeline</h5></div>
+                            <canvas id="requestsCompareChart"></canvas>
+                        </div>
+                        <div class="chart-container medium">
+                            <div class="chart-header"><h5 class="chart-title"><i class="fas fa-stopwatch"></i> Response Time Timeline</h5></div>
+                            <canvas id="responseCompareChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-header"><h5 class="card-title"><i class="fas fa-table-cells-large"></i> Period Summary Matrix</h5></div>
+                        <div class="card-body"><div class="table-responsive"><table id="summaryMatrixTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                    </div>
+
+                    <div class="grid grid-cols-2 mb-4">
+                        <div class="chart-container medium">
+                            <div class="chart-header"><h5 class="chart-title"><i class="fas fa-list-ol"></i> Status Code Comparison</h5></div>
+                            <canvas id="statusCodeStackedChart"></canvas>
+                        </div>
+                        <div class="chart-container medium">
+                            <div class="chart-header"><h5 class="chart-title"><i class="fas fa-mobile-screen"></i> Device Mix Comparison</h5></div>
+                            <canvas id="deviceMixChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-container medium mb-4">
+                        <div class="chart-header"><h5 class="chart-title"><i class="fas fa-layer-group"></i> Top Service Volume</h5></div>
+                        <canvas id="serviceVolumeChart"></canvas>
+                    </div>
+
+                    <div class="grid grid-cols-2 mb-4">
+                        <div class="chart-container medium">
+                            <div class="chart-header"><h5 class="chart-title"><i class="fas fa-chart-column"></i> Aggregate Metrics</h5></div>
+                            <canvas id="aggregateCompareChart"></canvas>
+                        </div>
+                        <div class="chart-container medium">
+                            <div class="chart-header"><h5 class="chart-title"><i class="fas fa-shield-alt"></i> Status Classes</h5></div>
+                            <canvas id="statusCompareChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-container large mb-4">
+                        <div class="chart-header"><h5 class="chart-title"><i class="fas fa-calendar-days"></i> Hour/Day Traffic Heatmap</h5></div>
+                        <canvas id="heatmapCompareChart"></canvas>
+                    </div>
+
+                    <div class="grid grid-cols-2 mb-4">
+                        <div class="card">
+                            <div class="card-header"><h5 class="card-title"><i class="fas fa-route"></i> Top Path Comparison</h5></div>
+                            <div class="card-body"><div class="table-responsive"><table id="pathDiffTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header"><h5 class="card-title"><i class="fas fa-network-wired"></i> Top IP Comparison</h5></div>
+                            <div class="card-body"><div class="table-responsive"><table id="ipDiffTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 mb-4">
+                        <div class="card">
+                            <div class="card-header"><h5 class="card-title"><i class="fas fa-server"></i> Backend Comparison</h5></div>
+                            <div class="card-body"><div class="table-responsive"><table id="backendDiffTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header"><h5 class="card-title"><i class="fas fa-flag"></i> Country Comparison</h5></div>
+                            <div class="card-body"><div class="table-responsive"><table id="countryDiffTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 mb-4">
+                        <div class="card">
+                            <div class="card-header"><h5 class="card-title"><i class="fas fa-layer-group"></i> Service Breakdown</h5></div>
+                            <div class="card-body"><div class="table-responsive"><table id="serviceBreakdownTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header"><h5 class="card-title"><i class="fas fa-mobile-screen"></i> Device Type Comparison</h5></div>
+                            <div class="card-body"><div class="table-responsive"><table id="deviceTypeTable" class="table table-striped table-sm" style="width:100%"></table></div></div>
+                        </div>
+                    </div>
+
+                    <div id="drasticInsights" class="card mb-4"></div>
+                </div>
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    <div class="modal fade" id="shareSnapshotModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="background: var(--loglynx-card); color: #fff;">
+                <div class="modal-header" style="border-color: var(--border-color);">
+                    <h5 class="modal-title"><i class="fas fa-share-nodes"></i> Create Snapshot Link</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label" for="snapshotTitle">Title</label>
+                    <input id="snapshotTitle" class="form-control mb-3" value="Comparison snapshot">
+                    <label class="form-label" for="snapshotExpiresAt">Expires at</label>
+                    <input id="snapshotExpiresAt" type="datetime-local" class="form-control mb-3">
+                    <small class="text-muted">The link stores the current report data and will not reprocess logs when opened.</small>
+                    <div id="shareUrlBox" class="mt-3" style="display:none;">
+                        <label class="form-label" for="shareUrl">Share URL</label>
+                        <div class="input-group">
+                            <input id="shareUrl" class="form-control share-url-input" readonly>
+                            <button id="copyShareUrlBtn" class="btn btn-outline" type="button">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-color: var(--border-color);">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button id="confirmCreateSnapshotBtn" type="button" class="btn btn-primary">Create Link</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="snapshotManagerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content" style="background: var(--loglynx-card); color: #fff;">
+                <div class="modal-header" style="border-color: var(--border-color);">
+                    <h5 class="modal-title"><i class="fas fa-link"></i> Snapshot Links</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive"><table id="snapshotTable" class="table table-striped table-sm" style="width:100%"></table></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="insightDetailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content" style="background: var(--loglynx-card); color: #fff;">
+                <div class="modal-header" style="border-color: var(--border-color);">
+                    <h5 class="modal-title" id="insightModalTitle"></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="insightModalBody"></div>
+                <div class="modal-footer" style="border-color: var(--border-color);">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+    <script>
+        window.LogLynxCompareSnapshotToken = "{{if .SnapshotToken}}{{.SnapshotToken}}{{end}}";
+    </script>
+    <script src="/static/js/pages/compare.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            LogLynxUtils.setActiveNavItem('compare');
+        });
+    </script>
+</body>
+</html>
+{{end}}

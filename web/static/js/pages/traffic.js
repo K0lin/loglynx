@@ -31,6 +31,7 @@ let trafficByHourChart, trafficByDayChart;
 let currentTimeRange = LogLynxUtils.getPreferredTimeRangeHours(168); // Default 7 days
 let currentHeatmapDays = 7;
 let allTrafficData = {};
+let currentDrilldown = null;
 
 function getHeatmapDaysForRange(hours) {
     if (hours === 0) return 30; // All time -> cap at 30 days for heatmap
@@ -275,6 +276,19 @@ function initTrafficHeatmapChart() {
                     }
                 }
             }
+        },
+        onClick: (event, elements, chart) => {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (!points.length) return;
+            const point = chart.data.datasets[points[0].datasetIndex].data[points[0].index];
+            if (!point || !point.v) return;
+            showTrafficDrilldown({
+                type: 'time_bucket',
+                title: `${point.y} at ${point.x}`,
+                filters: { day_of_week: point.dayOfWeek, hour: point.hour },
+                sort: 'hits',
+                subtitle: `Top IPs active on ${point.y} around ${point.x}`
+            });
         }
     });
 }
@@ -321,6 +335,21 @@ function initDeviceTypeChart() {
                 LogLynxCharts.colors.warning
             ]
         }]
+    }, {
+        onClick: (event, elements, chart) => {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (!points.length) return;
+            const label = chart.data.labels[points[0].index];
+            const value = chart.data.datasets[0].data[points[0].index];
+            if (!value) return;
+            showTrafficDrilldown({
+                type: label.toLowerCase(),
+                title: `${label} Traffic`,
+                filters: { device_type: label.toLowerCase() },
+                sort: 'bandwidth',
+                subtitle: `Top IPs using ${label.toLowerCase()} clients`
+            });
+        }
     });
 }
 
@@ -398,8 +427,24 @@ function initTopCountriesPieChart() {
             backgroundColor: LogLynxCharts.colors.chartPalette
         }]
     }, {
-        cutout: '50%'
+        cutout: '50%',
+        onClick: (event, elements, chart) => {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (!points.length) return;
+            const country = dataCountryAt(points[0].index);
+            if (!country) return;
+            showTrafficDrilldown({
+                title: `${country.country || 'Unknown'} Traffic`,
+                filters: { country: country.country },
+                sort: 'bandwidth',
+                subtitle: `Top IPs from ${country.country_name || country.country || 'Unknown'}`
+            });
+        }
     });
+}
+
+function dataCountryAt(index) {
+    return (allTrafficData.countries || [])[index] || null;
 }
 
 // Update top countries pie chart
@@ -439,7 +484,7 @@ function updateTopCountriesTable(data) {
         data.forEach((item, index) => {
             const percentage = total > 0 ? ((item.hits / total) * 100).toFixed(1) : 0;
             html += `
-                <tr>
+                <tr class="traffic-country-row" data-country="${item.country || ''}" data-country-name="${item.country_name || ''}" style="cursor: pointer;">
                     <td>${index + 1}</td>
                      <td>
                         ${countryCodeToFlag(item.country, item.country)}
@@ -463,6 +508,7 @@ function updateTopCountriesTable(data) {
     }
 
     $('#topCountriesTable').html(html);
+    populateDrilldownCountryOptions(data || []);
     
     // Update total countries count
     $('#totalCountries').text(data && data.length > 0 ? data.length : 0);
@@ -479,7 +525,13 @@ function updateTopIPsTable(data) {
             html += `
                 <tr>
                     <td>${index + 1}</td>
-                    <td><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></td>
+                    <td>
+                        <div class="tag-input-container" style="display: inline-block;">
+                            <span class="ip-display" data-ip="${item.ip_address}" style="display: inline;"><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></span>
+                            <div class="tag-chips" data-ip="${item.ip_address}" style="display: inline;"></div>
+                            <button class="edit-tag-btn" data-ip="${item.ip_address}" onclick="openTagModal('${item.ip_address}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                        </div>
+                    </td>
                     <td>${countryCodeToFlag(item.country, item.country) || '<i class="fa fa-flag"></i>'} ${countryToContinentMap[item.country]?.name || 'Unknown'}</td>
                     <td>${item.city || 'Unknown'}</td>
                     <td>${LogLynxUtils.formatNumber(item.hits)}</td>
@@ -490,6 +542,10 @@ function updateTopIPsTable(data) {
     }
 
     $('#topIPsTable').html(html);
+
+    if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+        toggleTagging(true);
+    }
 }
 
 // Initialize ASN DataTable
@@ -537,7 +593,7 @@ function initASNDataTable() {
             {
                 title: 'ASN',
                 data: 'asn',
-                render: (d) => `<strong>AS${d}</strong>`
+                render: (d) => `<button class="btn btn-link btn-sm p-0 traffic-asn-link" data-asn="${d}" type="button"><strong>AS${d}</strong></button>`
             },
             {
                 title: 'Organization',
@@ -547,6 +603,7 @@ function initASNDataTable() {
             {
                 title: 'Country',
                 data: 'country'
+                ,render: (d) => `${countryCodeToFlag(d, d)} ${d || 'Unknown'}`
             },
             {
                 title: 'Hits',
@@ -586,6 +643,254 @@ function initASNDataTable() {
             emptyTable: 'No ASN data available'
         }
     });
+}
+
+function populateDrilldownCountryOptions(countries) {
+    const select = $('#trafficDrilldownCountry');
+    if (!select.length) return;
+
+    const current = select.val();
+    let html = '<option value="">Select country</option>';
+    countries.forEach(item => {
+        if (!item.country) return;
+        const label = item.country_name || countryToContinentMap[item.country]?.name || item.country;
+        html += `<option value="${item.country}">${countryCodeToFlag(item.country, item.country)} ${item.country} - ${label}</option>`;
+    });
+    select.html(html);
+    if (current) select.val(current);
+}
+
+function renderDrilldownRows(data) {
+    if (!data || data.length === 0) {
+        return '<tr><td colspan="6" class="text-center text-muted">No IPs found for this segment</td></tr>';
+    }
+
+    return data.map((item, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>
+                <div class="tag-input-container" style="display: inline-block;">
+                    <span class="ip-display" data-ip="${item.ip_address}" style="display: inline;"><a href="/ip/${item.ip_address}" class="ip-link"><code>${item.ip_address}</code></a></span>
+                    <div class="tag-chips" data-ip="${item.ip_address}" style="display: inline;"></div>
+                    <button class="edit-tag-btn" data-ip="${item.ip_address}" onclick="openTagModal('${item.ip_address}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                </div>
+            </td>
+            <td>${countryCodeToFlag(item.country, item.country) || '<i class="fa fa-flag"></i>'} ${countryToContinentMap[item.country]?.name || item.country || 'Unknown'}</td>
+            <td>${item.city || 'Unknown'}</td>
+            <td class="text-end">${LogLynxUtils.formatNumber(item.hits || 0)}</td>
+            <td class="text-end">${LogLynxCharts.formatBytes(item.bandwidth || 0)}</td>
+        </tr>
+    `).join('');
+}
+
+async function showTrafficDrilldown(config) {
+    currentDrilldown = {
+        type: config.type || 'custom',
+        title: config.title || 'Traffic Drilldown',
+        subtitle: config.subtitle || 'Top IPs for the selected traffic segment',
+        filters: config.filters || {},
+        sort: config.sort || $('#trafficDrilldownSort').val() || 'hits'
+    };
+
+    syncDrilldownControls(currentDrilldown);
+    $('#trafficDrilldownTitle').text(currentDrilldown.title);
+    $('#trafficDrilldownSubtitle').text(currentDrilldown.subtitle);
+    $('#trafficDrilldownSort').val(currentDrilldown.sort);
+    $('#trafficDrilldownPanel').show();
+    $('#trafficDrilldownTable').html('<tr><td colspan="6" class="text-center text-muted">Loading IP overview...</td></tr>');
+
+    const result = await LogLynxAPI.getTopIPs(50, currentTimeRange, {
+        ...currentDrilldown.filters,
+        sort: currentDrilldown.sort
+    });
+
+    if (result.success) {
+        $('#trafficDrilldownTable').html(renderDrilldownRows(result.data));
+        if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+            toggleTagging(true);
+        }
+    } else {
+        $('#trafficDrilldownTable').html('<tr><td colspan="6" class="text-center text-danger">Failed to load IP overview</td></tr>');
+    }
+
+    document.getElementById('trafficDrilldownPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function getManualDrilldownConfig() {
+    const type = $('#trafficDrilldownType').val() || 'all';
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    switch (type) {
+    case 'bandwidth':
+        return {
+            type,
+            title: 'Bandwidth Overview',
+            subtitle: 'Top IPs sorted by transferred bandwidth',
+            filters: {},
+            sort: 'bandwidth'
+        };
+    case 'desktop':
+    case 'mobile':
+    case 'bot':
+    case 'tablet':
+        return {
+            type,
+            title: `${type.charAt(0).toUpperCase() + type.slice(1)} Traffic`,
+            subtitle: `Top IPs using ${type} clients`,
+            filters: { device_type: type },
+            sort: 'bandwidth'
+        };
+    case 'country': {
+        const country = $('#trafficDrilldownCountry').val();
+        return {
+            type,
+            title: country ? `${country} Traffic` : 'Country Traffic',
+            subtitle: country ? `Top IPs from ${country}` : 'Select a country to inspect IPs',
+            filters: country ? { country } : {},
+            sort: 'bandwidth'
+        };
+    }
+    case 'asn': {
+        const asn = parseInt($('#trafficDrilldownASN').val(), 10);
+        return {
+            type,
+            title: asn ? `AS${asn} Traffic` : 'ASN Traffic',
+            subtitle: asn ? `Top IPs for AS${asn}` : 'Enter an ASN to inspect IPs',
+            filters: asn ? { asn } : {},
+            sort: 'bandwidth'
+        };
+    }
+    case 'time_bucket': {
+        const day = parseInt($('#trafficDrilldownDay').val(), 10);
+        const hour = parseInt($('#trafficDrilldownHour').val(), 10);
+        return {
+            type,
+            title: `${dayNames[day]} at ${hour.toString().padStart(2, '0')}:00`,
+            subtitle: `Top IPs active on ${dayNames[day]} around ${hour.toString().padStart(2, '0')}:00`,
+            filters: { day_of_week: day, hour },
+            sort: 'hits'
+        };
+    }
+    default:
+        return {
+            type: 'all',
+            title: 'All Traffic',
+            subtitle: 'Top IPs for the selected timeframe',
+            filters: {},
+            sort: 'hits'
+        };
+    }
+}
+
+function syncDrilldownControls(drilldown) {
+    if (!drilldown) return;
+
+    if (drilldown.type && drilldown.type !== 'custom') {
+        $('#trafficDrilldownType').val(drilldown.type);
+    }
+    if (drilldown.filters?.country) {
+        $('#trafficDrilldownType').val('country');
+        $('#trafficDrilldownCountry').val(drilldown.filters.country);
+    }
+    if (drilldown.filters?.device_type) {
+        $('#trafficDrilldownType').val(drilldown.filters.device_type);
+    }
+    if (drilldown.filters?.asn) {
+        $('#trafficDrilldownType').val('asn');
+        $('#trafficDrilldownASN').val(drilldown.filters.asn);
+    }
+    if (drilldown.filters?.day_of_week !== undefined && drilldown.filters?.hour !== undefined) {
+        $('#trafficDrilldownType').val('time_bucket');
+        $('#trafficDrilldownDay').val(drilldown.filters.day_of_week);
+        $('#trafficDrilldownHour').val(drilldown.filters.hour);
+    }
+    updateDrilldownExtraFields();
+}
+
+function updateDrilldownExtraFields() {
+    const type = $('#trafficDrilldownType').val();
+    $('.traffic-drilldown-extra').hide();
+    if (type === 'country') {
+        $('.traffic-drilldown-extra[data-extra="country"]').show();
+    } else if (type === 'asn') {
+        $('.traffic-drilldown-extra[data-extra="asn"]').show();
+    } else if (type === 'time_bucket') {
+        $('.traffic-drilldown-extra[data-extra="time_bucket"]').show();
+    }
+}
+
+function refreshTrafficDrilldown() {
+    if (currentDrilldown) {
+        showTrafficDrilldown({ ...currentDrilldown, sort: $('#trafficDrilldownSort').val() });
+    }
+}
+
+function initTrafficDrilldowns() {
+    $('#openTrafficDrilldown').on('click', () => {
+        $('#trafficDrilldownPanel').show();
+        showTrafficDrilldown(getManualDrilldownConfig());
+    });
+
+    $('#trafficDrilldownType').on('change', function() {
+        updateDrilldownExtraFields();
+        const config = getManualDrilldownConfig();
+        $('#trafficDrilldownSort').val(config.sort);
+    });
+
+    $('#trafficDrilldownApply').on('click', () => {
+        showTrafficDrilldown(getManualDrilldownConfig());
+    });
+
+    $(document).on('click', '.traffic-drilldown-trigger', function() {
+        showTrafficDrilldown({
+            type: $(this).data('device-type') || ($(this).data('drilldown-sort') === 'bandwidth' ? 'bandwidth' : 'all'),
+            title: $(this).data('drilldown-title') || 'Traffic Drilldown',
+            filters: {
+                device_type: $(this).data('device-type') || undefined
+            },
+            sort: $(this).data('drilldown-sort') || 'hits'
+        });
+    });
+
+    $(document).on('click', '.traffic-country-row', function() {
+        const country = $(this).data('country');
+        showTrafficDrilldown({
+            type: 'country',
+            title: `${country || 'Unknown'} Traffic`,
+            filters: { country },
+            sort: 'bandwidth',
+            subtitle: `Top IPs from ${$(this).data('country-name') || country || 'Unknown'}`
+        });
+    });
+
+    $(document).on('click', '.traffic-asn-link', function(event) {
+        event.stopPropagation();
+        const asn = parseInt($(this).data('asn'), 10);
+        const row = $('#asnTable').DataTable().row($(this).closest('tr')).data();
+        showTrafficDrilldown({
+            type: 'asn',
+            title: `AS${asn} Traffic`,
+            filters: { asn },
+            sort: 'bandwidth',
+            subtitle: `Top IPs for ${row?.asn_org || 'selected ASN'} ${row?.country ? '(' + row.country + ')' : ''}`
+        });
+    });
+
+    $('#trafficDrilldownSort').on('change', refreshTrafficDrilldown);
+    $('#trafficDrilldownClose').on('click', () => {
+        currentDrilldown = null;
+        $('#trafficDrilldownPanel').hide();
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('drilldown') === 'bandwidth') {
+        showTrafficDrilldown({
+            type: 'bandwidth',
+            title: 'Bandwidth Overview',
+            sort: 'bandwidth',
+            subtitle: 'Top IPs sorted by transferred bandwidth'
+        });
+    }
 }
 
 // Initialize traffic by hour chart
@@ -796,17 +1101,17 @@ function exportASNData() {
 
 // Initialize service filter with reload callback
 function initServiceFilterWithReload() {
-    LogLynxUtils.initServiceFilter(() => {
-        loadTrafficData();
-    });
+  LogLynxUtils.initServiceFilter(() => {
+    loadTrafficData();
+  });
 }
 
 // Initialize page
 // Initialize hide my traffic filter with reload callback
 function initHideTrafficFilterWithReload() {
-    LogLynxUtils.initHideMyTrafficFilter(() => {
-        loadTrafficData();
-    });
+  LogLynxUtils.initHideMyTrafficFilter(() => {
+    loadTrafficData();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -824,6 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize controls
     initTimeRangeSelector();
     initHeatmapDaysSelector();
+    initTrafficDrilldowns();
     initServiceFilterWithReload();
     initHideTrafficFilterWithReload();
 

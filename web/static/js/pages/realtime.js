@@ -61,51 +61,115 @@ const maxDataPoints = 60;
 let liveChartLabels = [];
 let liveRequestRateData = [];
 let liveAvgResponseData = [];
+let liveBandwidthData = [];
 let lastMetricsTimestamp = null;
 
-// Initialize live chart (dual Y-axis)
+// Initialize live chart (triple Y-axis)
 function initLiveChart() {
-    liveChart = LogLynxCharts.createDualAxisChart('liveChart', {
-        labels: liveChartLabels,
-        datasets: [
-            {
-                label: 'Request Rate (req/s)',
-                data: liveRequestRateData,
-                borderColor: '#28a745',
-                backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                tension: 0.4,
-                yAxisID: 'y',
-                pointRadius: 2,
-                fill: true
-            },
-            {
-                label: 'Avg Response Time (ms)',
-                data: liveAvgResponseData,
-                borderColor: '#17a2b8',
-                backgroundColor: 'rgba(23, 162, 184, 0.1)',
-                tension: 0.4,
-                yAxisID: 'y1',
-                pointRadius: 2,
-                fill: true
-            }
-        ]
-    }, {
-        scales: {
-            y: {
-                title: {
-                    display: true,
-                    text: 'Request Rate (req/s)',
-                    color: '#28a745'
+    liveChart = new Chart(document.getElementById('liveChart'), {
+        type: 'line',
+        data: {
+            labels: liveChartLabels,
+            datasets: [
+                {
+                    label: 'Request Rate (req/s)',
+                    data: liveRequestRateData,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y',
+                    pointRadius: 2,
+                    fill: true
                 },
-                ticks: { color: '#28a745' }
-            },
-            y1: {
-                title: {
-                    display: true,
-                    text: 'Response Time (ms)',
-                    color: '#17a2b8'
+                {
+                    label: 'Avg Response Time (ms)',
+                    data: liveAvgResponseData,
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y1',
+                    pointRadius: 2,
+                    fill: true
                 },
-                ticks: { color: '#17a2b8' }
+                {
+                    label: 'Bandwidth (MB/s)',
+                    data: liveBandwidthData,
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y2',
+                    pointRadius: 2,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            ...LogLynxCharts.defaultOptions,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Req/s',
+                        color: '#28a745'
+                    },
+                    ticks: { color: '#28a745' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'ms',
+                        color: '#17a2b8'
+                    },
+                    ticks: { color: '#17a2b8' },
+                    grid: { drawOnChartArea: false }
+                },
+                y2: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'MB/s',
+                        color: '#ffc107'
+                    },
+                    ticks: { 
+                        color: '#ffc107',
+                        callback: function(value) {
+                            return value.toFixed(1);
+                        }
+                    },
+                    grid: { drawOnChartArea: false }
+                },
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#B0B0B0' }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.datasetIndex === 2) {
+                                // Bandwidth axis
+                                return label + context.parsed.y.toFixed(2) + ' MB/s';
+                            }
+                            return label + context.parsed.y.toFixed(2);
+                        }
+                    }
+                }
             }
         }
     });
@@ -333,10 +397,26 @@ function updateRealtimeMetrics(metrics) {
     $('#liveErrorRate').text(metrics.error_rate.toFixed(2));
     $('#liveAvgResponse').text(metrics.avg_response_time.toFixed(1) + 'ms');
 
+    // Update global bandwidth
+    const bwFormatted = LogLynxUtils.formatBytes(metrics.bandwidth_rate || 0);
+    const bwParts = bwFormatted.split(' ');
+    $('#liveBandwidth').text(bwParts[0]);
+    $('#liveBandwidthUnit').text(bwParts[1] + '/s');
+
     // Update status distribution
-    $('#live2xx').text(metrics.status_2xx || 0);
-    $('#live4xx').text(metrics.status_4xx || 0);
-    $('#live5xx').text(metrics.status_5xx || 0);
+    $('#live2xx').text((metrics.status_2xx || 0).toLocaleString());
+    $('#live4xx').text((metrics.status_4xx || 0).toLocaleString());
+    $('#live5xx').text((metrics.status_5xx || 0).toLocaleString());
+
+    // Update status distribution bars
+    const statusTotal = (metrics.status_2xx || 0) + (metrics.status_4xx || 0) + (metrics.status_5xx || 0);
+    if (statusTotal > 0) {
+        $('#bar2xx').css('width', ((metrics.status_2xx || 0) / statusTotal * 100) + '%');
+        $('#bar4xx').css('width', ((metrics.status_4xx || 0) / statusTotal * 100) + '%');
+        $('#bar5xx').css('width', ((metrics.status_5xx || 0) / statusTotal * 100) + '%');
+    } else {
+        $('#bar2xx, #bar4xx, #bar5xx').css('width', '0%');
+    }
 
     // Update live chart with millisecond precision to avoid duplicate keys
     const timeLabel = LogLynxUtils.formatTime(metricsTimestamp, { second: '2-digit' });
@@ -351,6 +431,7 @@ function updateRealtimeMetrics(metrics) {
             // Same exact millisecond - update the last point
             liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
             liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+            liveBandwidthData[liveBandwidthData.length - 1] = (metrics.bandwidth_rate || 0) / 1024 / 1024; // MB/s
         } else {
             // New data point
             const labelWithKey = timeLabel;
@@ -358,6 +439,7 @@ function updateRealtimeMetrics(metrics) {
             liveChartLabels.push(labelWithKey);
             liveRequestRateData.push(metrics.request_rate);
             liveAvgResponseData.push(metrics.avg_response_time);
+            liveBandwidthData.push((metrics.bandwidth_rate || 0) / 1024 / 1024); // MB/s
         }
     } else {
         // First data point
@@ -366,6 +448,7 @@ function updateRealtimeMetrics(metrics) {
         liveChartLabels.push(labelWithKey);
         liveRequestRateData.push(metrics.request_rate);
         liveAvgResponseData.push(metrics.avg_response_time);
+        liveBandwidthData.push((metrics.bandwidth_rate || 0) / 1024 / 1024); // MB/s
     }
 
     // Keep only last 60 points (1 minute at 1sec intervals)
@@ -373,12 +456,14 @@ function updateRealtimeMetrics(metrics) {
         liveChartLabels.shift();
         liveRequestRateData.shift();
         liveAvgResponseData.shift();
+        liveBandwidthData.shift();
     }
 
     if (liveChart) {
         liveChart.data.labels = liveChartLabels;
         liveChart.data.datasets[0].data = liveRequestRateData;
         liveChart.data.datasets[1].data = liveAvgResponseData;
+        liveChart.data.datasets[2].data = liveBandwidthData;
         liveChart.update('none'); // No animation for smooth real-time updates
     }
 
@@ -438,7 +523,13 @@ function prependLatestRequests(requests) {
                 <td>${LogLynxUtils.getStatusBadge(req.status_code)}</td>
                 <td>${LogLynxUtils.formatMs(req.response_time_ms || 0)}</td>
                 <td>${req.geo_country ? `<span>${countryCodeToFlag(req.geo_country, req.geo_country)} ${countryToContinentMap[req.geo_country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.geo_country]?.continent || 'Unknown'}</small>` : '-'}</td>
-                <td>${req.client_ip}</td>
+                <td>
+                    <div class="tag-input-container" style="display: inline-block;">
+                        <span class="ip-display" data-ip="${req.client_ip}" style="display: inline;"><code>${req.client_ip}</code></span>
+                        <div class="tag-chips" data-ip="${req.client_ip}" style="display: inline;"></div>
+                        <button class="edit-tag-btn" data-ip="${req.client_ip}" onclick="openTagModal('${req.client_ip}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                    </div>
+                </td>
             </tr>
         `;
         tbody.prepend(row);
@@ -469,24 +560,30 @@ function updateTopIPsTable(topIPs) {
     let html = '';
     topIPs.forEach(ip => {
         // Calculate width for progress bar background
-        // Assuming max rate is the first one since it's sorted
         const maxRate = topIPs[0].request_rate;
         const percent = (ip.request_rate / maxRate) * 100;
+        
+        // Format bandwidth rate
+        const bwText = LogLynxUtils.formatBytes(ip.bandwidth_rate || 0) + '/s';
         
         html += `
             <tr>
                 <td>
-                    <a href="/ip/${ip.ip}" class="text-decoration-none">
-                        <code>${ip.ip}</code>
-                    </a>
+                    <div class="tag-input-container" style="display: inline-block;">
+                        <span class="ip-display" data-ip="${ip.ip}" style="display: inline;"><a href="/ip/${ip.ip}" class="text-decoration-none"><code>${ip.ip}</code></a></span>
+                        <div class="tag-chips" data-ip="${ip.ip}" id="tag-chips-${ip.ip.replace(/\./g, '-')}" style="display: inline;"></div>
+                        <button class="edit-tag-btn" data-ip="${ip.ip}" onclick="openTagModal('${ip.ip}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: ${localStorage.getItem('loglynx_ip_tagging_enabled') === 'true' ? 'inline' : 'none'};">✏️</button>
+                    </div>
                 </td>
-                <td>
-                    ${ip.country ? `<span>${countryCodeToFlag(ip.country, ip.country)} ${countryToContinentMap[ip.country]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[ip.country]?.continent || 'Unknown'}</small>` : '<span class="text-muted">-</span>'}
+                <td class="align-middle">
+                    <span class="badge bg-dark-soft text-light border border-secondary border-opacity-25" style="font-size: 0.85rem;">
+                        <i class="fas fa-arrow-up text-primary me-1" style="font-size: 0.7rem;"></i>${bwText}
+                    </span>
                 </td>
-                <td class="text-end">
+                <td class="text-end align-middle">
                     <div class="d-flex align-items-center justify-content-end gap-2">
                         <span class="fw-bold">${ip.request_rate.toFixed(1)}</span>
-                        <div class="progress" style="width: 50px; height: 4px;">
+                        <div class="progress" style="width: 40px; height: 4px; background-color: rgba(255,255,255,0.05);">
                             <div class="progress-bar bg-success" role="progressbar" style="width: ${percent}%"></div>
                         </div>
                     </div>
@@ -496,6 +593,10 @@ function updateTopIPsTable(topIPs) {
     });
 
     tbody.html(html);
+
+    if (localStorage.getItem('loglynx_ip_tagging_enabled') === 'true') {
+        toggleTagging(true);
+    }
 }
 
 // Update per-service metrics
@@ -577,7 +678,13 @@ function updateLiveRequestsTable(requests) {
                     <td>${LogLynxUtils.getStatusBadge(req.StatusCode)}</td>
                     <td>${LogLynxUtils.formatMs(req.ResponseTimeMs || 0)}</td>
                     <td>${req.GeoCountry ? `<span>${countryCodeToFlag(req.GeoCountry, req.GeoCountry)} ${countryToContinentMap[req.GeoCountry]?.name || 'Unknown'}</span>, <small class='text-muted'>${countryToContinentMap[req.GeoCountry]?.continent || 'Unknown'}</small>` : '-'}</td>
-                    <td>${req.ClientIP}</td>
+                    <td>
+                        <div class="tag-input-container" style="display: inline-block;">
+                            <span class="ip-display" data-ip="${req.ClientIP}" style="display: inline;"><code>${req.ClientIP}</code></span>
+                            <div class="tag-chips" data-ip="${req.ClientIP}" style="display: inline;"></div>
+                            <button class="edit-tag-btn" data-ip="${req.ClientIP}" onclick="openTagModal('${req.ClientIP}')" style="background: none; border: none; cursor: pointer; font-size: 14px; display: none;">✏️</button>
+                        </div>
+                    </td>
                 </tr>
             `;
         });
@@ -667,10 +774,12 @@ function processBufferedMetrics() {
         if (liveChartLabels.length > 0 && liveChartLabels[liveChartLabels.length - 1] === timeLabel) {
              liveRequestRateData[liveRequestRateData.length - 1] = metrics.request_rate;
              liveAvgResponseData[liveAvgResponseData.length - 1] = metrics.avg_response_time;
+             liveBandwidthData[liveBandwidthData.length - 1] = (metrics.bandwidth_rate || 0) / 1024 / 1024;
         } else {
             liveChartLabels.push(timeLabel);
             liveRequestRateData.push(metrics.request_rate);
             liveAvgResponseData.push(metrics.avg_response_time);
+            liveBandwidthData.push((metrics.bandwidth_rate || 0) / 1024 / 1024);
         }
         
         // Maintain max points
@@ -678,6 +787,7 @@ function processBufferedMetrics() {
             liveChartLabels.shift();
             liveRequestRateData.shift();
             liveAvgResponseData.shift();
+            liveBandwidthData.shift();
         }
     });
 
@@ -686,6 +796,7 @@ function processBufferedMetrics() {
         liveChart.data.labels = liveChartLabels;
         liveChart.data.datasets[0].data = liveRequestRateData;
         liveChart.data.datasets[1].data = liveAvgResponseData;
+        liveChart.data.datasets[2].data = liveBandwidthData;
         liveChart.update('none');
     }
 
@@ -703,6 +814,10 @@ function processBufferedMetrics() {
     $('#liveRequestRate').text(lastMetric.request_rate.toFixed(2));
     $('#liveErrorRate').text(lastMetric.error_rate.toFixed(2));
     $('#liveAvgResponse').text(lastMetric.avg_response_time.toFixed(1) + 'ms');
+    const bwFormatted = LogLynxUtils.formatBytes(lastMetric.bandwidth_rate || 0);
+    const bwParts = bwFormatted.split(' ');
+    $('#liveBandwidth').text(bwParts[0]);
+    $('#liveBandwidthUnit').text((bwParts[1] || 'B') + '/s');
     $('#live2xx').text(lastMetric.status_2xx || 0);
     $('#live4xx').text(lastMetric.status_4xx || 0);
     $('#live5xx').text(lastMetric.status_5xx || 0);
@@ -733,11 +848,13 @@ function clearLiveData() {
     liveChartLabels = [];
     liveRequestRateData = [];
     liveAvgResponseData = [];
+    liveBandwidthData = [];
 
     if (liveChart) {
         liveChart.data.labels = [];
         liveChart.data.datasets[0].data = [];
         liveChart.data.datasets[1].data = [];
+        liveChart.data.datasets[2].data = [];
         liveChart.update('none');
     }
 
@@ -896,13 +1013,13 @@ window.showMiniMonitor = showMiniMonitor;
 // Initialize page
 // Initialize hide my traffic filter with reconnect callback
 function initHideTrafficFilterWithReconnect() {
-    LogLynxUtils.initHideMyTrafficFilter(() => {
-        // Reconnect to stream with new filter
-        if (eventSource) {
-            eventSource.close();
-        }
-        connectRealtimeStream();
-    });
+  LogLynxUtils.initHideMyTrafficFilter(() => {
+    // Reconnect to stream with new filter
+    if (eventSource) {
+      eventSource.close();
+    }
+    connectRealtimeStream();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {

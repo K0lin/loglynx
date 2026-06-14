@@ -35,6 +35,7 @@ const LogLynxAPI = {
     currentServiceType: 'auto', // Currently selected service type (auto, backend_name, backend_url, host)
     hideMyTraffic: false, // Whether to hide own IP traffic
     hideTrafficServices: [], // Array of services to hide traffic on [{name: 'X', type: 'backend_name'}, ...]
+    hideTrafficManualIPs: [], // Manually excluded IP addresses
     pendingRequests: new Map(), // Track in-flight requests to prevent duplicates
     abortControllers: new Map(), // Track abort controllers for request cancellation
 
@@ -165,6 +166,27 @@ const LogLynxAPI = {
         return requestPromise;
     },
 
+    async send(endpoint, method, body = null, params = {}) {
+        try {
+            const response = await fetch(this.buildURL(endpoint, params), {
+                method,
+                headers: body ? { 'Content-Type': 'application/json' } : {},
+                body: body ? JSON.stringify(body) : null
+            });
+            if (response.status === 204) {
+                return { success: true, data: null };
+            }
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            return { success: true, data };
+        } catch (error) {
+            console.error(`API Error [${method} ${endpoint}]:`, error);
+            return { success: false, error: error.message };
+        }
+    },
+
     /**
      * Build URL with query parameters and service filter
      */
@@ -172,7 +194,8 @@ const LogLynxAPI = {
         const url = new URL(this.baseURL + endpoint, window.location.origin);
 
         // Add service filters if set (multiple services)
-        if (this.currentServices && this.currentServices.length > 0) {
+        // If 'services[]' is already in params, we skip the global ones
+        if (!params['services[]'] && this.currentServices && this.currentServices.length > 0) {
             this.currentServices.forEach(service => {
                 url.searchParams.append('services[]', service.name);
                 url.searchParams.append('service_types[]', service.type);
@@ -180,8 +203,14 @@ const LogLynxAPI = {
         }
 
         // Add hide my traffic parameters
-        if (this.hideMyTraffic) {
+        if (this.hideMyTraffic && params.exclude_own_ip !== 'false') {
             url.searchParams.append('exclude_own_ip', 'true');
+
+            if (this.hideTrafficManualIPs && this.hideTrafficManualIPs.length > 0) {
+                this.hideTrafficManualIPs.forEach(ip => {
+                    url.searchParams.append('excluded_ips[]', ip);
+                });
+            }
 
             // Add exclude services if specified
             if (this.hideTrafficServices && this.hideTrafficServices.length > 0) {
@@ -195,7 +224,12 @@ const LogLynxAPI = {
         // Add all other parameters
         Object.keys(params).forEach(key => {
             if (params[key] !== null && params[key] !== undefined) {
-                url.searchParams.append(key, params[key]);
+                if (Array.isArray(params[key])) {
+                    // Handle array parameters (like services[])
+                    params[key].forEach(val => url.searchParams.append(key, val));
+                } else {
+                    url.searchParams.set(key, params[key]);
+                }
             }
         });
 
@@ -270,6 +304,22 @@ const LogLynxAPI = {
      */
     getHideMyTraffic() {
         return this.hideMyTraffic;
+    },
+
+    /**
+     * Set manually excluded IP addresses
+     * @param {Array} ips - Array of IP address strings
+     */
+    setHideTrafficManualIPs(ips) {
+        this.hideTrafficManualIPs = Array.isArray(ips) ? ips : [];
+        this.clearCache();
+    },
+
+    /**
+     * Get manually excluded IP addresses
+     */
+    getHideTrafficManualIPs() {
+        return this.hideTrafficManualIPs || [];
     },
 
     /**
@@ -407,8 +457,8 @@ const LogLynxAPI = {
      * Get traffic heatmap data
      * @param {number} days - Number of days (1-365)
      */
-    async getTrafficHeatmap(days = 7) {
-        return this.get('/stats/heatmap/traffic', { days });
+    async getTrafficHeatmap(days = 7, options = {}) {
+        return this.get('/stats/heatmap/traffic', { days, ...options });
     },
 
     /**
@@ -434,8 +484,8 @@ const LogLynxAPI = {
      * @param {number} limit - Number of results
      * @param {number} hours - Number of hours to fetch
      */
-    async getTopIPs(limit = 10, hours = 168) {
-        return this.get('/stats/top/ips', { limit, hours });
+    async getTopIPs(limit = 10, hours = 168, options = {}) {
+        return this.get('/stats/top/ips', { limit, hours, ...options });
     },
 
     /**
@@ -547,6 +597,30 @@ const LogLynxAPI = {
      */
     async getResponseTimeStats(hours = 168) {
         return this.get('/stats/performance/response-time', { hours });
+    },
+
+    async getComparison(periods, topLimit = 10, options = {}) {
+        return this.send('/stats/compare', 'POST', { periods, top_limit: topLimit }, options);
+    },
+
+    async createComparisonSnapshot(title, payload, expiresAt = null) {
+        return this.send('/compare/snapshots', 'POST', { title, payload, expires_at: expiresAt });
+    },
+
+    async getComparisonSnapshot(token) {
+        return this.get(`/compare/snapshots/${encodeURIComponent(token)}`);
+    },
+
+    async listComparisonSnapshots() {
+        return this.get('/compare/snapshots');
+    },
+
+    async updateComparisonSnapshot(token, updates) {
+        return this.send(`/compare/snapshots/${encodeURIComponent(token)}`, 'PATCH', updates);
+    },
+
+    async deleteComparisonSnapshot(token) {
+        return this.send(`/compare/snapshots/${encodeURIComponent(token)}`, 'DELETE');
     },
 
     /**
@@ -798,96 +872,171 @@ const LogLynxAPI = {
     /**
      * Get comprehensive statistics for a specific IP
      * @param {string} ip - IP address
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional {services: [], serviceTypes: []}
      */
-    async getIPStats(ip) {
-        return this.get(`/ip/${ip}/stats`);
+    async getIPStats(ip, hours = 168, scope = null) {
+        const params = { hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/stats`, params);
     },
 
     /**
      * Get timeline data for a specific IP
      * @param {string} ip - IP address
      * @param {number} hours - Number of hours (1-8760)
+     * @param {Object} scope - Optional scope
      */
-    async getIPTimeline(ip, hours = 168) {
-        return this.get(`/ip/${ip}/timeline`, { hours });
+    async getIPTimeline(ip, hours = 168, scope = null) {
+        const params = { hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/timeline`, params);
     },
 
     /**
      * Get traffic heatmap for a specific IP
      * @param {string} ip - IP address
      * @param {number} days - Number of days (1-365)
+     * @param {Object} scope - Optional scope
      */
-    async getIPHeatmap(ip, days = 30) {
-        return this.get(`/ip/${ip}/heatmap`, { days });
+    async getIPHeatmap(ip, days = 30, scope = null) {
+        const params = { days };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/heatmap`, params);
     },
 
     /**
      * Get top paths for a specific IP
      * @param {string} ip - IP address
      * @param {number} limit - Number of results (1-100)
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPTopPaths(ip, limit = 20) {
-        return this.get(`/ip/${ip}/top/paths`, { limit });
+    async getIPTopPaths(ip, limit = 20, hours = 168, scope = null) {
+        const params = { limit, hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/top/paths`, params);
     },
 
     /**
      * Get top backends for a specific IP
      * @param {string} ip - IP address
      * @param {number} limit - Number of results (1-100)
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPTopBackends(ip, limit = 10) {
-        return this.get(`/ip/${ip}/top/backends`, { limit });
+    async getIPTopBackends(ip, limit = 10, hours = 168, scope = null) {
+        const params = { limit, hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/top/backends`, params);
     },
 
     /**
      * Get status code distribution for a specific IP
      * @param {string} ip - IP address
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPStatusCodes(ip) {
-        return this.get(`/ip/${ip}/distribution/status-codes`);
+    async getIPStatusCodes(ip, hours = 168, scope = null) {
+        const params = { hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/distribution/status-codes`, params);
     },
 
     /**
      * Get top browsers for a specific IP
      * @param {string} ip - IP address
      * @param {number} limit - Number of results (1-100)
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPTopBrowsers(ip, limit = 10) {
-        return this.get(`/ip/${ip}/top/browsers`, { limit });
+    async getIPTopBrowsers(ip, limit = 10, hours = 168, scope = null) {
+        const params = { limit, hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/top/browsers`, params);
     },
 
     /**
      * Get top operating systems for a specific IP
      * @param {string} ip - IP address
      * @param {number} limit - Number of results (1-100)
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPTopOperatingSystems(ip, limit = 10) {
-        return this.get(`/ip/${ip}/top/operating-systems`, { limit });
+    async getIPTopOperatingSystems(ip, limit = 10, hours = 168, scope = null) {
+        const params = { limit, hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/top/operating-systems`, params);
     },
 
     /**
      * Get device type distribution for a specific IP
      * @param {string} ip - IP address
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPDeviceTypes(ip) {
-        return this.get(`/ip/${ip}/distribution/device-types`);
+    async getIPDeviceTypes(ip, hours = 168, scope = null) {
+        const params = { hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/distribution/device-types`, params);
     },
 
     /**
      * Get response time statistics for a specific IP
      * @param {string} ip - IP address
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPResponseTime(ip) {
-        return this.get(`/ip/${ip}/performance/response-time`);
+    async getIPResponseTime(ip, hours = 168, scope = null) {
+        const params = { hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/performance/response-time`, params);
     },
 
     /**
      * Get recent requests for a specific IP
      * @param {string} ip - IP address
      * @param {number} limit - Number of results (1-100)
+     * @param {number} hours - Number of hours
+     * @param {Object} scope - Optional scope
      */
-    async getIPRecentRequests(ip, limit = 50) {
-        return this.get(`/ip/${ip}/recent-requests`, { limit });
+    async getIPRecentRequests(ip, limit = 50, hours = 168, scope = null) {
+        const params = { limit, hours };
+        if (scope && scope.services && scope.services.length > 0) {
+            params['services[]'] = scope.services;
+            params['service_types[]'] = scope.serviceTypes;
+        }
+        return this.get(`/ip/${ip}/recent-requests`, params);
     },
 
     /**

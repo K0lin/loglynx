@@ -38,6 +38,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ env.IMAGE }}:dev-k
+          build-args: |
+            LOGLYNX_USAGE_TELEMETRY_ENDPOINT=${{ secrets.LOGLYNX_USAGE_TELEMETRY_ENDPOINT }}
 
       - name: Build and push (main -> dev)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -47,6 +49,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ env.IMAGE }}:dev
+          build-args: |
+            LOGLYNX_USAGE_TELEMETRY_ENDPOINT=${{ secrets.LOGLYNX_USAGE_TELEMETRY_ENDPOINT }}
 
       - name: Build and push (release -> latest and version)
         if: github.event_name == 'release'
@@ -58,3 +62,5 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.ref_name }}
+          build-args: |
+            LOGLYNX_USAGE_TELEMETRY_ENDPOINT=${{ secrets.LOGLYNX_USAGE_TELEMETRY_ENDPOINT }}

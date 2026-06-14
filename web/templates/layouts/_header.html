@@ -36,6 +36,10 @@
                 <i class="fas fa-tachometer-alt"></i>
                 <span>Performance</span>
             </a>
+            <a href="/compare" class="nav-item" data-page="compare">
+                <i class="fas fa-code-compare"></i>
+                <span>Compare Periods</span>
+            </a>
             <a href="/security" class="nav-item" data-page="security">
                 <i class="fas fa-shield-alt"></i>
                 <span>Security & Network</span>
@@ -72,6 +76,10 @@
             </div>
         </div>
         <span class="sidebar-version-caption">Advanced log analytics platform</span>
+        <div id="versionCheckStatus" class="sidebar-version-status is-checking">
+            <i class="fas fa-circle-notch fa-spin"></i>
+            <span>Checking version...</span>
+        </div>
     </div>
 </aside>
 <script>
@@ -444,6 +452,32 @@
                     </div>
                 </div>
 
+                <!-- Manual IP Exclusion -->
+                <div class="setting-card" id="hideTrafficManualIPsContainer" style="display: none;">
+                    <div class="setting-header">
+                        <div class="setting-header-left">
+                            <i class="fas fa-network-wired"></i>
+                            <span>Manual IP List</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Add IP addresses to hide in addition to your current IP when the filter is enabled.
+                    </div>
+
+                    <label for="hideTrafficIPInput" class="form-label small text-muted mb-1">IP address</label>
+                    <div class="input-group input-group-sm mb-2">
+                        <input type="text" class="form-control" id="hideTrafficIPInput"
+                               placeholder="e.g., 192.168.1.10 or 2001:db8::1" aria-label="IP Address">
+                        <button type="button" class="btn btn-primary" id="addHideTrafficIP">
+                            <i class="fas fa-plus"></i> Add
+                        </button>
+                    </div>
+                    <div id="hideTrafficIPError" class="text-danger small mb-2" style="display: none;"></div>
+                    <div id="hideTrafficIPList" class="service-options-modal" style="max-height: 160px;">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
                 <!-- Service Selection (shows when enabled) -->
                 <div class="setting-card" id="hideTrafficServicesContainer" style="display: none;">
                     <div class="setting-header">
@@ -517,4 +551,11 @@
     <script src="/static/js/core/utils.js"></script>
     <script src="/static/js/core/charts.js"></script>
     <script src="/static/js/core/tooltips.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.LogLynxUtils && typeof LogLynxUtils.initVersionCheck === 'function') {
+                LogLynxUtils.initVersionCheck();
+            }
+        });
+    </script>
 {{end}}

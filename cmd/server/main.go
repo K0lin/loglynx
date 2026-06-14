@@ -40,6 +40,8 @@ import (
 	"loglynx/internal/ingestion"
 	parsers "loglynx/internal/parser"
 	"loglynx/internal/realtime"
+	"loglynx/internal/telemetry"
+	"loglynx/internal/version"
 
 	"strings"
 
@@ -105,6 +107,15 @@ func main() {
 			"geoip_enabled", cfg.GeoIP.Enabled,
 		))
 
+	stopTelemetry := telemetry.Start(telemetry.Config{
+		Enabled:  cfg.Telemetry.Enabled,
+		Endpoint: cfg.Telemetry.Endpoint,
+		Interval: cfg.Telemetry.Interval,
+		StoreDir: cfg.Database.Path + ".telemetry",
+		Version:  version.Version,
+	}, logger)
+	defer stopTelemetry()
+
 	// Initialize database connection with configured settings
 	db, err := database.NewConnection(&database.Config{
 		Path:         cfg.Database.Path,
@@ -127,6 +138,7 @@ func main() {
 	sourceRepo := repositories.NewLogSourceRepository(db)
 	httpRepo := repositories.NewHTTPRequestRepository(db, logger)
 	statsRepo := repositories.NewStatsRepository(db, logger)
+	ipTagRepo := repositories.NewIPTagRepository(db)
 
 	// Initialize GeoIP enricher (optional - will work without GeoIP databases)
 	var geoIP *enrichment.GeoIPEnricher
@@ -261,6 +273,7 @@ func main() {
 		cfg.Database.Path,
 		cfg.Database.RetentionDays,
 	)
+	ipTagHandler := handlers.NewIPTagHandler(ipTagRepo, logger)
 	webServer := api.NewServer(&api.Config{
 		Host:                cfg.Server.Host,
 		Port:                cfg.Server.Port,
@@ -270,7 +283,7 @@ func main() {
 		TimeZone:            cfg.Server.TimeZone,
 		WidgetEnabled:       cfg.Server.WidgetEnabled,
 		HasExistingData:     httpRepo.HasExistingData(),
-	}, dashboardHandler, realtimeHandler, systemHandler, logger)
+	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, logger)
 
 	// Start web server in goroutine
 	go func() {
@@ -317,6 +330,10 @@ func main() {
 	// Stop cleanup service
 	logger.Debug("Stopping cleanup service...")
 	cleanupService.Stop()
+
+	// Signal real-time streams to close immediately (prevents shutdown delays)
+	logger.Debug("Closing active real-time streams...")
+	realtimeHandler.Shutdown()
 
 	// Create shutdown context with timeout (30s to handle SSE connections gracefully)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*cfg.Performance.RealtimeMetricsInterval)

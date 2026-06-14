@@ -22,8 +22,12 @@ func (h *DashboardHandler) GetWidgetData(c *gin.Context) {
 	}
 
 	reqPerMin := 0.0
+	bandwidthPerMin := 0.0
 	if summary.TotalRequests > 0 {
 		reqPerMin = float64(summary.TotalRequests) / 60.0
+	}
+	if summary.TotalBandwidth > 0 {
+		bandwidthPerMin = float64(summary.TotalBandwidth) / 60.0
 	}
 
 	errorRate := summary.ServerErrorRate + summary.NotFoundRate
@@ -35,11 +39,13 @@ func (h *DashboardHandler) GetWidgetData(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":              status,
-		"requests_per_minute": reqPerMin,
-		"error_rate":          errorRate,
-		"avg_response_time":   summary.AvgResponseTime,
-		"unique_ips":          summary.UniqueVisitors,
+		"status":               status,
+		"requests_per_minute":  reqPerMin,
+		"error_rate":           errorRate,
+		"avg_response_time":    summary.AvgResponseTime,
+		"avg_response_ms":      summary.AvgResponseTime,
+		"bandwidth_per_minute": bandwidthPerMin,
+		"unique_ips":           summary.UniqueVisitors,
 	})
 }
 
@@ -82,13 +88,14 @@ func (h *DashboardHandler) GetWidgetSummary(c *gin.Context) {
 	bandwidthMB := float64(summary.TotalBandwidth) / (1024 * 1024)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":          status,
-		"total_requests":  summary.TotalRequests,
-		"requests_per_hr": reqPerHr,
-		"error_rate":      errorRate,
-		"avg_response_ms": summary.AvgResponseTime,
-		"unique_ips":      summary.UniqueVisitors,
-		"bandwidth_mb":    bandwidthMB,
+		"status":            status,
+		"total_requests":    summary.TotalRequests,
+		"requests_per_hr":   reqPerHr,
+		"error_rate":        errorRate,
+		"avg_response_ms":   summary.AvgResponseTime,
+		"avg_response_time": summary.AvgResponseTime,
+		"unique_ips":        summary.UniqueVisitors,
+		"bandwidth_mb":      bandwidthMB,
 	})
 }
 
@@ -118,8 +125,10 @@ func (h *DashboardHandler) GetWidgetTimeline(c *gin.Context) {
 	result := make([]gin.H, len(timeline))
 	for i, t := range timeline {
 		result[i] = gin.H{
-			"hour":     t.Hour,
-			"requests": t.Requests,
+			"hour":              t.Hour,
+			"requests":          t.Requests,
+			"bandwidth":         t.Bandwidth,
+			"avg_response_time": t.AvgResponseTime,
 		}
 	}
 

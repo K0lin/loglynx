@@ -41,6 +41,13 @@
             <p class="page-description">High-level metrics and system health at a glance</p>
         </div>
         <div class="page-actions">
+            <div class="traffic-toggle-group me-3">
+                <label class="traffic-checkbox-label">
+                    <input type="checkbox" id="enable-tagging" class="traffic-toggle-checkbox" onchange="toggleTagging(this.checked)">
+                    <span class="traffic-toggle-slider"></span>
+                    <span class="traffic-toggle-text">Enable IP Tagging</span>
+                </label>
+            </div>
             <select id="timeframeSelector" class="form-select form-select-sm me-2" style="width: auto; display: inline-block;">
                 <option value="1">Last 1 Hour</option>
                 <option value="24">Last 24 Hours</option>
@@ -100,13 +107,13 @@
         <div class="stat-subtitle">4xx + 5xx responses</div>
     </div>
 
-    <div class="stat-card">
+    <a class="stat-card text-decoration-none" href="/traffic?drilldown=bandwidth">
         <div class="stat-label" data-tooltip-key="bandwidth" data-tooltip-title="Bandwidth Usage">
             Bandwidth Used
         </div>
         <div class="stat-value" id="totalBandwidth">0 MB</div>
         <div class="stat-subtitle">Total transferred</div>
-    </div>
+    </a>
 
     <div class="stat-card">
         <div class="stat-label" data-tooltip-key="unique404" data-tooltip-title="404 Errors">
@@ -280,8 +287,11 @@
         </div>
     </div>
 
+    {{template "tag-input.html" .}}
+
     {{template "scripts-common" .}}
     <script src="/static/js/pages/overview.js"></script>
+    <script src="/static/js/tag-management.js"></script>
     <script src="/static/js/core/country-data.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

@@ -64,6 +64,34 @@ const LogLynxUtils = {
     },
 
     /**
+     * Per-page timeframe preference (e.g., for IP detail)
+     */
+    getIPPagePreferredHours(defaultHours = 168) {
+        try {
+            const stored = localStorage.getItem('loglynx_ip_page_time_range_hours');
+            const parsed = parseInt(stored, 10);
+            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 8760) {
+                return parsed;
+            }
+        } catch (error) {
+            console.debug('IP page time range preference unavailable:', error);
+        }
+        return defaultHours;
+    },
+
+    setIPPagePreferredHours(hours) {
+        const parsed = parseInt(hours, 10);
+        if (Number.isNaN(parsed) || parsed < 0 || parsed > 8760) {
+            return;
+        }
+        try {
+            localStorage.setItem('loglynx_ip_page_time_range_hours', parsed.toString());
+        } catch (error) {
+            console.debug('Unable to persist IP page time range preference:', error);
+        }
+    },
+
+    /**
      * Show notification
      */
     showNotification(message, type = 'info', duration = 5000) {
@@ -108,6 +136,168 @@ const LogLynxUtils = {
             info: 'fa-info-circle'
         };
         return icons[type] || icons.info;
+    },
+
+    /**
+     * Check GitHub releases and notify when a newer LogLynx version is available.
+     */
+    async initVersionCheck() {
+        const currentVersion = this.normalizeVersion(window.LogLynxVersion || '');
+        if (!currentVersion) {
+            this.updateVersionCheckStatus('unknown', 'Version unknown');
+            return;
+        }
+
+        this.updateVersionCheckStatus('checking', 'Checking version...');
+
+        try {
+            const response = await fetch('https://api.github.com/repos/K0lin/loglynx/releases/latest', {
+                headers: { 'Accept': 'application/vnd.github+json' }
+            });
+            if (!response.ok) {
+                this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+                return;
+            }
+
+            const release = await response.json();
+            const latestVersion = this.normalizeVersion(release.tag_name || release.name || '');
+            if (!latestVersion) {
+                this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+                return;
+            }
+
+            const releaseUrl = release.html_url || 'https://github.com/K0lin/loglynx/releases/latest';
+            if (!this.isVersionNewer(latestVersion, currentVersion)) {
+                this.updateVersionCheckStatus('current', 'Up to date', releaseUrl);
+                return;
+            }
+
+            this.updateVersionCheckStatus('outdated', `Update available: v${latestVersion}`, releaseUrl);
+
+            const dismissedKey = `loglynx_update_dismissed_${latestVersion}`;
+            const snoozeKey = `loglynx_update_snoozed_${latestVersion}`;
+            if (localStorage.getItem(dismissedKey) === 'true') return;
+            if (this.getSessionCookie(snoozeKey) === 'true') return;
+
+            this.showVersionUpdateNotice({
+                currentVersion,
+                latestVersion,
+                releaseUrl,
+                dismissedKey,
+                snoozeKey
+            });
+        } catch (error) {
+            console.debug('Version check unavailable:', error);
+            this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+        }
+    },
+
+    updateVersionCheckStatus(state, text, href = '') {
+        const statusEl = document.getElementById('versionCheckStatus');
+        if (!statusEl) return;
+
+        const iconByState = {
+            checking: 'fa-circle-notch fa-spin',
+            current: 'fa-check-circle',
+            outdated: 'fa-exclamation-circle',
+            unknown: 'fa-info-circle'
+        };
+        const classByState = {
+            checking: 'is-checking',
+            current: 'is-current',
+            outdated: 'is-outdated',
+            unknown: 'is-unknown'
+        };
+
+        statusEl.className = `sidebar-version-status ${classByState[state] || classByState.unknown}`;
+        const content = `
+            <i class="fas ${iconByState[state] || iconByState.unknown}"></i>
+            <span>${text}</span>
+        `;
+
+        if (href) {
+            statusEl.innerHTML = `<a href="${href}" target="_blank" rel="noopener">${content}</a>`;
+        } else {
+            statusEl.innerHTML = content;
+        }
+    },
+
+    normalizeVersion(version) {
+        return String(version || '').trim().replace(/^v/i, '');
+    },
+
+    isVersionNewer(latestVersion, currentVersion) {
+        const latestParts = this.normalizeVersion(latestVersion).split(/[.-]/).map(part => parseInt(part, 10) || 0);
+        const currentParts = this.normalizeVersion(currentVersion).split(/[.-]/).map(part => parseInt(part, 10) || 0);
+        const length = Math.max(latestParts.length, currentParts.length);
+
+        for (let i = 0; i < length; i++) {
+            const latest = latestParts[i] || 0;
+            const current = currentParts[i] || 0;
+            if (latest > current) return true;
+            if (latest < current) return false;
+        }
+
+        return false;
+    },
+
+    showVersionUpdateNotice({ currentVersion, latestVersion, releaseUrl, dismissedKey, snoozeKey }) {
+        const existing = document.getElementById('versionUpdateNotice');
+        if (existing) existing.remove();
+
+        const noticeEl = document.createElement('div');
+        noticeEl.id = 'versionUpdateNotice';
+        noticeEl.className = 'version-update-notice';
+        noticeEl.innerHTML = `
+            <button type="button" class="version-update-close" aria-label="Close update notice">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="version-update-notice-header">
+                <i class="fas fa-code-branch"></i>
+                <span>Update available</span>
+            </div>
+            <div class="version-update-notice-body">
+                <strong>v${latestVersion}</strong> is available. You are running v${currentVersion}.
+            </div>
+            <label class="version-update-option">
+                <input type="checkbox" id="versionUpdateDontRemind">
+                <span>Don't remind me again for v${latestVersion}</span>
+            </label>
+            <div class="version-update-actions">
+                <a href="${releaseUrl}" target="_blank" rel="noopener">View release</a>
+            </div>
+        `;
+
+        const closeNotice = () => {
+            const dontRemind = noticeEl.querySelector('#versionUpdateDontRemind')?.checked;
+            if (dontRemind) {
+                try {
+                    localStorage.setItem(dismissedKey, 'true');
+                } catch (error) {
+                    console.debug('Unable to persist version update dismissal:', error);
+                }
+            } else {
+                this.setCookie(snoozeKey, 'true', 600);
+            }
+            noticeEl.remove();
+        };
+
+        noticeEl.querySelector('.version-update-close')?.addEventListener('click', closeNotice);
+        document.body.appendChild(noticeEl);
+    },
+
+    getSessionCookie(name) {
+        const encodedName = encodeURIComponent(name) + '=';
+        return document.cookie
+            .split(';')
+            .map(cookie => cookie.trim())
+            .find(cookie => cookie.startsWith(encodedName))
+            ?.substring(encodedName.length) || '';
+    },
+
+    setCookie(name, value, maxAgeSeconds = null) {
+        const maxAge = Number.isInteger(maxAgeSeconds) ? `; max-age=${maxAgeSeconds}` : '';
+        document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; path=/; SameSite=Lax${maxAge}`;
     },
 
     /**
@@ -768,14 +958,14 @@ const LogLynxUtils = {
         if (isEnabled) {
             hideTrafficBtn.classList.add('active');
 
-            // Show number of services if any are selected
+            const manualIPCount = LogLynxAPI.getHideTrafficManualIPs().length;
             const selectedServices = LogLynxAPI.getHideTrafficFilters();
-            if (selectedServices.length === 0) {
-                hideTrafficStatus.textContent = 'Enabled (All)';
-            } else if (selectedServices.length === 1) {
-                hideTrafficStatus.textContent = 'Enabled (1 service)';
+            if (manualIPCount > 0) {
+                hideTrafficStatus.textContent = manualIPCount === 1 ? 'Enabled (1 IP)' : `Enabled (${manualIPCount} IPs)`;
+            } else if (selectedServices.length === 0) {
+                hideTrafficStatus.textContent = 'Enabled (Current IP)';
             } else {
-                hideTrafficStatus.textContent = `Enabled (${selectedServices.length} services)`;
+                hideTrafficStatus.textContent = selectedServices.length === 1 ? 'Enabled (1 service)' : `Enabled (${selectedServices.length} services)`;
             }
         } else {
             hideTrafficBtn.classList.remove('active');
@@ -1365,6 +1555,9 @@ const LogLynxUtils = {
     initHideMyTrafficFilter(onChangeCallback) {
         const checkbox = document.getElementById('hideMyTrafficCheckbox');
         const container = document.getElementById('hideTrafficServicesContainer');
+        const manualIPsContainer = document.getElementById('hideTrafficManualIPsContainer');
+        const manualIPInput = document.getElementById('hideTrafficIPInput');
+        const addManualIPBtn = document.getElementById('addHideTrafficIP');
         const toggleBtn = document.getElementById('hideTrafficToggle');
         const dropdown = document.getElementById('hideTrafficDropdownMenu');
         const searchInput = document.getElementById('hideTrafficSearchInput');
@@ -1375,20 +1568,31 @@ const LogLynxUtils = {
         // Restore from sessionStorage
         const hideEnabled = sessionStorage.getItem('hideMyTraffic') === 'true';
         const hideServices = sessionStorage.getItem('hideMyTrafficServices');
+        const manualIPs = localStorage.getItem('hideMyTrafficManualIPs');
 
         checkbox.checked = hideEnabled;
         LogLynxAPI.setHideMyTraffic(hideEnabled); // Restore in API object
-
         if (hideEnabled && container) {
             container.style.display = 'block';
         }
-
+        if (hideEnabled && manualIPsContainer) {
+            manualIPsContainer.style.display = 'block';
+        }
         if (hideServices) {
             try {
                 const services = JSON.parse(hideServices);
                 LogLynxAPI.setHideTrafficFilters(services);
             } catch (e) {
                 console.error('Failed to parse hide traffic services:', e);
+            }
+        }
+
+        if (manualIPs) {
+            try {
+                const ips = JSON.parse(manualIPs);
+                LogLynxAPI.setHideTrafficManualIPs(Array.isArray(ips) ? ips : []);
+            } catch (e) {
+                console.error('Failed to parse manual hide traffic IPs:', e);
             }
         }
 
@@ -1402,6 +1606,9 @@ const LogLynxUtils = {
                 if (container) {
                     container.style.display = isEnabled ? 'block' : 'none';
                 }
+                if (manualIPsContainer) {
+                    manualIPsContainer.style.display = isEnabled ? 'block' : 'none';
+                }
 
                 // Update trigger button status
                 this.updateHideTrafficButtonStatus();
@@ -1413,7 +1620,52 @@ const LogLynxUtils = {
         }
 
         // Initial button status update
+        this.renderHideTrafficManualIPs();
         this.updateHideTrafficButtonStatus();
+
+        const addManualIP = () => {
+            if (!manualIPInput) return;
+
+            const ip = manualIPInput.value.trim();
+            const errorEl = document.getElementById('hideTrafficIPError');
+            if (errorEl) {
+                errorEl.style.display = 'none';
+                errorEl.textContent = '';
+            }
+
+            if (!this.isValidIPAddress(ip)) {
+                if (errorEl) {
+                    errorEl.textContent = 'Enter a valid IPv4 or IPv6 address.';
+                    errorEl.style.display = 'block';
+                }
+                return;
+            }
+
+            const currentIPs = LogLynxAPI.getHideTrafficManualIPs();
+            if (!currentIPs.includes(ip)) {
+                const nextIPs = [...currentIPs, ip];
+                LogLynxAPI.setHideTrafficManualIPs(nextIPs);
+                localStorage.setItem('hideMyTrafficManualIPs', JSON.stringify(nextIPs));
+                this.renderHideTrafficManualIPs();
+                this.updateHideTrafficButtonStatus();
+                if (onChangeCallback) onChangeCallback();
+            }
+
+            manualIPInput.value = '';
+        };
+
+        if (addManualIPBtn) {
+            addManualIPBtn.addEventListener('click', addManualIP);
+        }
+
+        if (manualIPInput) {
+            manualIPInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addManualIP();
+                }
+            });
+        }
 
         // Toggle dropdown
         if (toggleBtn && dropdown) {
@@ -1488,6 +1740,61 @@ const LogLynxUtils = {
                 this.loadHideTrafficServices();
             });
         }
+    },
+
+    /**
+     * Validate IPv4 and common IPv6 input formats.
+     */
+    isValidIPAddress(ip) {
+        if (!ip || ip.length > 45) return false;
+
+        const ipv4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+        const ipv6 = /^(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}|::1|::)$/;
+        return ipv4.test(ip) || ipv6.test(ip);
+    },
+
+    /**
+     * Render manually excluded IP addresses in the Hide My Traffic modal.
+     */
+    renderHideTrafficManualIPs() {
+        const list = document.getElementById('hideTrafficIPList');
+        if (!list) return;
+
+        const ips = LogLynxAPI.getHideTrafficManualIPs();
+        list.innerHTML = '';
+
+        if (ips.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'text-muted small p-2';
+            empty.textContent = 'No manual IPs added.';
+            list.appendChild(empty);
+            return;
+        }
+
+        ips.forEach(ip => {
+            const row = document.createElement('div');
+            row.className = 'service-option-modal justify-content-between';
+
+            const label = document.createElement('span');
+            label.textContent = ip;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-sm btn-outline-danger';
+            removeBtn.innerHTML = '<i class="fas fa-times"></i> Remove';
+            removeBtn.addEventListener('click', () => {
+                const nextIPs = LogLynxAPI.getHideTrafficManualIPs().filter(existingIP => existingIP !== ip);
+                LogLynxAPI.setHideTrafficManualIPs(nextIPs);
+                localStorage.setItem('hideMyTrafficManualIPs', JSON.stringify(nextIPs));
+                this.renderHideTrafficManualIPs();
+                this.updateHideTrafficButtonStatus();
+                if (this._hideTrafficCallback) this._hideTrafficCallback();
+            });
+
+            row.appendChild(label);
+            row.appendChild(removeBtn);
+            list.appendChild(row);
+        });
     },
 
     /**
