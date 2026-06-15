@@ -1,6 +1,6 @@
 // MIT License
 //
-// # Copyright (c) 2026 Kolin
+// Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,102 +23,87 @@ package discovery
 
 import (
 	"bufio"
-	"encoding/json"
 	"loglynx/internal/database/models"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/pterm/pterm"
 )
 
-// CaddyDetector detects Caddy log files
-type CaddyDetector struct {
+// haproxyPattern matches the core of a HAProxy HTTP log line (after optional syslog prefix).
+// Requires the bracketed timestamp and timing fields that are distinctive to HAProxy.
+var haproxyPattern = regexp.MustCompile(
+	`\[(\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}[.\d]*)\] \S+ \S+ [-\d]+/[-\d]+/[-\d]+/[-\d]+/[-\d]+ \d{3}`,
+)
+
+// haproxySyslogPrefix strips the syslog prefix from a log line.
+var haproxySyslogPrefix = regexp.MustCompile(`^\w+ +\d+ +\d+:\d+:\d+ \S+ \S+\[\d+\]: `)
+
+// HAProxyDetector detects HAProxy HTTP log files configured via HAPROXY_LOG_PATH(S).
+type HAProxyDetector struct {
 	logger          *pterm.Logger
 	configuredPaths []string
-	autoDiscover    bool
 }
 
-func NewCaddyDetector(logger *pterm.Logger, configuredPaths []string, autoDiscover bool) ServiceDetector {
-	return &CaddyDetector{
+func NewHAProxyDetector(logger *pterm.Logger, configuredPaths []string) ServiceDetector {
+	return &HAProxyDetector{
 		logger:          logger,
 		configuredPaths: configuredPaths,
-		autoDiscover:    autoDiscover,
 	}
 }
 
-func (d *CaddyDetector) Name() string { return "caddy" }
+func (d *HAProxyDetector) Name() string { return "haproxy" }
 
-func (d *CaddyDetector) Detect() ([]*models.LogSource, error) {
+func (d *HAProxyDetector) Detect() ([]*models.LogSource, error) {
 	sources := []*models.LogSource{}
 
-	paths := d.resolvePaths()
-	if len(paths) == 0 {
+	if len(d.configuredPaths) == 0 {
 		return sources, nil
 	}
 
-	for _, path := range paths {
+	for _, path := range d.configuredPaths {
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			d.logger.Debug("Caddy log path not accessible", d.logger.Args("path", path, "error", err))
+			d.logger.Warn("Configured HAProxy log path not accessible",
+				d.logger.Args("path", path, "error", err))
 			continue
 		}
 		if fileInfo.IsDir() || fileInfo.Size() == 0 {
 			d.logger.Debug("Skipping empty or directory path", d.logger.Args("path", path))
 			continue
 		}
-		if !isCaddyFormat(path, d.logger) {
-			d.logger.Warn("File does not appear to be a Caddy access log", d.logger.Args("path", path))
+		if !isHAProxyFormat(path) {
+			d.logger.Warn("File does not appear to be a HAProxy HTTP log", d.logger.Args("path", path))
 			continue
 		}
-		name := generateSourceName("caddy", path, sources)
-		d.logger.Info("Caddy log source detected", d.logger.Args("path", path, "name", name))
+		name := generateSourceName("haproxy", path, sources)
+		d.logger.Info("HAProxy log source registered", d.logger.Args("path", path, "name", name))
 		sources = append(sources, &models.LogSource{
 			Name:       name,
 			Path:       path,
-			ParserType: "caddy",
+			ParserType: "haproxy",
 		})
-	}
-
-	if len(sources) == 0 {
-		d.logger.Info("No Caddy log sources detected")
 	}
 
 	return sources, nil
 }
 
-func (d *CaddyDetector) resolvePaths() []string {
-	if len(d.configuredPaths) > 0 {
-		return d.configuredPaths
-	}
-	if d.autoDiscover {
-		return []string{
-			"caddy/logs/access.log",
-			"/var/log/caddy/access.log",
-			"/var/log/caddy/access.json",
-		}
-	}
-	return nil
-}
-
-func isCaddyFormat(path string, logger *pterm.Logger) bool {
+func isHAProxyFormat(path string) bool {
 	file, err := os.Open(path)
 	if err != nil {
-		logger.Debug("Failed to open file", logger.Args("path", path, "error", err))
 		return false
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	if scanner.Scan() {
-		line := scanner.Text()
-		var logEntry map[string]any
-		if err := json.Unmarshal([]byte(line), &logEntry); err == nil {
-			loggerField, hasLogger := logEntry["logger"].(string)
-			_, hasRequest := logEntry["request"]
-			if hasLogger && strings.HasPrefix(loggerField, "http.log.access") && hasRequest {
-				return true
-			}
+		line := strings.TrimSpace(scanner.Text())
+		// Strip syslog prefix if present
+		if loc := haproxySyslogPrefix.FindStringIndex(line); loc != nil {
+			line = line[loc[1]:]
 		}
+		return haproxyPattern.MatchString(line)
 	}
 	return false
 }

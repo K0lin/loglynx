@@ -1,0 +1,218 @@
+{{define "sources.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title">
+                <i class="{{.PageIcon}}"></i>
+                {{.PageTitle}}
+            </h2>
+            <p class="page-description">Log file sources registered in LogLynx and their ingestion status</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="loadSources()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Total Sources</div>
+        <div class="stat-value text-primary" id="totalSources">-</div>
+        <div class="stat-subtitle">configured log files</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active</div>
+        <div class="stat-value text-success" id="activeSources">-</div>
+        <div class="stat-subtitle">currently ingesting</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Standby</div>
+        <div class="stat-value text-warning" id="standbySources">-</div>
+        <div class="stat-subtitle">no active processor</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Parser Types</div>
+        <div class="stat-value text-info" id="parserTypes">-</div>
+        <div class="stat-subtitle">distinct parsers in use</div>
+    </div>
+</div>
+
+<!-- Sources Table -->
+<div class="section-header">
+    <h4><i class="fas fa-list"></i> Registered Sources</h4>
+</div>
+<div class="table-container mb-4">
+    <table class="table" id="sourcesTable">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Parser</th>
+                <th>Status</th>
+                <th>Log File Path</th>
+                <th>Last Read</th>
+                <th>Position</th>
+                <th>Registered</th>
+            </tr>
+        </thead>
+        <tbody id="sourcesTableBody">
+            <tr><td colspan="7" class="text-center text-muted">Loading…</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Configuration Hint -->
+<div class="section-header">
+    <h4><i class="fas fa-info-circle"></i> Configuration</h4>
+</div>
+<div class="table-container mb-4">
+    <table class="table table-sm">
+        <thead>
+            <tr><th>Parser</th><th>Environment variable (single or comma-separated)</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><span class="badge-parser parser-traefik">traefik</span></td><td colspan="2"><code>TRAEFIK_LOG_PATH=/path/access.log</code> &nbsp;or&nbsp; <code>TRAEFIK_LOG_PATH=/path/a.log,/path/b.log</code></td></tr>
+            <tr><td><span class="badge-parser parser-caddy">caddy</span></td><td colspan="2"><code>CADDY_LOG_PATH=/path/access.log</code> &nbsp;or&nbsp; <code>CADDY_LOG_PATH=/path/a.log,/path/b.log</code></td></tr>
+            <tr><td><span class="badge-parser parser-nginx">nginx</span></td><td colspan="2"><code>NGINX_LOG_PATH=/var/log/nginx/access.log</code> &nbsp;or&nbsp; <code>NGINX_LOG_PATH=/path/a.log,/path/b.log</code></td></tr>
+            <tr><td><span class="badge-parser parser-apache">apache</span></td><td colspan="2"><code>APACHE_LOG_PATH=/var/log/apache2/access.log</code> &nbsp;or&nbsp; <code>APACHE_LOG_PATH=/path/a.log,/path/b.log</code></td></tr>
+            <tr><td><span class="badge-parser parser-haproxy">haproxy</span></td><td colspan="2"><code>HAPROXY_LOG_PATH=/var/log/haproxy.log</code> &nbsp;or&nbsp; <code>HAPROXY_LOG_PATH=/path/a.log,/path/b.log</code></td></tr>
+        </tbody>
+    </table>
+    <p class="text-muted" style="font-size:0.85rem; padding: 0 1rem 1rem;">
+        Each path variable accepts a single path or a comma-separated list of paths.
+        Sources are discovered on startup — to add a new source, update <code>.env</code> and restart LogLynx.
+        Existing sources already tracked in the database will not be re-imported from the beginning.
+    </p>
+</div>
+
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="/static/js/app.js"></script>
+    <script>
+    const PARSER_COLORS = {
+        traefik: '#7c3aed',
+        caddy:   '#0891b2',
+        nginx:   '#16a34a',
+        apache:  '#b45309',
+        haproxy: '#be185d',
+    };
+
+    function parserBadge(type) {
+        const color = PARSER_COLORS[type] || '#6b7280';
+        return `<span class="badge-parser" style="background:${color}20;color:${color};border:1px solid ${color}40;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">${type}</span>`;
+    }
+
+    function statusBadge(status) {
+        if (status === 'active') {
+            return '<span class="badge" style="background:#16a34a20;color:#16a34a;border:1px solid #16a34a40;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;"><i class="fas fa-circle" style="font-size:0.5rem;vertical-align:middle;margin-right:4px;"></i>Active</span>';
+        }
+        return '<span class="badge" style="background:#78716c20;color:#a8a29e;border:1px solid #78716c40;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;"><i class="fas fa-circle" style="font-size:0.5rem;vertical-align:middle;margin-right:4px;"></i>Standby</span>';
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatDate(iso) {
+        if (!iso) return '-';
+        try {
+            return new Date(iso).toLocaleString();
+        } catch(e) { return iso; }
+    }
+
+    function loadSources() {
+        $.getJSON('/api/v1/sources', function(data) {
+            const tbody = $('#sourcesTableBody');
+            tbody.empty();
+
+            if (!data || data.length === 0) {
+                tbody.append('<tr><td colspan="7" class="text-center text-muted">No log sources registered yet. Configure paths in <code>.env</code> and restart.</td></tr>');
+                $('#totalSources').text(0);
+                $('#activeSources').text(0);
+                $('#standbySources').text(0);
+                $('#parserTypes').text(0);
+                return;
+            }
+
+            let active = 0, standby = 0;
+            const parsers = new Set();
+
+            data.forEach(function(src) {
+                if (src.status === 'active') active++; else standby++;
+                parsers.add(src.parser_type);
+
+                const row = `<tr>
+                    <td><strong>${escHtml(src.name)}</strong></td>
+                    <td>${parserBadge(src.parser_type)}</td>
+                    <td>${statusBadge(src.status)}</td>
+                    <td><code style="font-size:0.82rem;word-break:break-all;">${escHtml(src.path)}</code></td>
+                    <td>${formatDate(src.last_read_at)}</td>
+                    <td>${formatBytes(src.last_position_bytes)}</td>
+                    <td>${formatDate(src.created_at)}</td>
+                </tr>`;
+                tbody.append(row);
+            });
+
+            $('#totalSources').text(data.length);
+            $('#activeSources').text(active);
+            $('#standbySources').text(standby);
+            $('#parserTypes').text(parsers.size);
+        }).fail(function() {
+            $('#sourcesTableBody').html('<tr><td colspan="7" class="text-center text-danger">Failed to load sources.</td></tr>');
+        });
+    }
+
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    $(document).ready(function() {
+        loadSources();
+    });
+    </script>
+
+    <style>
+    .badge-parser { display: inline-block; }
+    #sourcesTable thead th { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
+    </style>
+</body>
+</html>
+{{end}}

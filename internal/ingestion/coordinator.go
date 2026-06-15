@@ -280,6 +280,17 @@ func (c *Coordinator) GetProcessorCount() int {
 	return len(c.processors)
 }
 
+// GetActiveSourceNames returns the names of all sources that currently have an active processor.
+func (c *Coordinator) GetActiveSourceNames() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	names := make([]string, 0, len(c.processors))
+	for name := range c.processors {
+		names = append(names, name)
+	}
+	return names
+}
+
 // IsInitialLoadComplete returns whether all processors have completed their initial load
 // AND whether database indexes have been created
 // This is used to determine when the application is ready to serve API requests

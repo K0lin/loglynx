@@ -97,7 +97,7 @@ type Config struct {
 }
 
 // NewServer creates a new HTTP server
-func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, ipTagHandler *handlers.IPTagHandler, logger *pterm.Logger) *Server {
+func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, ipTagHandler *handlers.IPTagHandler, sourcesHandler *handlers.SourcesHandler, logger *pterm.Logger) *Server {
 	// Set Gin mode
 	if cfg.Production {
 		gin.SetMode(gin.ReleaseMode)
@@ -205,6 +205,10 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 
 		router.GET("/system", func(c *gin.Context) {
 			renderPage(c, "system", "System Statistics", "fas fa-server")
+		})
+
+		router.GET("/sources", func(c *gin.Context) {
+			renderPage(c, "sources", "Log Sources", "fas fa-file-import")
 		})
 
 		// Widget page route (only if enabled)
@@ -334,6 +338,9 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		// System Statistics
 		api.GET("/system/stats", systemHandler.GetSystemStats)
 		api.GET("/system/timeline", systemHandler.GetRecordsTimeline)
+
+		// Log Sources
+		api.GET("/sources", sourcesHandler.GetSources)
 
 		// Widget API (compact data for iframe embedding) - only if enabled
 		if cfg.WidgetEnabled {

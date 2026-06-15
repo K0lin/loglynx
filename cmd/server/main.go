@@ -176,7 +176,7 @@ func main() {
 
 	// Run initial discovery SYNCHRONOUSLY to ensure log sources are found before starting ingestion
 	logger.Info("Discovering log sources...")
-	discoveryEngine := discovery.NewEngine(sourceRepo, logger)
+	discoveryEngine := discovery.NewEngine(sourceRepo, logger, &cfg.LogSources)
 	if err := discoveryEngine.Run(logger); err != nil {
 		logger.Warn("Initial discovery failed", logger.Args("error", err))
 	} else {
@@ -274,6 +274,7 @@ func main() {
 		cfg.Database.RetentionDays,
 	)
 	ipTagHandler := handlers.NewIPTagHandler(ipTagRepo, logger)
+	sourcesHandler := handlers.NewSourcesHandler(sourceRepo, coordinator, logger)
 	webServer := api.NewServer(&api.Config{
 		Host:                cfg.Server.Host,
 		Port:                cfg.Server.Port,
@@ -283,7 +284,7 @@ func main() {
 		TimeZone:            cfg.Server.TimeZone,
 		WidgetEnabled:       cfg.Server.WidgetEnabled,
 		HasExistingData:     httpRepo.HasExistingData(),
-	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, logger)
+	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, sourcesHandler, logger)
 
 	// Start web server in goroutine
 	go func() {

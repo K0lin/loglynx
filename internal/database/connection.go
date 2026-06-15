@@ -24,8 +24,6 @@ package database
 import (
 	"context"
 	"errors"
-	"loglynx/internal/database/repositories"
-	"loglynx/internal/discovery"
 	"os"
 	"runtime"
 	"strings"
@@ -239,24 +237,6 @@ func NewConnection(cfg *Config, logger *pterm.Logger) (*gorm.DB, error) {
         }
     }
 
-
-	// Run discovery engine in background to speed up startup
-	go func() {
-		logger.Debug("Running log source discovery in background...")
-		engine := discovery.NewEngine(repositories.NewLogSourceRepository(db), logger)
-		if err := engine.Run(logger); err != nil {
-			logger.Warn("Failed to run discovery engine", logger.Args("error", err))
-			return
-		}
-
-		logSourceRepo, err := repositories.NewLogSourceRepository(db).FindAll()
-		if err != nil {
-			logger.Warn("Failed to retrieve log sources", logger.Args("error", err))
-			return
-		}
-
-		logger.Info("Discovered log sources", logger.Args("count", len(logSourceRepo)))
-	}()
 
 	// Start pool monitoring if enabled
 	if cfg.PoolMonitoringEnabled {

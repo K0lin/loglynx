@@ -22,6 +22,7 @@
 package discovery
 
 import (
+	"loglynx/internal/config"
 	"loglynx/internal/database/models"
 	"loglynx/internal/database/repositories"
 
@@ -29,58 +30,70 @@ import (
 )
 
 type ServiceDetector interface {
-    Name() string
-    Detect() ([]*models.LogSource, error)
+	Name() string
+	Detect() ([]*models.LogSource, error)
 }
 
 type Engine struct {
-    repo      repositories.LogSourceRepository
-    detectors []ServiceDetector
+	repo      repositories.LogSourceRepository
+	detectors []ServiceDetector
 }
 
-func NewEngine(repo repositories.LogSourceRepository, logger *pterm.Logger) *Engine {
-    return &Engine{
-        repo: repo,
-        detectors: []ServiceDetector{
-            NewTraefikDetector(logger),
-            NewCaddyDetector(logger),
-        },
-    }
+func NewEngine(repo repositories.LogSourceRepository, logger *pterm.Logger, cfg *config.LogSourcesConfig) *Engine {
+	return &Engine{
+		repo: repo,
+		detectors: []ServiceDetector{
+			NewTraefikDetector(logger, cfg.TraefikLogPaths, cfg.AutoDiscover),
+			NewCaddyDetector(logger, cfg.CaddyLogPaths, cfg.AutoDiscover),
+			NewNginxDetector(logger, cfg.NginxLogPaths),
+			NewApacheDetector(logger, cfg.ApacheLogPaths),
+			NewHAProxyDetector(logger, cfg.HAProxyLogPaths),
+		},
+	}
 }
 
+// Run registers newly discovered log sources that are not yet in the database.
+// It always runs all detectors so that adding a new parser type (e.g. nginx) is
+// picked up even when Traefik/Caddy sources already exist.
 func (e *Engine) Run(logger *pterm.Logger) error {
-	logger.Trace("Check if the discovery is needed.")
-    existing, err := e.repo.FindAll()
-    if err != nil {
-        return err
-    }
-    
-    if len(existing) > 0 {
-	    logger.Trace("Discovery is not needed.")
-        return nil
-    }
+	existing, err := e.repo.FindAll()
+	if err != nil {
+		return err
+	}
 
-    logger.Debug("Starting discovery...")
-	
-    logger.Trace("Running service detectors...")
-    for _, detector := range e.detectors {
-        sources, err := detector.Detect()
-		logger.Trace("Detector executed.", logger.Args("Name", detector.Name()))
-        if err != nil {
-            logger.WithCaller().Warn("Detection failed,", logger.Args("detector", detector.Name(), "error", err))
-            continue
-        }
+	// Index already-registered source names for O(1) lookup.
+	registered := make(map[string]bool, len(existing))
+	for _, s := range existing {
+		registered[s.Name] = true
+	}
 
-        logger.Trace("Registering discovered sources...")
-        for _, source := range sources {
-            if err := e.repo.Create(source); err != nil {
-				logger.WithCaller().Error("Detection failed,", logger.Args("detector", source.Name, "error", err))
-            } else {
-				logger.Info("Registered new log source.", logger.Args("Name", source.Name, "Path", source.Path))
-            }
-        }
-    }
+	for _, detector := range e.detectors {
+		logger.Trace("Running detector", logger.Args("detector", detector.Name()))
 
-    logger.Debug("Discovery completed")
-    return nil
+		sources, err := detector.Detect()
+		if err != nil {
+			logger.WithCaller().Warn("Detector failed",
+				logger.Args("detector", detector.Name(), "error", err))
+			continue
+		}
+
+		for _, source := range sources {
+			if registered[source.Name] {
+				logger.Trace("Source already registered, skipping",
+					logger.Args("name", source.Name))
+				continue
+			}
+
+			if err := e.repo.Create(source); err != nil {
+				logger.WithCaller().Error("Failed to register log source",
+					logger.Args("name", source.Name, "error", err))
+			} else {
+				registered[source.Name] = true
+				logger.Info("Registered new log source",
+					logger.Args("name", source.Name, "path", source.Path, "parser", source.ParserType))
+			}
+		}
+	}
+
+	return nil
 }
