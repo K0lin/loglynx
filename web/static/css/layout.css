@@ -208,6 +208,12 @@
     color: var(--loglynx-primary-light);
 }
 
+.sidebar-version-status.is-error {
+    border-color: rgba(240, 45, 10, 0.664);
+    background: rgba(244, 99, 25, 0.12);
+    color: var(--loglynx-primary-light);
+}
+
 .sidebar-version-status.is-unknown,
 .sidebar-version-status.is-checking {
     color: var(--loglynx-text-dark);

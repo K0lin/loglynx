@@ -161,8 +161,16 @@ const LogLynxUtils = {
 
             const release = await response.json();
             const latestVersion = this.normalizeVersion(release.tag_name || release.name || '');
+            const latestParts = this.normalizeVersion(latestVersion).split(/[.-]/).map(part => parseInt(part, 10) || 0);
+            const currentParts = this.normalizeVersion(currentVersion).split(/[.-]/).map(part => parseInt(part, 10) || 0);
+
             if (!latestVersion) {
                 this.updateVersionCheckStatus('unknown', 'Version check unavailable');
+                return;
+            }
+
+            if(currentParts[0]>latestParts[0] || (currentParts[0] === latestParts[0] && currentParts[1]>latestParts[1]) || (currentParts[0] === latestParts[0] && currentParts[1] === latestParts[1] && currentParts[2]>latestParts[2])){
+                this.updateVersionCheckStatus('error', 'Mismatched version');
                 return;
             }
 
@@ -200,12 +208,14 @@ const LogLynxUtils = {
             checking: 'fa-circle-notch fa-spin',
             current: 'fa-check-circle',
             outdated: 'fa-exclamation-circle',
+            error: 'fa-exclamation-triangle',
             unknown: 'fa-info-circle'
         };
         const classByState = {
             checking: 'is-checking',
             current: 'is-current',
             outdated: 'is-outdated',
+            error: 'is-error',
             unknown: 'is-unknown'
         };
 
