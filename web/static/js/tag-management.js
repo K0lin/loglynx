@@ -121,7 +121,7 @@ function updateUIForIP(ip, data) {
       }
 
       if (enabled && friendlyName) {
-          display.innerHTML = `<strong>${friendlyName}</strong> <small class="text-muted">(${ip})</small>`;
+          display.innerHTML = `<a href="/ip/${encodeURIComponent(ip)}" class="ip-link text-decoration-none"><strong>${escapeTagHtml(friendlyName)}</strong> <small class="text-muted">(${escapeTagHtml(ip)})</small></a>`;
       } else {
           // Restore original HTML (link, code, etc.)
           display.innerHTML = display.dataset.originalHtml;
@@ -158,6 +158,15 @@ function updateUIForIP(ip, data) {
   editBtns.forEach(btn => {
     btn.style.display = enabled ? 'inline-block' : 'none';
   });
+}
+
+function escapeTagHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // Load and display tags for an IP
