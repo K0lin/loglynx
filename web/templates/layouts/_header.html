@@ -133,6 +133,10 @@
                 <i class="fas fa-search"></i>
                 <span class="action-label">IP Search</span>
             </button>
+            <button id="ipTagsManagerTrigger" class="header-action-btn" title="Manage IP friendly names and tags" aria-label="Manage IP Tags">
+                <i class="fas fa-tags"></i>
+                <span class="action-label">IP Tags</span>
+            </button>
         </div>
 
         <!-- Filters Group - Trigger Buttons -->
@@ -230,6 +234,64 @@
                 <button type="button" class="btn btn-primary" onclick="performGlobalIPSearch()">
                     <i class="fas fa-search"></i> Search
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Global IP Tags Manager Modal -->
+<div class="modal fade" id="ipTagsManagerModal" tabindex="-1" aria-labelledby="ipTagsManagerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content" style="background: var(--loglynx-card); color: #FFFFFF;">
+            <div class="modal-header" style="border-color: var(--border-color);">
+                <div>
+                    <h5 class="modal-title" id="ipTagsManagerModalLabel">
+                        <i class="fas fa-tags"></i> IP Friendly Names & Tags
+                    </h5>
+                    <small class="text-muted">View, search, edit, and remove all saved IP labels from one place.</small>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-5">
+                        <label for="ipTagsSearchInput" class="form-label small text-muted mb-1">Search</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input id="ipTagsSearchInput" type="text" class="form-control" placeholder="IP, friendly name, or tag">
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label small text-muted mb-1">Add or update IP</label>
+                        <div class="input-group input-group-sm">
+                            <input id="ipTagsNewIP" type="text" class="form-control" placeholder="IP address">
+                            <input id="ipTagsNewName" type="text" class="form-control" placeholder="Friendly name">
+                            <input id="ipTagsNewTags" type="text" class="form-control" placeholder="tags, comma-separated">
+                            <button id="ipTagsAddBtn" type="button" class="btn btn-primary"><i class="fas fa-plus"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="ipTagsManagerAlert" class="alert alert-danger py-2" style="display:none;"></div>
+                <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
+                    <table class="table table-striped table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 22%;">IP Address</th>
+                                <th style="width: 28%;">Friendly Name</th>
+                                <th>Tags</th>
+                                <th style="width: 150px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ipTagsManagerRows">
+                            <tr><td colspan="4" class="text-muted text-center py-4">Loading tags...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-color: var(--border-color);">
+                <span id="ipTagsManagerCount" class="text-muted small me-auto">0 tags</span>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                <button id="ipTagsManagerRefresh" type="button" class="btn btn-outline btn-sm"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
         </div>
     </div>
@@ -565,5 +627,196 @@
                 LogLynxUtils.initVersionCheck();
             }
         });
+    </script>
+    <script>
+        (function() {
+            let allIPTags = [];
+            let searchTerm = '';
+
+            function normalizeTag(tag) {
+                return {
+                    ip_address: tag.IPAddress || tag.ip_address || '',
+                    friendly_name: tag.FriendlyName || tag.friendly_name || '',
+                    tags: tag.Tags || tag.tags || ''
+                };
+            }
+
+            function escapeHtml(value) {
+                return String(value || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function showTagError(message) {
+                const el = document.getElementById('ipTagsManagerAlert');
+                if (!el) return;
+                if (!message) {
+                    el.style.display = 'none';
+                    el.textContent = '';
+                    return;
+                }
+                el.textContent = message;
+                el.style.display = 'block';
+            }
+
+            function filteredTags() {
+                const needle = searchTerm.trim().toLowerCase();
+                if (!needle) return allIPTags;
+                return allIPTags.filter(tag => [tag.ip_address, tag.friendly_name, tag.tags]
+                    .some(value => String(value || '').toLowerCase().includes(needle)));
+            }
+
+            function renderIPTagsManager() {
+                const tbody = document.getElementById('ipTagsManagerRows');
+                const count = document.getElementById('ipTagsManagerCount');
+                if (!tbody) return;
+
+                const rows = filteredTags();
+                if (count) count.textContent = `${rows.length} of ${allIPTags.length} tags`;
+
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-4">No IP tags found.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = rows.map(tag => {
+                    const ip = escapeHtml(tag.ip_address);
+                    return `
+                        <tr data-ip="${ip}">
+                            <td><a href="/ip/${encodeURIComponent(tag.ip_address)}" class="ip-link"><code>${ip}</code></a></td>
+                            <td><input class="form-control form-control-sm ip-tag-friendly" value="${escapeHtml(tag.friendly_name)}" placeholder="Friendly name"></td>
+                            <td><input class="form-control form-control-sm ip-tag-tags" value="${escapeHtml(tag.tags)}" placeholder="tag1, tag2"></td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <button type="button" class="btn btn-primary btn-sm ip-tag-save" title="Save"><i class="fas fa-save"></i></button>
+                                    <button type="button" class="btn btn-outline btn-sm ip-tag-open" title="Open IP"><i class="fas fa-up-right-from-square"></i></button>
+                                    <button type="button" class="btn btn-outline btn-sm text-danger ip-tag-delete" title="Delete"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </td>
+                        </tr>`;
+                }).join('');
+            }
+
+            function syncTagWithCurrentPage(tag) {
+                if (typeof ipTagsCache !== 'undefined' && ipTagsCache && typeof ipTagsCache.set === 'function') {
+                    ipTagsCache.set(tag.ip_address, tag);
+                    if (typeof lastBulkFetch !== 'undefined') lastBulkFetch = Date.now();
+                }
+                if (typeof updateUIForIP === 'function') {
+                    updateUIForIP(tag.ip_address, tag);
+                }
+            }
+
+            async function loadIPTagsManager() {
+                showTagError('');
+                const tbody = document.getElementById('ipTagsManagerRows');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-4"><i class="fas fa-circle-notch fa-spin me-1"></i>Loading tags...</td></tr>';
+                try {
+                    const response = await fetch('/api/v1/ip/tags');
+                    if (!response.ok) throw new Error('Failed to load IP tags');
+                    allIPTags = (await response.json()).map(normalizeTag).sort((a, b) => a.ip_address.localeCompare(b.ip_address));
+                    if (typeof ipTagsCache !== 'undefined' && ipTagsCache && typeof ipTagsCache.clear === 'function') {
+                        ipTagsCache.clear();
+                        allIPTags.forEach(syncTagWithCurrentPage);
+                    }
+                    renderIPTagsManager();
+                } catch (error) {
+                    showTagError(error.message || 'Failed to load IP tags');
+                    renderIPTagsManager();
+                }
+            }
+
+            async function saveIPTag(ip, friendlyName, tags) {
+                if (!ip) {
+                    showTagError('IP address is required.');
+                    return false;
+                }
+                showTagError('');
+                const payload = { ip_address: ip, friendly_name: friendlyName || '', tags: tags || '' };
+                try {
+                    const response = await fetch('/api/v1/ip/tags', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error('Failed to save IP tag');
+                    const saved = normalizeTag(await response.json());
+                    allIPTags = allIPTags.filter(tag => tag.ip_address !== saved.ip_address).concat(saved)
+                        .sort((a, b) => a.ip_address.localeCompare(b.ip_address));
+                    syncTagWithCurrentPage(saved);
+                    renderIPTagsManager();
+                    return true;
+                } catch (error) {
+                    showTagError(error.message || 'Failed to save IP tag');
+                    return false;
+                }
+            }
+
+            async function deleteIPTag(ip) {
+                if (!ip || !confirm(`Delete friendly name/tags for ${ip}?`)) return;
+                showTagError('');
+                try {
+                    const response = await fetch(`/api/v1/ip/tags/${encodeURIComponent(ip)}`, { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Failed to delete IP tag');
+                    allIPTags = allIPTags.filter(tag => tag.ip_address !== ip);
+                    const emptyTag = { ip_address: ip, friendly_name: '', tags: '' };
+                    if (typeof ipTagsCache !== 'undefined' && ipTagsCache && typeof ipTagsCache.delete === 'function') ipTagsCache.delete(ip);
+                    if (typeof updateUIForIP === 'function') updateUIForIP(ip, emptyTag);
+                    renderIPTagsManager();
+                } catch (error) {
+                    showTagError(error.message || 'Failed to delete IP tag');
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                const trigger = document.getElementById('ipTagsManagerTrigger');
+                const modalEl = document.getElementById('ipTagsManagerModal');
+                if (trigger && modalEl) {
+                    trigger.addEventListener('click', function() {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                        loadIPTagsManager();
+                    });
+                }
+
+                const refresh = document.getElementById('ipTagsManagerRefresh');
+                if (refresh) refresh.addEventListener('click', loadIPTagsManager);
+
+                const search = document.getElementById('ipTagsSearchInput');
+                if (search) search.addEventListener('input', function() {
+                    searchTerm = this.value || '';
+                    renderIPTagsManager();
+                });
+
+                const addBtn = document.getElementById('ipTagsAddBtn');
+                if (addBtn) addBtn.addEventListener('click', function() {
+                    const ip = document.getElementById('ipTagsNewIP').value.trim();
+                    const name = document.getElementById('ipTagsNewName').value.trim();
+                    const tags = document.getElementById('ipTagsNewTags').value.trim();
+                    saveIPTag(ip, name, tags).then(saved => {
+                        if (!saved) return;
+                        document.getElementById('ipTagsNewIP').value = '';
+                        document.getElementById('ipTagsNewName').value = '';
+                        document.getElementById('ipTagsNewTags').value = '';
+                    });
+                });
+
+                const rows = document.getElementById('ipTagsManagerRows');
+                if (rows) rows.addEventListener('click', function(event) {
+                    const row = event.target.closest('tr[data-ip]');
+                    if (!row) return;
+                    const ip = row.dataset.ip;
+                    if (event.target.closest('.ip-tag-save')) {
+                        saveIPTag(ip, row.querySelector('.ip-tag-friendly').value.trim(), row.querySelector('.ip-tag-tags').value.trim());
+                    } else if (event.target.closest('.ip-tag-delete')) {
+                        deleteIPTag(ip);
+                    } else if (event.target.closest('.ip-tag-open')) {
+                        window.location.href = `/ip/${encodeURIComponent(ip)}`;
+                    }
+                });
+            });
+        })();
     </script>
 {{end}}
