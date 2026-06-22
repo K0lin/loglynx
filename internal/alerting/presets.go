@@ -22,7 +22,7 @@ type presetDef struct {
 var builtinPresets = []presetDef{
 	{
 		Name:           "DDoS Detection",
-		Description:    "Detects a flood of requests from a single IP — a classic DDoS pattern. Fires when one IP sends an unusually high volume of requests in a short window.",
+		Description:    "Detects a flood of requests from a single IP, a classic DDoS pattern. Fires when one IP sends an unusually high volume of requests in a short window.",
 		Severity:       "critical",
 		Conditions:     []Condition{},
 		ThresholdCount: 500,
@@ -45,7 +45,7 @@ var builtinPresets = []presetDef{
 	},
 	{
 		Name:        "WordPress Admin Scanner",
-		Description: "Detects repeated access to the WordPress admin area from one IP — typical of automated vulnerability scanners.",
+		Description: "Detects repeated access to the WordPress admin area from one IP, typical of automated vulnerability scanners.",
 		Severity:    "warning",
 		Conditions: []Condition{
 			{Field: "path", Operator: "starts_with", Value: "/wp-admin"},
@@ -57,7 +57,7 @@ var builtinPresets = []presetDef{
 	},
 	{
 		Name:        "HTTP 4xx Error Storm",
-		Description: "Fires when a single IP generates a high number of 4xx errors — usually path-scanning or broken client behaviour.",
+		Description: "Fires when a single IP generates a high number of 4xx errors, usually path-scanning or broken client behaviour.",
 		Severity:    "warning",
 		Conditions: []Condition{
 			{Field: "status_code", Operator: "gte", Value: "400"},
@@ -70,7 +70,7 @@ var builtinPresets = []presetDef{
 	},
 	{
 		Name:        "Server Error (5xx) Spike",
-		Description: "Detects a global spike in 5xx server errors — often signals a backend outage, misconfiguration, or resource exhaustion.",
+		Description: "Detects a global spike in 5xx server errors, often signals a backend outage, misconfiguration, or resource exhaustion.",
 		Severity:    "critical",
 		Conditions: []Condition{
 			{Field: "status_code", Operator: "gte", Value: "500"},
@@ -82,7 +82,7 @@ var builtinPresets = []presetDef{
 	},
 	{
 		Name:        "Slow Response Anomaly",
-		Description: "Triggers when many responses take more than 5 seconds globally — a sign of backend latency or overload.",
+		Description: "Triggers when many responses take more than 5 seconds globally, a sign of backend latency or overload.",
 		Severity:    "warning",
 		Conditions: []Condition{
 			{Field: "response_time_ms", Operator: "gte", Value: "5000"},
@@ -94,7 +94,7 @@ var builtinPresets = []presetDef{
 	},
 	{
 		Name:        "High Country Traffic",
-		Description: "Detects an unusually high volume of requests from a single country in a short window — useful for geo-targeted attack detection.",
+		Description: "Detects an unusually high volume of requests from a single country in a short window, useful for geo-targeted attack detection.",
 		Severity:    "info",
 		Conditions:  []Condition{},
 		ThresholdCount: 1000,

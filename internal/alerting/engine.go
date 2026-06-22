@@ -30,7 +30,7 @@ type Engine struct {
 	stopCh    chan struct{}
 
 	// cooldowns tracks the last trigger time per "ruleID:groupValue" key.
-	// In-memory only: resets on restart (acceptable — brief false re-alert after restart).
+	// In-memory only: resets on restart (acceptable, brief false re-alert after restart).
 	cooldowns map[string]time.Time
 	mu        sync.Mutex
 }
