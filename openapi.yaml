@@ -96,6 +96,8 @@ tags:
     description: |
       Multi-period comparison endpoints. Compare traffic and analytics across
       2 to 4 arbitrary time ranges. Supports shareable snapshot links.
+  - name: Alerting
+    description: Alert rules, notification channels, and event history
   - name: Widget
     description: Compact widget endpoints for iframe embedding
 
@@ -895,6 +897,278 @@ paths:
           description: Snapshot not found
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /alerts/channels:
+    get:
+      tags:
+        - Alerting
+      summary: List alert notification channels
+      operationId: listAlertChannels
+      responses:
+        '200':
+          description: Alert channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertChannel'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Alerting
+      summary: Create alert notification channel
+      operationId: createAlertChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertChannelInput'
+      responses:
+        '201':
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertChannel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alerts/channels/{id}:
+    put:
+      tags:
+        - Alerting
+      summary: Update alert notification channel
+      operationId: updateAlertChannel
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertChannelInput'
+      responses:
+        '200':
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertChannel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Channel not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Alerting
+      summary: Delete alert notification channel
+      operationId: deleteAlertChannel
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Channel deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alerts/channels/{id}/test:
+    post:
+      tags:
+        - Alerting
+      summary: Send a test notification through a channel
+      operationId: testAlertChannel
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Test notification sent
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Channel not found
+        '502':
+          description: Notification provider returned an error
+
+  /alerts/rules:
+    get:
+      tags:
+        - Alerting
+      summary: List alert rules
+      operationId: listAlertRules
+      responses:
+        '200':
+          description: Alert rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertRule'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Alerting
+      summary: Create alert rule
+      operationId: createAlertRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alerts/rules/{id}:
+    get:
+      tags:
+        - Alerting
+      summary: Get alert rule
+      operationId: getAlertRule
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Alert rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '404':
+          description: Rule not found
+    put:
+      tags:
+        - Alerting
+      summary: Update alert rule
+      operationId: updateAlertRule
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '200':
+          description: Rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Rule not found
+    delete:
+      tags:
+        - Alerting
+      summary: Delete alert rule
+      operationId: deleteAlertRule
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Rule deleted
+        '403':
+          description: Preset rules cannot be deleted
+        '404':
+          description: Rule not found
+
+  /alerts/rules/{id}/toggle:
+    patch:
+      tags:
+        - Alerting
+      summary: Enable or disable an alert rule
+      operationId: toggleAlertRule
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Rule toggled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '404':
+          description: Rule not found
+
+  /alerts/history:
+    get:
+      tags:
+        - Alerting
+      summary: List alert event history
+      operationId: listAlertHistory
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Alert history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertHistoryResponse'
+    delete:
+      tags:
+        - Alerting
+      summary: Clear alert event history
+      operationId: clearAlertHistory
+      responses:
+        '204':
+          description: History cleared
+
+  /alerts/stats:
+    get:
+      tags:
+        - Alerting
+      summary: Get alerting summary stats
+      operationId: getAlertStats
+      responses:
+        '200':
+          description: Alerting stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertStats'
 
   /stats/log-processing:
     get:
@@ -1867,6 +2141,16 @@ components:
         minimum: 1
         maximum: 365
         default: 30
+
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: Numeric resource ID
+      schema:
+        type: integer
+        format: uint64
+        minimum: 1
 
   schemas:
     StatsSummary:
@@ -3087,7 +3371,195 @@ components:
           description: New expiry timestamp; null clears an existing expiry
           example: "2026-06-01T00:00:00Z"
 
+    AlertChannel:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Ops Telegram"
+        type:
+          type: string
+          enum: [discord, email, telegram, webhook]
+          example: "telegram"
+        config:
+          type: string
+          description: JSON configuration for the selected channel type. Secrets are stored in this JSON blob.
+          example: "{\"chat_id\":\"-1001234567890\"}"
+        enabled:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AlertChannelInput:
+      type: object
+      required: [name, type, config]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [discord, email, telegram, webhook]
+        config:
+          type: string
+          description: JSON string. Discord uses webhook_url; email uses smtp_host/smtp_port/from/to; Telegram uses bot_token/chat_id; webhook uses url/method/headers.
+        enabled:
+          type: boolean
+          default: true
+
+    AlertCondition:
+      type: object
+      properties:
+        field:
+          type: string
+          example: "status_code"
+        operator:
+          type: string
+          enum: [eq, neq, contains, not_contains, starts_with, ends_with, gte, lte, gt, lt, in]
+          example: "gte"
+        value:
+          type: string
+          example: "500"
+
+    AlertRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "High 5xx rate"
+        description:
+          type: string
+        enabled:
+          type: boolean
+        is_preset:
+          type: boolean
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        conditions:
+          type: string
+          description: JSON-encoded array of AlertCondition objects
+        threshold_count:
+          type: integer
+          example: 10
+        window_secs:
+          type: integer
+          example: 60
+        group_by:
+          type: string
+          enum: [global, client_ip, geo_country, host, backend_name, source_name]
+        cooldown_secs:
+          type: integer
+          example: 300
+        channel_ids:
+          type: string
+          description: JSON-encoded array of channel IDs
+        last_triggered_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AlertRuleInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        severity:
+          type: string
+          enum: [info, warning, critical]
+          default: warning
+        conditions:
+          type: string
+          description: JSON-encoded array of AlertCondition objects
+          default: "[]"
+        threshold_count:
+          type: integer
+          default: 10
+        window_secs:
+          type: integer
+          default: 60
+        group_by:
+          type: string
+          default: client_ip
+        cooldown_secs:
+          type: integer
+          default: 300
+        channel_ids:
+          type: string
+          description: JSON-encoded array of channel IDs
+          default: "[]"
+
+    AlertEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        rule_id:
+          type: integer
+        rule_name:
+          type: string
+        group_value:
+          type: string
+        count:
+          type: integer
+        severity:
+          type: string
+        triggered_at:
+          type: string
+          format: date-time
+
+    AlertHistoryResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertEvent'
+
+    AlertStats:
+      type: object
+      properties:
+        total_rules:
+          type: integer
+        active_rules:
+          type: integer
+        total_channels:
+          type: integer
+        alerts_24h:
+          type: integer
+
   responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     InternalServerError:
       description: Internal server error
       content:

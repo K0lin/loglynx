@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	"loglynx/internal/alerting"
 	"loglynx/internal/api"
 	"loglynx/internal/api/handlers"
 	"loglynx/internal/banner"
@@ -275,6 +276,17 @@ func main() {
 	)
 	ipTagHandler := handlers.NewIPTagHandler(ipTagRepo, logger)
 	sourcesHandler := handlers.NewSourcesHandler(sourceRepo, coordinator, logger)
+
+	// Initialize alerting subsystem.
+	alertRepo := repositories.NewAlertRepository(db)
+	alerting.SeedPresets(alertRepo, logger)
+	alertsHandler := handlers.NewAlertsHandler(alertRepo, logger)
+	if cfg.Alerting.Enabled {
+		alertEngine := alerting.NewEngine(db, alertRepo, logger, cfg.Alerting.EvalInterval)
+		alertEngine.Start()
+		defer alertEngine.Stop()
+	}
+
 	webServer := api.NewServer(&api.Config{
 		Host:                cfg.Server.Host,
 		Port:                cfg.Server.Port,
@@ -284,7 +296,7 @@ func main() {
 		TimeZone:            cfg.Server.TimeZone,
 		WidgetEnabled:       cfg.Server.WidgetEnabled,
 		HasExistingData:     httpRepo.HasExistingData(),
-	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, sourcesHandler, logger)
+	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, sourcesHandler, alertsHandler, logger)
 
 	// Start web server in goroutine
 	go func() {

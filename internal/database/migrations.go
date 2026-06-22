@@ -34,5 +34,8 @@ func RunMigrations(db *gorm.DB) error {
 		&models.IPReputation{},
 		&models.IPTag{},
 		&models.ComparisonSnapshot{},
+		&models.AlertChannel{},
+		&models.AlertRule{},
+		&models.AlertEvent{},
 	)
 }

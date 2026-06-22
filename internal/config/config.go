@@ -52,6 +52,9 @@ type Config struct {
 
 	// Anonymous usage telemetry
 	Telemetry TelemetryConfig
+
+	// Alerting configuration
+	Alerting AlertingConfig
 }
 
 // DatabaseConfig contains database-related settings
@@ -128,6 +131,12 @@ type TelemetryConfig struct {
 	Interval time.Duration
 }
 
+// AlertingConfig controls the background alert evaluation engine.
+type AlertingConfig struct {
+	Enabled      bool          // ALERTS_ENABLED (default: true)
+	EvalInterval time.Duration // ALERTS_EVAL_INTERVAL (default: 30s)
+}
+
 // Load reads configuration from .env file and environment variables
 func Load() (*Config, error) {
 	// Try to load .env file (ignore error if file doesn't exist)
@@ -188,6 +197,10 @@ func Load() (*Config, error) {
 			Enabled:  getEnvAsBool("LOGLYNX_USAGE_TELEMETRY", true),
 			Endpoint: getEnv("LOGLYNX_USAGE_TELEMETRY_ENDPOINT", ""),
 			Interval: getEnvAsDuration("LOGLYNX_USAGE_TELEMETRY_INTERVAL", 1*time.Hour),
+		},
+		Alerting: AlertingConfig{
+			Enabled:      getEnvAsBool("ALERTS_ENABLED", true),
+			EvalInterval: getEnvAsDuration("ALERTS_EVAL_INTERVAL", 30*time.Second),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}
