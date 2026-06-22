@@ -98,6 +98,7 @@ async function loadTrafficData() {
 
         // Initialize ASN DataTable
         initASNDataTable();
+        await populateDrilldownASNOptions();
 
     } catch (error) {
         console.error('Error loading traffic data:', error);
@@ -649,7 +650,7 @@ function populateDrilldownCountryOptions(countries) {
     const select = $('#trafficDrilldownCountry');
     if (!select.length) return;
 
-    const current = select.val();
+    const current = select.val() || select.data('pending-asn');
     let html = '<option value="">Select country</option>';
     countries.forEach(item => {
         if (!item.country) return;
@@ -658,6 +659,45 @@ function populateDrilldownCountryOptions(countries) {
     });
     select.html(html);
     if (current) select.val(current);
+}
+
+async function populateDrilldownASNOptions() {
+    const select = $('#trafficDrilldownASN');
+    if (!select.length) return;
+
+    const current = select.val();
+    select.html('<option value="">Loading ASNs...</option>').prop('disabled', true);
+
+    try {
+        const response = await fetch(LogLynxAPI.buildURL('/stats/top/asns', { limit: 500, hours: currentTimeRange }));
+        if (!response.ok) throw new Error('Failed to load ASNs');
+        const asns = await response.json();
+
+        let html = '<option value="">Select ASN</option>';
+        (asns || []).forEach(item => {
+            if (!item.asn) return;
+            const org = item.asn_org ? ` - ${escapeTrafficHtml(item.asn_org)}` : '';
+            const country = item.country ? ` (${escapeTrafficHtml(item.country)})` : '';
+            const hits = item.hits ? ` - ${LogLynxUtils.formatNumber(item.hits)} hits` : '';
+            html += `<option value="${item.asn}">AS${item.asn}${org}${country}${hits}</option>`;
+        });
+
+        select.html(html).prop('disabled', false);
+        if (current && select.find(`option[value="${current}"]`).length) select.val(current);
+        select.removeData('pending-asn');
+    } catch (error) {
+        console.error('Failed to populate ASN drilldown options:', error);
+        select.html('<option value="">No ASN data available</option>').prop('disabled', false);
+    }
+}
+
+function escapeTrafficHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function renderDrilldownRows(data) {
@@ -797,7 +837,7 @@ function syncDrilldownControls(drilldown) {
     }
     if (drilldown.filters?.asn) {
         $('#trafficDrilldownType').val('asn');
-        $('#trafficDrilldownASN').val(drilldown.filters.asn);
+        $('#trafficDrilldownASN').data('pending-asn', drilldown.filters.asn).val(drilldown.filters.asn);
     }
     if (drilldown.filters?.day_of_week !== undefined && drilldown.filters?.hour !== undefined) {
         $('#trafficDrilldownType').val('time_bucket');
@@ -814,6 +854,7 @@ function updateDrilldownExtraFields() {
         $('.traffic-drilldown-extra[data-extra="country"]').show();
     } else if (type === 'asn') {
         $('.traffic-drilldown-extra[data-extra="asn"]').show();
+        populateDrilldownASNOptions();
     } else if (type === 'time_bucket') {
         $('.traffic-drilldown-extra[data-extra="time_bucket"]').show();
     }
