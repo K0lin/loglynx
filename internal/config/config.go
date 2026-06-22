@@ -184,7 +184,7 @@ func Load() (*Config, error) {
 			Production:          getEnvAsBool("SERVER_PRODUCTION", false),
 			DashboardEnabled:    getEnvAsBool("DASHBOARD_ENABLED", true),
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
-			TimeZone:            getEnv("TIMEZONE", "UTC"),
+			TimeZone:            getEnvWithFallback("TIMEZONE", "TZ", "UTC"),
 			WidgetEnabled:       getEnvAsBool("WIDGET_ENABLED", false),
 		},
 		Performance: PerformanceConfig{
@@ -212,6 +212,16 @@ func Load() (*Config, error) {
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvWithFallback(key, fallbackKey, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	if value := os.Getenv(fallbackKey); value != "" {
 		return value
 	}
 	return defaultValue
