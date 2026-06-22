@@ -1,0 +1,1283 @@
+{{define "alerts.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - LogLynx</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/charts.css" rel="stylesheet">
+    <link href="/static/css/tooltip.css" rel="stylesheet">
+    <style>
+        /* ── Alert page styles ─────────────────────────────────── */
+        .alerts-tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; }
+        .alerts-tab { padding: .55rem 1.2rem; border: none; background: transparent; color: var(--text-muted); font-size: .88rem; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; }
+        .alerts-tab:hover { color: var(--text-primary); }
+        .alerts-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+        /* rule cards */
+        .rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1rem; }
+        .rule-card { background: var(--loglynx-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 1.1rem 1.25rem; display: flex; flex-direction: column; gap: .7rem; transition: border-color .15s; }
+        .rule-card:hover { border-color: var(--accent-blue-dim, rgba(59,130,246,.3)); }
+        .rule-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+        .rule-card-title { font-weight: 600; font-size: .97rem; color: var(--text-primary); }
+        .rule-card-desc { font-size: .82rem; color: var(--text-muted); line-height: 1.5; }
+        .rule-card-meta { font-size: .78rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: .4rem .8rem; }
+        .rule-card-meta span { display: flex; align-items: center; gap: .3rem; }
+        .rule-card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: .5rem; border-top: 1px solid var(--border-color); }
+        .rule-card-actions { display: flex; gap: .4rem; align-items: center; }
+
+        .badge-sev { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+        .sev-info     { background: rgba(59,130,246,.15); color: #60a5fa; border: 1px solid rgba(59,130,246,.25); }
+        .sev-warning  { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.25); }
+        .sev-critical { background: rgba(239,68,68,.15);  color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+        .badge-preset { background: rgba(139,92,246,.15); color: #a78bfa; border: 1px solid rgba(139,92,246,.25); font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; }
+
+        /* channel cards */
+        .channels-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+        .channel-card { background: var(--loglynx-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: .6rem; }
+        .channel-type-badge { display: inline-flex; align-items: center; gap: .35rem; padding: 3px 10px; border-radius: 5px; font-size: .75rem; font-weight: 700; text-transform: uppercase; }
+        .ch-discord { background: rgba(88,101,242,.18); color: #818cf8; border: 1px solid rgba(88,101,242,.3); }
+        .ch-email   { background: rgba(16,185,129,.18); color: #34d399; border: 1px solid rgba(16,185,129,.3); }
+        .ch-telegram { background: rgba(34,158,217,.18); color: #38bdf8; border: 1px solid rgba(34,158,217,.3); }
+        .ch-webhook { background: rgba(245,158,11,.18); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
+
+        /* toggle switch */
+        .toggle-switch { position: relative; display: inline-block; width: 38px; height: 20px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; inset: 0; background: var(--border-color); border-radius: 20px; cursor: pointer; transition: .2s; }
+        .toggle-slider:before { content: ''; position: absolute; width: 14px; height: 14px; background: #fff; border-radius: 50%; left: 3px; top: 3px; transition: .2s; }
+        input:checked + .toggle-slider { background: #3b82f6; }
+        input:checked + .toggle-slider:before { transform: translateX(18px); }
+
+        /* condition builder */
+        .condition-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: .4rem; align-items: center; margin-bottom: .4rem; }
+        .condition-row select, .condition-row input { font-size: .83rem; }
+        .condition-row-add { border: 1px dashed var(--border-color); border-radius: 8px; padding: .7rem; text-align: center; cursor: pointer; color: var(--text-muted); font-size: .82rem; transition: all .15s; margin-top: .4rem; }
+        .condition-row-add:hover { border-color: #3b82f6; color: #3b82f6; }
+
+        /* history table */
+        .history-group-val { font-family: monospace; font-size: .82rem; background: rgba(255,255,255,.06); padding: 1px 6px; border-radius: 3px; }
+
+        /* window/cooldown unit helpers */
+        .unit-inline { display: flex; gap: .4rem; align-items: center; }
+        .unit-inline input { flex: 1; }
+        .unit-inline select { width: auto; }
+
+        /* empty states */
+        .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+        .empty-state i { font-size: 2.5rem; margin-bottom: .8rem; display: block; opacity: .4; }
+
+        /* channel form sections */
+        .channel-form-section { display: none; }
+        .channel-form-section.active { display: block; }
+
+        /* last triggered */
+        .last-triggered { font-size: .74rem; color: var(--text-muted); }
+        .last-triggered.never { opacity: .5; }
+
+        /* condition summary */
+        .cond-summary { font-size: .79rem; color: var(--text-muted); font-style: italic; }
+        .cond-pill { display: inline-block; background: rgba(255,255,255,.06); border-radius: 4px; padding: 1px 6px; font-size: .74rem; margin: 1px; font-family: monospace; }
+        .assignment-table th { white-space: nowrap; }
+        .assignment-table .rule-name-cell { min-width: 260px; }
+        .assignment-status { font-size: .76rem; min-width: 70px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        {{template "sidebar" .}}
+        <div class="sidebar-overlay"></div>
+        <div class="main-content">
+            {{template "header" .}}
+            <main class="page-content">
+
+<!-- Page header -->
+<div class="page-header">
+    <div class="page-header-top">
+        <div>
+            <h2 class="page-title"><i class="{{.PageIcon}}"></i> {{.PageTitle}}</h2>
+            <p class="page-description">Define alert rules, notification channels, and monitor triggered events</p>
+        </div>
+        <div class="page-actions" id="pageActions">
+            <!-- dynamic based on active tab -->
+        </div>
+    </div>
+</div>
+
+<!-- Stat cards -->
+<div class="grid grid-cols-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-label">Total Rules</div>
+        <div class="stat-value text-primary" id="statTotalRules">-</div>
+        <div class="stat-subtitle">configured rules</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active Rules</div>
+        <div class="stat-value text-success" id="statActiveRules">-</div>
+        <div class="stat-subtitle">currently evaluating</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Channels</div>
+        <div class="stat-value text-info" id="statChannels">-</div>
+        <div class="stat-subtitle">notification destinations</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Alerts (24 h)</div>
+        <div class="stat-value text-warning" id="statAlerts24h">-</div>
+        <div class="stat-subtitle">events triggered</div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="alerts-tabs">
+    <button class="alerts-tab active" onclick="switchTab('rules', this)"><i class="fas fa-shield-halved me-1"></i>Rules</button>
+    <button class="alerts-tab" onclick="switchTab('channels', this)"><i class="fas fa-paper-plane me-1"></i>Channels</button>
+    <button class="alerts-tab" onclick="switchTab('assignments', this)"><i class="fas fa-table-list me-1"></i>Assignments</button>
+    <button class="alerts-tab" onclick="switchTab('history', this)"><i class="fas fa-clock-rotate-left me-1"></i>History</button>
+</div>
+
+<!-- ── RULES TAB ──────────────────────────────────────────────────────── -->
+<div id="tab-rules">
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-primary btn-sm" onclick="openRuleModal()">
+            <i class="fas fa-plus me-1"></i>New Rule
+        </button>
+    </div>
+    <div class="rules-grid" id="rulesGrid">
+        <div class="stat-card"><div class="text-muted text-center py-3">Loading…</div></div>
+    </div>
+</div>
+
+<!-- ── CHANNELS TAB ───────────────────────────────────────────────────── -->
+<div id="tab-channels" style="display:none">
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-primary btn-sm" onclick="openChannelModal()">
+            <i class="fas fa-plus me-1"></i>Add Channel
+        </button>
+    </div>
+    <div class="channels-grid" id="channelsGrid">
+        <div class="stat-card"><div class="text-muted text-center py-3">Loading…</div></div>
+    </div>
+</div>
+
+<!-- ── ASSIGNMENTS TAB ────────────────────────────────────────────────── -->
+<div id="tab-assignments" style="display:none">
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                <div>
+                    <h6 class="mb-1"><i class="fas fa-table-list me-1"></i>Rule notification matrix</h6>
+                    <div class="text-muted small">Toggle which notification channels each rule uses. Changes save immediately.</div>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="renderAssignments()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+            </div>
+        </div>
+    </div>
+    <div class="table-container table-responsive">
+        <table class="table table-sm assignment-table" id="assignmentTable">
+            <tbody><tr><td class="text-muted text-center py-4">Loading…</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ── HISTORY TAB ────────────────────────────────────────────────────── -->
+<div id="tab-history" style="display:none">
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-outline btn-sm text-danger" onclick="clearHistory()">
+            <i class="fas fa-trash me-1"></i>Clear History
+        </button>
+    </div>
+    <div class="table-container">
+        <table class="table" id="historyTable">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Rule</th>
+                    <th>Severity</th>
+                    <th>Group Value</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+                <tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr>
+            </tbody>
+        </table>
+        <div id="historyPager" class="d-flex justify-content-between align-items-center p-3" style="display:none!important"></div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     RULE MODAL
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="ruleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background:var(--loglynx-card);color:#fff;">
+            <div class="modal-header" style="border-color:var(--border-color);">
+                <h5 class="modal-title" id="ruleModalTitle"><i class="fas fa-shield-halved me-2"></i>New Alert Rule</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ruleId">
+
+                <!-- Name + Severity + Description -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-7">
+                        <label class="form-label small text-muted">Rule Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="ruleName" placeholder="e.g. Admin Scanner">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small text-muted">Severity</label>
+                        <select class="form-select form-select-sm" id="ruleSeverity">
+                            <option value="info">Info</option>
+                            <option value="warning" selected>Warning</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small text-muted">Description</label>
+                        <input type="text" class="form-control form-control-sm" id="ruleDescription" placeholder="What does this rule detect?">
+                    </div>
+                </div>
+
+                <!-- Conditions -->
+                <div class="mb-3">
+                    <label class="form-label small text-muted d-block mb-1">
+                        Conditions <span class="text-muted">(ALL must match, AND logic)</span>
+                    </label>
+                    <div id="conditionRows"></div>
+                    <div class="condition-row-add" onclick="addConditionRow()">
+                        <i class="fas fa-plus me-1"></i>Add Condition
+                    </div>
+                    <div class="mt-1 text-muted" style="font-size:.75rem;">Leave empty to match all requests.</div>
+                </div>
+
+                <!-- Threshold + Window -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">Trigger when count exceeds</label>
+                        <input type="number" class="form-control form-control-sm" id="ruleThreshold" value="10" min="1">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">in the last</label>
+                        <div class="unit-inline">
+                            <input type="number" class="form-control form-control-sm" id="ruleWindowVal" value="60" min="1">
+                            <select class="form-select form-select-sm" id="ruleWindowUnit">
+                                <option value="1">seconds</option>
+                                <option value="60" selected>minutes</option>
+                                <option value="3600">hours</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">grouped by</label>
+                        <select class="form-select form-select-sm" id="ruleGroupBy">
+                            <option value="client_ip" selected>Client IP</option>
+                            <option value="geo_country">Country</option>
+                            <option value="host">Host</option>
+                            <option value="backend_name">Backend</option>
+                            <option value="source_name">Log Source</option>
+                            <option value="global">Global (all traffic)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Cooldown -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Cooldown, don't re-alert for</label>
+                        <div class="unit-inline">
+                            <input type="number" class="form-control form-control-sm" id="ruleCooldownVal" value="5" min="0">
+                            <select class="form-select form-select-sm" id="ruleCooldownUnit">
+                                <option value="1">seconds</option>
+                                <option value="60" selected>minutes</option>
+                                <option value="3600">hours</option>
+                            </select>
+                        </div>
+                        <div id="ruleCooldownWarning" class="small text-warning mt-1" style="display:none;"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Enabled</label>
+                        <div class="pt-1">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="ruleEnabled" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Channels -->
+                <div class="mb-2">
+                    <label class="form-label small text-muted">Notification Channels</label>
+                    <div id="channelCheckboxes" class="d-flex flex-wrap gap-2">
+                        <span class="text-muted" style="font-size:.82rem;">No channels configured yet, add one in the Channels tab.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-color:var(--border-color);">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveRule()">
+                    <i class="fas fa-save me-1"></i>Save Rule
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     CHANNEL MODAL
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="channelModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" style="background:var(--loglynx-card);color:#fff;">
+            <div class="modal-header" style="border-color:var(--border-color);">
+                <h5 class="modal-title" id="channelModalTitle"><i class="fas fa-paper-plane me-2"></i>Add Channel</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="channelId">
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-7">
+                        <label class="form-label small text-muted">Channel Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="channelName" placeholder="e.g. My Discord Server">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small text-muted">Type <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" id="channelType" onchange="onChannelTypeChange()">
+                            <option value="discord">Discord Webhook</option>
+                            <option value="email">Email (SMTP)</option>
+                            <option value="telegram">Telegram Bot</option>
+                            <option value="webhook">Generic Webhook</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Discord config -->
+                <div class="channel-form-section active" id="chf-discord">
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Webhook URL <span class="text-danger">*</span></label>
+                        <input type="url" class="form-control form-control-sm" id="ch-discord-url" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Bot Username <span class="text-muted">(optional)</span></label>
+                        <input type="text" class="form-control form-control-sm" id="ch-discord-username" placeholder="LogLynx Alerts">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Mention everyone</label>
+                        <select class="form-select form-select-sm" id="ch-discord-mention-policy">
+                            <option value="never" selected>Never</option>
+                            <option value="critical">Only for critical alerts</option>
+                            <option value="always">For every alert sent to this channel</option>
+                        </select>
+                        <div class="small text-muted mt-1">Discord will receive an @everyone mention only when this policy allows it.</div>
+                    </div>
+                </div>
+
+                <!-- Email config -->
+                <div class="channel-form-section" id="chf-email">
+                    <div class="row g-2 mb-2">
+                        <div class="col-8">
+                            <label class="form-label small text-muted">SMTP Host <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="ch-email-host" placeholder="smtp.gmail.com">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small text-muted">Port</label>
+                            <input type="number" class="form-control form-control-sm" id="ch-email-port" value="587">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Username</label>
+                            <input type="text" class="form-control form-control-sm" id="ch-email-user" placeholder="user@gmail.com">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Password / App Key</label>
+                            <input type="password" class="form-control form-control-sm" id="ch-email-pass">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">From address <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control form-control-sm" id="ch-email-from" placeholder="alerts@example.com">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Recipients (comma-separated) <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="ch-email-to" placeholder="admin@example.com, ops@example.com">
+                    </div>
+                    <div class="d-flex gap-3 mt-1">
+                        <label class="form-check-label small d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input" id="ch-email-tls"> TLS (port 465)
+                        </label>
+                        <label class="form-check-label small d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input" id="ch-email-starttls" checked> STARTTLS (port 587)
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Telegram config -->
+                <div class="channel-form-section" id="chf-telegram">
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Bot Token <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control form-control-sm" id="ch-telegram-token" placeholder="123456789:AA...">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Chat ID <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="ch-telegram-chat" placeholder="-1001234567890">
+                    </div>
+                    <div class="small text-muted">Use a private chat ID, group ID, or channel ID where the bot has permission to send messages.</div>
+                </div>
+
+                <!-- Webhook config -->
+                <div class="channel-form-section" id="chf-webhook">
+                    <div class="row g-2 mb-2">
+                        <div class="col-8">
+                            <label class="form-label small text-muted">URL <span class="text-danger">*</span></label>
+                            <input type="url" class="form-control form-control-sm" id="ch-wh-url" placeholder="https://your-service.example.com/webhook">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small text-muted">Method</label>
+                            <select class="form-select form-select-sm" id="ch-wh-method">
+                                <option value="POST" selected>POST</option>
+                                <option value="PUT">PUT</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Extra Headers (JSON object, optional)</label>
+                        <textarea class="form-control form-control-sm" id="ch-wh-headers" rows="2" placeholder='{"Authorization": "Bearer token123"}'></textarea>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label small text-muted d-block">Channel Options</label>
+                    <div class="d-flex flex-column gap-2">
+                        <label class="form-check-label small d-flex align-items-center gap-2">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="channelEnabled" checked>
+                                <span class="toggle-slider"></span>
+                            </span>
+                            Channel enabled
+                        </label>
+                        <label class="form-check-label small d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input" id="channelDefaultForNewRules">
+                            Enable by default on newly created rules
+                        </label>
+                        <div class="text-muted small">This is not retroactive. Existing rules keep their current channel assignments.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-color:var(--border-color);">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-info btn-sm" onclick="testChannel()">
+                    <i class="fas fa-vial me-1"></i>Test
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveChannel()">
+                    <i class="fas fa-save me-1"></i>Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+            </main>
+            {{template "footer" .}}
+        </div>
+    </div>
+
+    {{template "scripts-common" .}}
+    <script>
+    // ─────────────────────────────────────────────────────────────────────────
+    //  State
+    // ─────────────────────────────────────────────────────────────────────────
+    let allRules = [], allChannels = [], historyOffset = 0, historyTotal = 0;
+    const HISTORY_PAGE = 50;
+    let ruleModalBS, channelModalBS;
+
+    const FIELDS = [
+        {v:'method',           l:'HTTP Method'},
+        {v:'path',             l:'Request Path'},
+        {v:'host',             l:'Host'},
+        {v:'status_code',      l:'Status Code'},
+        {v:'response_time_ms', l:'Response Time (ms)'},
+        {v:'client_ip',        l:'Client IP'},
+        {v:'geo_country',      l:'Country (ISO)'},
+        {v:'backend_name',     l:'Backend Name'},
+        {v:'user_agent',       l:'User Agent'},
+        {v:'source_name',      l:'Log Source'},
+        {v:'device_type',      l:'Device Type'},
+        {v:'router_name',      l:'Router Name'},
+        {v:'request_scheme',   l:'Scheme'},
+    ];
+
+    const OPERATORS = [
+        {v:'eq',           l:'='},
+        {v:'neq',          l:'≠'},
+        {v:'contains',     l:'contains'},
+        {v:'not_contains', l:'not contains'},
+        {v:'starts_with',  l:'starts with'},
+        {v:'ends_with',    l:'ends with'},
+        {v:'gte',          l:'≥'},
+        {v:'lte',          l:'≤'},
+        {v:'gt',           l:'>'},
+        {v:'lt',           l:'<'},
+        {v:'in',           l:'in (comma list)'},
+    ];
+
+    const ALERT_EVAL_INTERVAL_SECS = Number(window.LOGLYNX_CONFIG?.alertEvalIntervalSecs || 30);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Tab management
+    // ─────────────────────────────────────────────────────────────────────────
+    function switchTab(tab, el) {
+        document.querySelectorAll('.alerts-tab').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+        ['rules','channels','assignments','history'].forEach(t => {
+            document.getElementById('tab-'+t).style.display = t === tab ? '' : 'none';
+        });
+        if (tab === 'rules')    renderRules();
+        if (tab === 'channels') renderChannels();
+        if (tab === 'assignments') renderAssignments();
+        if (tab === 'history')  loadHistory();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Stats cards
+    // ─────────────────────────────────────────────────────────────────────────
+    function loadStats() {
+        $.getJSON('/api/v1/alerts/stats', function(d) {
+            $('#statTotalRules').text(d.total_rules);
+            $('#statActiveRules').text(d.active_rules);
+            $('#statChannels').text(d.total_channels);
+            $('#statAlerts24h').text(d.alerts_24h);
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Rules
+    // ─────────────────────────────────────────────────────────────────────────
+    function loadRules(cb) {
+        $.getJSON('/api/v1/alerts/rules', function(data) {
+            allRules = data || [];
+            if (cb) cb();
+        });
+    }
+
+    function renderRules() {
+        loadRules(function() {
+            const grid = $('#rulesGrid');
+            grid.empty();
+            if (allRules.length === 0) {
+                grid.html('<div class="empty-state"><i class="fas fa-shield-halved"></i>No alert rules yet. Click <strong>New Rule</strong> to get started.</div>');
+                return;
+            }
+            allRules.forEach(function(r) {
+                grid.append(ruleCard(r));
+            });
+        });
+    }
+
+    function ruleCard(r) {
+        const sevClass = 'sev-' + (r.severity || 'warning');
+        const sevLabel = (r.severity || 'warning').toUpperCase();
+        const presetBadge = r.is_preset ? '<span class="badge-preset ms-1"><i class="fas fa-lock me-1"></i>Preset</span>' : '';
+        const lastTrig = r.last_triggered_at
+            ? '<span class="last-triggered"><i class="fas fa-clock me-1"></i>' + fmtDate(r.last_triggered_at) + '</span>'
+            : '<span class="last-triggered never">Never triggered</span>';
+
+        let condSummary = '';
+        try {
+            const conds = JSON.parse(r.conditions || '[]');
+            if (conds.length === 0) {
+                condSummary = '<span class="cond-pill">all requests</span>';
+            } else {
+                condSummary = conds.map(c =>
+                    `<span class="cond-pill">${esc(c.field)} ${esc(c.operator)} ${esc(c.value)}</span>`
+                ).join(' AND ');
+            }
+        } catch(e) { condSummary = '—'; }
+
+        const windowMin = r.window_secs < 60 ? r.window_secs + 's' : Math.round(r.window_secs/60) + ' min';
+        const coolMin   = r.cooldown_secs < 60 ? r.cooldown_secs + 's' : Math.round(r.cooldown_secs/60) + ' min';
+
+        const deleteBtn = r.is_preset
+            ? `<button class="btn btn-sm btn-outline" style="opacity:.35;" title="Preset rules cannot be deleted" disabled><i class="fas fa-trash"></i></button>`
+            : `<button class="btn btn-sm btn-outline text-danger" onclick="deleteRule(${r.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
+
+        return `
+        <div class="rule-card" id="rule-card-${r.id}">
+            <div class="rule-card-header">
+                <div>
+                    <span class="badge-sev ${sevClass}">${sevLabel}</span>
+                    ${presetBadge}
+                    <div class="rule-card-title mt-1">${esc(r.name)}</div>
+                </div>
+                <label class="toggle-switch mt-1" title="${r.enabled ? 'Disable' : 'Enable'} rule">
+                    <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleRule(${r.id}, this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="rule-card-desc">${r.description ? esc(r.description) : '<em>No description</em>'}</div>
+            <div class="cond-summary">${condSummary}</div>
+            <div class="rule-card-meta">
+                <span><i class="fas fa-chart-bar"></i>&gt; ${r.threshold_count} req in ${windowMin}</span>
+                <span><i class="fas fa-layer-group"></i>by ${r.group_by}</span>
+                <span><i class="fas fa-pause-circle"></i>cooldown ${coolMin}</span>
+            </div>
+            <div class="rule-card-footer">
+                ${lastTrig}
+                <div class="rule-card-actions">
+                    <button class="btn btn-sm btn-outline" onclick="editRule(${r.id})" title="Edit"><i class="fas fa-pen"></i></button>
+                    ${deleteBtn}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function toggleRule(id, enabled) {
+        $.ajax({
+            url: '/api/v1/alerts/rules/' + id + '/toggle',
+            method: 'PATCH',
+            contentType: 'application/json',
+            data: JSON.stringify({enabled: enabled}),
+            success: function() { loadStats(); },
+            error: function() { alert('Failed to toggle rule.'); renderRules(); }
+        });
+    }
+
+    function deleteRule(id) {
+        if (!confirm('Delete this alert rule? This cannot be undone.')) return;
+        $.ajax({
+            url: '/api/v1/alerts/rules/' + id,
+            method: 'DELETE',
+            success: function() { renderRules(); loadStats(); },
+            error: function(xhr) {
+                alert('Error: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Delete failed'));
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Rule modal
+    // ─────────────────────────────────────────────────────────────────────────
+    function openRuleModal(rule) {
+        $('#ruleId').val('');
+        $('#ruleName').val('');
+        $('#ruleDescription').val('');
+        $('#ruleSeverity').val('warning');
+        $('#ruleThreshold').val(10);
+        $('#ruleWindowVal').val(1);
+        $('#ruleWindowUnit').val(60);
+        $('#ruleGroupBy').val('client_ip');
+        $('#ruleCooldownVal').val(5);
+        $('#ruleCooldownUnit').val(60);
+        bindCooldownWarning();
+        updateCooldownWarning();
+        $('#ruleEnabled').prop('checked', true);
+        $('#conditionRows').empty();
+        $('#ruleModalTitle').html('<i class="fas fa-shield-halved me-2"></i>New Alert Rule');
+
+        loadChannelCheckboxes(rule ? [] : null, function() {
+            if (rule) {
+                populateRuleModal(rule);
+            }
+            ruleModalBS = ruleModalBS || new bootstrap.Modal(document.getElementById('ruleModal'));
+            ruleModalBS.show();
+        });
+    }
+
+    function populateRuleModal(r) {
+        $('#ruleId').val(r.id);
+        $('#ruleName').val(r.name);
+        $('#ruleDescription').val(r.description);
+        $('#ruleSeverity').val(r.severity || 'warning');
+        $('#ruleThreshold').val(r.threshold_count);
+        $('#ruleGroupBy').val(r.group_by);
+        $('#ruleEnabled').prop('checked', r.enabled);
+        $('#ruleModalTitle').html('<i class="fas fa-pen me-2"></i>Edit Rule');
+
+        // Window
+        setSecondsToUnitFields(r.window_secs, '#ruleWindowVal', '#ruleWindowUnit');
+        // Cooldown
+        setSecondsToUnitFields(r.cooldown_secs, '#ruleCooldownVal', '#ruleCooldownUnit');
+        updateCooldownWarning();
+
+        // Conditions
+        try {
+            const conds = JSON.parse(r.conditions || '[]');
+            conds.forEach(c => addConditionRow(c));
+        } catch(e) {}
+
+        // Channels
+        try {
+            const ids = JSON.parse(r.channel_ids || '[]');
+            ids.forEach(id => {
+                $('#ch-check-' + id).prop('checked', true);
+            });
+        } catch(e) {}
+    }
+
+    function editRule(id) {
+        const r = allRules.find(x => x.id === id);
+        if (r) openRuleModal(r);
+    }
+
+    function addConditionRow(c) {
+        c = c || {};
+        const fieldOpts = FIELDS.map(f =>
+            `<option value="${f.v}" ${c.field === f.v ? 'selected' : ''}>${esc(f.l)}</option>`
+        ).join('');
+        const opOpts = OPERATORS.map(o =>
+            `<option value="${o.v}" ${c.operator === o.v ? 'selected' : ''}>${esc(o.l)}</option>`
+        ).join('');
+
+        const row = $(`
+        <div class="condition-row">
+            <select class="form-select form-select-sm">${fieldOpts}</select>
+            <select class="form-select form-select-sm">${opOpts}</select>
+            <input type="text" class="form-control form-control-sm cond-value" value="${esc(c.value || '')}" placeholder="value">
+            <button type="button" class="btn btn-sm btn-outline text-danger" onclick="$(this).closest('.condition-row').remove()"><i class="fas fa-times"></i></button>
+        </div>`);
+        $('#conditionRows').append(row);
+    }
+
+    function collectConditions() {
+        const rows = document.querySelectorAll('#conditionRows .condition-row');
+        const conds = [];
+        rows.forEach(function(row) {
+            const selects = row.querySelectorAll('select');
+            const val = row.querySelector('.cond-value').value.trim();
+            if (selects[0].value && val !== '') {
+                conds.push({field: selects[0].value, operator: selects[1].value, value: val});
+            }
+        });
+        return conds;
+    }
+
+    function loadChannelCheckboxes(selectedIds, cb) {
+        $.getJSON('/api/v1/alerts/channels', function(channels) {
+            allChannels = channels || [];
+            if (selectedIds === null) {
+                selectedIds = getDefaultChannelIds();
+            }
+            const box = $('#channelCheckboxes');
+            box.empty();
+            if (allChannels.length === 0) {
+                box.html('<span class="text-muted" style="font-size:.82rem;">No channels yet, add one in the Channels tab.</span>');
+            } else {
+                allChannels.forEach(function(ch) {
+                    const checked = (selectedIds || []).includes(ch.id) ? 'checked' : '';
+                    box.append(`
+                    <label class="form-check-label d-flex align-items-center gap-2 me-3" style="cursor:pointer;font-size:.84rem;">
+                        <input type="checkbox" class="form-check-input" id="ch-check-${ch.id}" value="${ch.id}" ${checked}>
+                        ${chTypeBadge(ch.type)} ${esc(ch.name)}
+                    </label>`);
+                });
+            }
+            if (cb) cb();
+        });
+    }
+
+    function getDefaultChannelIds() {
+        return (allChannels || [])
+            .filter(ch => ch.enabled && ch.default_for_new_rules)
+            .map(ch => ch.id);
+    }
+
+    function saveRule() {
+        const id = $('#ruleId').val();
+        const windowSecs   = parseInt($('#ruleWindowVal').val()) * parseInt($('#ruleWindowUnit').val());
+        const cooldownSecs = parseInt($('#ruleCooldownVal').val()) * parseInt($('#ruleCooldownUnit').val());
+        const channelIDs   = [];
+        document.querySelectorAll('#channelCheckboxes input[type=checkbox]:checked').forEach(function(cb) {
+            channelIDs.push(parseInt(cb.value));
+        });
+
+        const body = {
+            name:            $('#ruleName').val().trim(),
+            description:     $('#ruleDescription').val().trim(),
+            severity:        $('#ruleSeverity').val(),
+            conditions:      JSON.stringify(collectConditions()),
+            threshold_count: parseInt($('#ruleThreshold').val()),
+            window_secs:     windowSecs,
+            group_by:        $('#ruleGroupBy').val(),
+            cooldown_secs:   cooldownSecs,
+            channel_ids:     JSON.stringify(channelIDs),
+            enabled:         $('#ruleEnabled').is(':checked'),
+        };
+
+        if (!body.name) { alert('Rule name is required.'); return; }
+        if (cooldownBelowEvalInterval()) {
+            LogLynxUtils.showNotification(`Cooldown is below the alert evaluation interval. It will effectively be at least ${ALERT_EVAL_INTERVAL_SECS}s.`, 'warning', 5000);
+        }
+
+        const method = id ? 'PUT' : 'POST';
+        const url    = id ? '/api/v1/alerts/rules/' + id : '/api/v1/alerts/rules';
+
+        $.ajax({
+            url: url, method: method,
+            contentType: 'application/json',
+            data: JSON.stringify(body),
+            success: function() {
+                bootstrap.Modal.getInstance(document.getElementById('ruleModal')).hide();
+                renderRules();
+                loadStats();
+            },
+            error: function(xhr) {
+                alert('Error: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Save failed'));
+            }
+        });
+    }
+
+    function bindCooldownWarning() {
+        $('#ruleCooldownVal, #ruleCooldownUnit').off('input.alertCooldown change.alertCooldown')
+            .on('input.alertCooldown change.alertCooldown', updateCooldownWarning);
+    }
+
+    function cooldownSecsFromModal() {
+        return (parseInt($('#ruleCooldownVal').val(), 10) || 0) * (parseInt($('#ruleCooldownUnit').val(), 10) || 1);
+    }
+
+    function cooldownBelowEvalInterval() {
+        const secs = cooldownSecsFromModal();
+        return secs > 0 && ALERT_EVAL_INTERVAL_SECS > 0 && secs < ALERT_EVAL_INTERVAL_SECS;
+    }
+
+    function updateCooldownWarning() {
+        const warn = $('#ruleCooldownWarning');
+        if (!warn.length) return;
+        if (cooldownBelowEvalInterval()) {
+            warn.text(`Server evaluates alerts every ${ALERT_EVAL_INTERVAL_SECS}s, so this cooldown will effectively be at least ${ALERT_EVAL_INTERVAL_SECS}s.`).show();
+        } else {
+            warn.hide().text('');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Rule/channel assignments
+    // ─────────────────────────────────────────────────────────────────────────
+    function renderAssignments() {
+        $.when(
+            $.getJSON('/api/v1/alerts/rules'),
+            $.getJSON('/api/v1/alerts/channels')
+        ).done(function(rulesResp, channelsResp) {
+            allRules = rulesResp[0] || [];
+            allChannels = channelsResp[0] || [];
+            const table = $('#assignmentTable');
+
+            if (allRules.length === 0) {
+                table.html('<tbody><tr><td class="text-muted text-center py-4">No rules configured yet.</td></tr></tbody>');
+                return;
+            }
+            if (allChannels.length === 0) {
+                table.html('<tbody><tr><td class="text-muted text-center py-4">No notification channels configured yet.</td></tr></tbody>');
+                return;
+            }
+
+            const header = `
+                <thead><tr>
+                    <th class="rule-name-cell">Rule</th>
+                    ${allChannels.map(ch => `<th class="text-center">${chTypeBadge(ch.type)}<div class="small mt-1">${esc(ch.name)}</div></th>`).join('')}
+                    <th>Status</th>
+                </tr></thead>`;
+            const rows = allRules.map(rule => {
+                const ids = parseChannelIds(rule.channel_ids);
+                return `
+                    <tr data-rule-id="${rule.id}">
+                        <td class="rule-name-cell">
+                            <div class="fw-semibold">${esc(rule.name)}</div>
+                            <div class="text-muted small">${esc(rule.severity || 'warning')} · ${rule.enabled ? 'enabled' : 'disabled'}</div>
+                        </td>
+                        ${allChannels.map(ch => `
+                            <td class="text-center align-middle">
+                                <input type="checkbox" class="form-check-input assignment-check" data-channel-id="${ch.id}" ${ids.includes(ch.id) ? 'checked' : ''}>
+                            </td>`).join('')}
+                        <td class="align-middle"><span class="assignment-status text-muted" id="assignment-status-${rule.id}">Saved</span></td>
+                    </tr>`;
+            }).join('');
+
+            table.html(header + '<tbody>' + rows + '</tbody>');
+        }).fail(function() {
+            $('#assignmentTable').html('<tbody><tr><td class="text-danger text-center py-4">Failed to load assignments.</td></tr></tbody>');
+        });
+    }
+
+    function parseChannelIds(raw) {
+        try {
+            return (JSON.parse(raw || '[]') || []).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        } catch(e) {
+            return [];
+        }
+    }
+
+    $(document).on('change', '.assignment-check', function() {
+        const row = $(this).closest('tr[data-rule-id]');
+        const ruleId = parseInt(row.data('rule-id'), 10);
+        const ids = row.find('.assignment-check:checked').map(function() {
+            return parseInt($(this).data('channel-id'), 10);
+        }).get();
+        saveRuleChannels(ruleId, ids);
+    });
+
+    function saveRuleChannels(ruleId, channelIds) {
+        const status = $('#assignment-status-' + ruleId);
+        status.removeClass('text-muted text-success text-danger').addClass('text-info').text('Saving...');
+        $.ajax({
+            url: '/api/v1/alerts/rules/' + ruleId,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({ channel_ids: JSON.stringify(channelIds) }),
+            success: function(updated) {
+                const idx = allRules.findIndex(rule => rule.id === ruleId);
+                if (idx >= 0) allRules[idx] = updated;
+                status.removeClass('text-info text-danger').addClass('text-success').text('Saved');
+                setTimeout(() => status.removeClass('text-success').addClass('text-muted').text('Saved'), 1200);
+            },
+            error: function(xhr) {
+                status.removeClass('text-info').addClass('text-danger').text('Failed');
+                alert('Error: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Failed to update assignment'));
+                renderAssignments();
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Channels
+    // ─────────────────────────────────────────────────────────────────────────
+    function renderChannels() {
+        $.getJSON('/api/v1/alerts/channels', function(channels) {
+            allChannels = channels || [];
+            const grid = $('#channelsGrid');
+            grid.empty();
+            if (allChannels.length === 0) {
+                grid.html('<div class="empty-state"><i class="fas fa-paper-plane"></i>No channels configured. Click <strong>Add Channel</strong> to set up Discord, Email, Telegram, or Webhook notifications.</div>');
+                return;
+            }
+            allChannels.forEach(function(ch) {
+                grid.append(channelCard(ch));
+            });
+        });
+    }
+
+    function channelCard(ch) {
+        const defaultBadge = ch.default_for_new_rules
+            ? '<span class="badge-preset"><i class="fas fa-plus-circle me-1"></i>Default for new rules</span>'
+            : '<span class="text-muted small">Manual assignment only</span>';
+        return `
+        <div class="channel-card">
+            <div class="d-flex justify-content-between align-items-center">
+                ${chTypeBadge(ch.type)}
+                <label class="toggle-switch">
+                    <input type="checkbox" ${ch.enabled ? 'checked' : ''} onchange="toggleChannel(${ch.id}, this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div style="font-weight:600;font-size:.95rem;">${esc(ch.name)}</div>
+            <div>${defaultBadge}</div>
+            <label class="form-check-label small d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" ${ch.default_for_new_rules ? 'checked' : ''} onchange="toggleChannelDefault(${ch.id}, this.checked)">
+                Use by default on new rules
+            </label>
+            <div class="d-flex gap-2 mt-1">
+                <button class="btn btn-sm btn-outline" onclick="testChannelById(${ch.id})" title="Test">
+                    <i class="fas fa-vial me-1"></i>Test
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="editChannel(${ch.id})" title="Edit">
+                    <i class="fas fa-pen me-1"></i>Edit
+                </button>
+                <button class="btn btn-sm btn-outline text-danger" onclick="deleteChannel(${ch.id})" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>`;
+    }
+
+    function chTypeBadge(type) {
+        const map = {discord: 'Discord', email: 'Email', telegram: 'Telegram', webhook: 'Webhook'};
+        const icons = {discord: 'fa-brands fa-discord', email: 'fas fa-envelope', telegram: 'fa-brands fa-telegram', webhook: 'fas fa-plug'};
+        return `<span class="channel-type-badge ch-${type}"><i class="${icons[type] || 'fas fa-plug'} me-1"></i>${map[type] || type}</span>`;
+    }
+
+    function toggleChannel(id, enabled) {
+        const ch = allChannels.find(c => c.id === id);
+        if (!ch) return;
+        ch.enabled = enabled;
+        $.ajax({
+            url: '/api/v1/alerts/channels/' + id, method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(ch),
+            error: function() { alert('Failed to update channel.'); renderChannels(); }
+        });
+    }
+
+    function toggleChannelDefault(id, enabled) {
+        const ch = allChannels.find(c => c.id === id);
+        if (!ch) return;
+        ch.default_for_new_rules = enabled;
+        $.ajax({
+            url: '/api/v1/alerts/channels/' + id, method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(ch),
+            success: function() { renderChannels(); },
+            error: function() { alert('Failed to update channel default.'); renderChannels(); }
+        });
+    }
+
+    function testChannelById(id) {
+        $.ajax({
+            url: '/api/v1/alerts/channels/' + id + '/test',
+            method: 'POST',
+            success: function() { alert('✅ Test notification sent successfully!'); },
+            error: function(xhr) { alert('❌ Test failed: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Unknown error')); }
+        });
+    }
+
+    function deleteChannel(id) {
+        if (!confirm('Delete this channel?')) return;
+        $.ajax({
+            url: '/api/v1/alerts/channels/' + id, method: 'DELETE',
+            success: function() { renderChannels(); loadStats(); },
+            error: function() { alert('Delete failed.'); }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Channel modal
+    // ─────────────────────────────────────────────────────────────────────────
+    function openChannelModal(ch) {
+        $('#channelId').val('');
+        $('#channelName').val('');
+        $('#channelType').val('discord');
+        $('#channelEnabled').prop('checked', true);
+        $('#channelDefaultForNewRules').prop('checked', false);
+        clearChannelFields();
+        onChannelTypeChange();
+        $('#channelModalTitle').html('<i class="fas fa-paper-plane me-2"></i>Add Channel');
+
+        if (ch) {
+            $('#channelId').val(ch.id);
+            $('#channelName').val(ch.name);
+            $('#channelType').val(ch.type);
+            $('#channelEnabled').prop('checked', ch.enabled);
+            $('#channelDefaultForNewRules').prop('checked', !!ch.default_for_new_rules);
+            populateChannelFields(ch.type, ch.config);
+            onChannelTypeChange();
+            $('#channelModalTitle').html('<i class="fas fa-pen me-2"></i>Edit Channel');
+        }
+
+        channelModalBS = channelModalBS || new bootstrap.Modal(document.getElementById('channelModal'));
+        channelModalBS.show();
+    }
+
+    function editChannel(id) {
+        const ch = allChannels.find(c => c.id === id);
+        if (ch) openChannelModal(ch);
+    }
+
+    function onChannelTypeChange() {
+        const type = $('#channelType').val();
+        document.querySelectorAll('.channel-form-section').forEach(s => s.classList.remove('active'));
+        const sec = document.getElementById('chf-' + type);
+        if (sec) sec.classList.add('active');
+    }
+
+    function clearChannelFields() {
+        ['ch-discord-url','ch-discord-username','ch-email-host','ch-email-port','ch-email-user','ch-email-pass','ch-email-from','ch-email-to','ch-telegram-token','ch-telegram-chat','ch-wh-url','ch-wh-headers'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = (id === 'ch-email-port') ? '587' : '';
+        });
+        document.getElementById('ch-discord-mention-policy').value = 'never';
+        document.getElementById('ch-email-tls').checked = false;
+        document.getElementById('ch-email-starttls').checked = true;
+        document.getElementById('ch-wh-method').value = 'POST';
+    }
+
+    function populateChannelFields(type, configJSON) {
+        let cfg = {};
+        try { cfg = JSON.parse(configJSON || '{}'); } catch(e) {}
+        if (type === 'discord') {
+            $('#ch-discord-url').val(cfg.webhook_url || '');
+            $('#ch-discord-username').val(cfg.username || '');
+            $('#ch-discord-mention-policy').val(cfg.mention_policy || 'never');
+        } else if (type === 'email') {
+            $('#ch-email-host').val(cfg.smtp_host || '');
+            $('#ch-email-port').val(cfg.smtp_port || 587);
+            $('#ch-email-user').val(cfg.username || '');
+            $('#ch-email-from').val(cfg.from || '');
+            $('#ch-email-to').val((cfg.to || []).join(', '));
+            $('#ch-email-tls').prop('checked', !!cfg.use_tls);
+            $('#ch-email-starttls').prop('checked', !!cfg.starttls);
+        } else if (type === 'telegram') {
+            $('#ch-telegram-token').val('');
+            $('#ch-telegram-chat').val(cfg.chat_id || '');
+        } else if (type === 'webhook') {
+            $('#ch-wh-url').val(cfg.url || '');
+            $('#ch-wh-method').val(cfg.method || 'POST');
+            $('#ch-wh-headers').val(cfg.headers ? JSON.stringify(cfg.headers, null, 2) : '');
+        }
+    }
+
+    function collectChannelConfig(type) {
+        if (type === 'discord') {
+            return JSON.stringify({
+                webhook_url: $('#ch-discord-url').val().trim(),
+                username:    $('#ch-discord-username').val().trim(),
+                mention_policy: $('#ch-discord-mention-policy').val(),
+            });
+        } else if (type === 'email') {
+            const toRaw = $('#ch-email-to').val();
+            const toList = toRaw.split(',').map(s => s.trim()).filter(Boolean);
+            return JSON.stringify({
+                smtp_host: $('#ch-email-host').val().trim(),
+                smtp_port: parseInt($('#ch-email-port').val()) || 587,
+                username:  $('#ch-email-user').val().trim(),
+                password:  $('#ch-email-pass').val(),
+                from:      $('#ch-email-from').val().trim(),
+                to:        toList,
+                use_tls:   $('#ch-email-tls').is(':checked'),
+                starttls:  $('#ch-email-starttls').is(':checked'),
+            });
+        } else if (type === 'telegram') {
+            return JSON.stringify({
+                bot_token: $('#ch-telegram-token').val().trim(),
+                chat_id:   $('#ch-telegram-chat').val().trim(),
+            });
+        } else { // webhook
+            let headers = {};
+            try { headers = JSON.parse($('#ch-wh-headers').val() || '{}'); } catch(e) {}
+            return JSON.stringify({
+                url:     $('#ch-wh-url').val().trim(),
+                method:  $('#ch-wh-method').val(),
+                headers: headers,
+            });
+        }
+    }
+
+    function saveChannel() {
+        const id   = $('#channelId').val();
+        const type = $('#channelType').val();
+        const body = {
+            name:    $('#channelName').val().trim(),
+            type:    type,
+            config:  collectChannelConfig(type),
+            enabled: $('#channelEnabled').is(':checked'),
+            default_for_new_rules: $('#channelDefaultForNewRules').is(':checked'),
+        };
+        if (!body.name) { alert('Channel name is required.'); return; }
+
+        const method = id ? 'PUT' : 'POST';
+        const url    = id ? '/api/v1/alerts/channels/' + id : '/api/v1/alerts/channels';
+
+        $.ajax({
+            url: url, method: method,
+            contentType: 'application/json',
+            data: JSON.stringify(body),
+            success: function() {
+                bootstrap.Modal.getInstance(document.getElementById('channelModal')).hide();
+                renderChannels();
+                loadStats();
+            },
+            error: function(xhr) {
+                alert('Error: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Save failed'));
+            }
+        });
+    }
+
+    function testChannel() {
+        const id = $('#channelId').val();
+        if (!id) { alert('Save the channel first, then test it.'); return; }
+        testChannelById(parseInt(id));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  History
+    // ─────────────────────────────────────────────────────────────────────────
+    function loadHistory() {
+        $.getJSON('/api/v1/alerts/history?limit=' + HISTORY_PAGE + '&offset=' + historyOffset, function(data) {
+            historyTotal = data.total || 0;
+            const tbody = $('#historyTableBody');
+            tbody.empty();
+            const events = data.events || [];
+            if (events.length === 0) {
+                tbody.html('<tr><td colspan="5" class="text-center text-muted py-4">No alert events yet.</td></tr>');
+                return;
+            }
+            events.forEach(function(e) {
+                const sevClass = 'sev-' + (e.severity || 'warning');
+                tbody.append(`<tr>
+                    <td style="font-size:.82rem;">${fmtDate(e.triggered_at)}</td>
+                    <td><strong>${esc(e.rule_name)}</strong></td>
+                    <td><span class="badge-sev ${sevClass}">${(e.severity||'').toUpperCase()}</span></td>
+                    <td><span class="history-group-val">${esc(e.group_value)}</span></td>
+                    <td>${e.count}</td>
+                </tr>`);
+            });
+
+            // Pager
+            const pager = $('#historyPager');
+            pager.show();
+            pager.html(`
+                <span class="text-muted" style="font-size:.82rem;">Showing ${historyOffset+1}–${Math.min(historyOffset+HISTORY_PAGE, historyTotal)} of ${historyTotal}</span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline" ${historyOffset === 0 ? 'disabled' : ''} onclick="historyPage(-1)"><i class="fas fa-chevron-left"></i> Prev</button>
+                    <button class="btn btn-sm btn-outline" ${historyOffset+HISTORY_PAGE >= historyTotal ? 'disabled' : ''} onclick="historyPage(1)">Next <i class="fas fa-chevron-right"></i></button>
+                </div>
+            `);
+        });
+    }
+
+    function historyPage(dir) {
+        historyOffset = Math.max(0, historyOffset + dir * HISTORY_PAGE);
+        loadHistory();
+    }
+
+    function clearHistory() {
+        if (!confirm('Clear all alert history? This cannot be undone.')) return;
+        $.ajax({
+            url: '/api/v1/alerts/history', method: 'DELETE',
+            success: function() { historyOffset = 0; loadHistory(); loadStats(); },
+            error: function() { alert('Failed to clear history.'); }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+    function esc(s) {
+        return String(s||'')
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return '—';
+        try { return new Date(iso).toLocaleString(); } catch(e) { return iso; }
+    }
+
+    function setSecondsToUnitFields(secs, valSel, unitSel) {
+        if (secs % 3600 === 0) {
+            $(valSel).val(secs / 3600);
+            $(unitSel).val(3600);
+        } else if (secs % 60 === 0) {
+            $(valSel).val(secs / 60);
+            $(unitSel).val(60);
+        } else {
+            $(valSel).val(secs);
+            $(unitSel).val(1);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bootstrap init
+    // ─────────────────────────────────────────────────────────────────────────
+    $(document).ready(function() {
+        loadStats();
+        renderRules();
+    });
+    </script>
+</body>
+</html>
+{{end}}

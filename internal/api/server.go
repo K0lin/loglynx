@@ -86,18 +86,19 @@ type Server struct {
 
 // Config holds server configuration
 type Config struct {
-	Host                string
-	Port                int
-	Production          bool
-	DashboardEnabled    bool   // If false, only API routes are exposed
-	SplashScreenEnabled bool   // If false, splash screen is disabled on startup
-	TimeZone            string // Dashboard timezone
-	WidgetEnabled       bool   // If false, widget page and API endpoints are disabled
-	HasExistingData     bool   // If true, database has existing data - skip initial load checks
+	Host                  string
+	Port                  int
+	Production            bool
+	DashboardEnabled      bool   // If false, only API routes are exposed
+	SplashScreenEnabled   bool   // If false, splash screen is disabled on startup
+	TimeZone              string // Dashboard timezone
+	WidgetEnabled         bool   // If false, widget page and API endpoints are disabled
+	HasExistingData       bool   // If true, database has existing data - skip initial load checks
+	AlertEvalIntervalSecs int    // Alert engine evaluation interval in seconds
 }
 
 // NewServer creates a new HTTP server
-func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, ipTagHandler *handlers.IPTagHandler, logger *pterm.Logger) *Server {
+func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtimeHandler *handlers.RealtimeHandler, systemHandler *handlers.SystemHandler, ipTagHandler *handlers.IPTagHandler, sourcesHandler *handlers.SourcesHandler, alertsHandler *handlers.AlertsHandler, logger *pterm.Logger) *Server {
 	// Set Gin mode
 	if cfg.Production {
 		gin.SetMode(gin.ReleaseMode)
@@ -127,16 +128,18 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 	splashScreenEnabled := cfg.SplashScreenEnabled
 	timezone := cfg.TimeZone
 	hasExistingData := cfg.HasExistingData
+	alertEvalIntervalSecs := cfg.AlertEvalIntervalSecs
 	renderPage := func(c *gin.Context, pageName, pageTitle, pageIcon string) {
 		c.HTML(http.StatusOK, pageName+".html", gin.H{
-			"Title":               pageTitle,
-			"PageName":            pageName,
-			"PageTitle":           pageTitle,
-			"PageIcon":            pageIcon,
-			"AppVersion":          version.Version,
-			"SplashScreenEnabled": splashScreenEnabled,
-			"TimeZone":            timezone,
-			"HasExistingData":     hasExistingData,
+			"Title":                 pageTitle,
+			"PageName":              pageName,
+			"PageTitle":             pageTitle,
+			"PageIcon":              pageIcon,
+			"AppVersion":            version.Version,
+			"SplashScreenEnabled":   splashScreenEnabled,
+			"TimeZone":              timezone,
+			"HasExistingData":       hasExistingData,
+			"AlertEvalIntervalSecs": alertEvalIntervalSecs,
 		})
 	}
 
@@ -205,6 +208,14 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 
 		router.GET("/system", func(c *gin.Context) {
 			renderPage(c, "system", "System Statistics", "fas fa-server")
+		})
+
+		router.GET("/sources", func(c *gin.Context) {
+			renderPage(c, "sources", "Log Sources", "fas fa-file-import")
+		})
+
+		router.GET("/alerts", func(c *gin.Context) {
+			renderPage(c, "alerts", "Alerting", "fas fa-bell")
 		})
 
 		// Widget page route (only if enabled)
@@ -334,6 +345,29 @@ func NewServer(cfg *Config, dashboardHandler *handlers.DashboardHandler, realtim
 		// System Statistics
 		api.GET("/system/stats", systemHandler.GetSystemStats)
 		api.GET("/system/timeline", systemHandler.GetRecordsTimeline)
+
+		// Log Sources
+		api.GET("/sources", sourcesHandler.GetSources)
+
+		// Alerting — channels
+		api.GET("/alerts/channels", alertsHandler.ListChannels)
+		api.POST("/alerts/channels", alertsHandler.CreateChannel)
+		api.PUT("/alerts/channels/:id", alertsHandler.UpdateChannel)
+		api.DELETE("/alerts/channels/:id", alertsHandler.DeleteChannel)
+		api.POST("/alerts/channels/:id/test", alertsHandler.TestChannel)
+
+		// Alerting — rules
+		api.GET("/alerts/rules", alertsHandler.ListRules)
+		api.POST("/alerts/rules", alertsHandler.CreateRule)
+		api.GET("/alerts/rules/:id", alertsHandler.GetRule)
+		api.PUT("/alerts/rules/:id", alertsHandler.UpdateRule)
+		api.DELETE("/alerts/rules/:id", alertsHandler.DeleteRule)
+		api.PATCH("/alerts/rules/:id/toggle", alertsHandler.ToggleRule)
+
+		// Alerting — history & stats
+		api.GET("/alerts/history", alertsHandler.ListHistory)
+		api.DELETE("/alerts/history", alertsHandler.ClearHistory)
+		api.GET("/alerts/stats", alertsHandler.AlertStats)
 
 		// Widget API (compact data for iframe embedding) - only if enabled
 		if cfg.WidgetEnabled {

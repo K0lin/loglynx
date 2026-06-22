@@ -1,6 +1,6 @@
 // MIT License
 //
-// # Copyright (c) 2026 Kolin
+// Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,23 +19,35 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-package database
+package apache
 
-import (
-	"loglynx/internal/database/models"
+import "time"
 
-	"gorm.io/gorm"
-)
+// AccessLogEvent represents a parsed Apache access log entry.
+// Field names match HTTPRequest model fields for reflection-based mapping.
+type AccessLogEvent struct {
+	Timestamp  time.Time
+	SourceName string
 
-func RunMigrations(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.LogSource{},
-		&models.HTTPRequest{},
-		&models.IPReputation{},
-		&models.IPTag{},
-		&models.ComparisonSnapshot{},
-		&models.AlertChannel{},
-		&models.AlertRule{},
-		&models.AlertEvent{},
-	)
+	ClientIP   string
+	ClientPort int
+	ClientUser string
+
+	Method        string
+	Protocol      string
+	Host          string
+	Path          string
+	QueryString   string
+	RequestScheme string
+
+	StatusCode   int
+	ResponseSize int64
+
+	StartUTC string
+
+	UserAgent string
+	Referer   string
 }
+
+func (e *AccessLogEvent) GetTimestamp() time.Time { return e.Timestamp }
+func (e *AccessLogEvent) GetSourceName() string    { return e.SourceName }

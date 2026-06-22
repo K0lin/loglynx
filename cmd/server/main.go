@@ -23,12 +23,15 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 	"time"
 
+	"loglynx/internal/alerting"
 	"loglynx/internal/api"
 	"loglynx/internal/api/handlers"
 	"loglynx/internal/banner"
@@ -49,6 +52,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(runHealthcheck())
+	}
+
 	// Configure Go runtime to use all available CPU cores
 	// This enables goroutines to run in parallel on all cores
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -176,7 +183,7 @@ func main() {
 
 	// Run initial discovery SYNCHRONOUSLY to ensure log sources are found before starting ingestion
 	logger.Info("Discovering log sources...")
-	discoveryEngine := discovery.NewEngine(sourceRepo, logger)
+	discoveryEngine := discovery.NewEngine(sourceRepo, logger, &cfg.LogSources)
 	if err := discoveryEngine.Run(logger); err != nil {
 		logger.Warn("Initial discovery failed", logger.Args("error", err))
 	} else {
@@ -274,16 +281,29 @@ func main() {
 		cfg.Database.RetentionDays,
 	)
 	ipTagHandler := handlers.NewIPTagHandler(ipTagRepo, logger)
+	sourcesHandler := handlers.NewSourcesHandler(sourceRepo, coordinator, logger)
+
+	// Initialize alerting subsystem.
+	alertRepo := repositories.NewAlertRepository(db)
+	alerting.SeedPresets(alertRepo, logger)
+	alertsHandler := handlers.NewAlertsHandler(alertRepo, logger)
+	if cfg.Alerting.Enabled {
+		alertEngine := alerting.NewEngine(db, alertRepo, logger, cfg.Alerting.EvalInterval)
+		alertEngine.Start()
+		defer alertEngine.Stop()
+	}
+
 	webServer := api.NewServer(&api.Config{
-		Host:                cfg.Server.Host,
-		Port:                cfg.Server.Port,
-		Production:          cfg.Server.Production,
-		DashboardEnabled:    cfg.Server.DashboardEnabled,
-		SplashScreenEnabled: cfg.Server.SplashScreenEnabled,
-		TimeZone:            cfg.Server.TimeZone,
-		WidgetEnabled:       cfg.Server.WidgetEnabled,
-		HasExistingData:     httpRepo.HasExistingData(),
-	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, logger)
+		Host:                  cfg.Server.Host,
+		Port:                  cfg.Server.Port,
+		Production:            cfg.Server.Production,
+		DashboardEnabled:      cfg.Server.DashboardEnabled,
+		SplashScreenEnabled:   cfg.Server.SplashScreenEnabled,
+		TimeZone:              cfg.Server.TimeZone,
+		WidgetEnabled:         cfg.Server.WidgetEnabled,
+		HasExistingData:       httpRepo.HasExistingData(),
+		AlertEvalIntervalSecs: int(cfg.Alerting.EvalInterval.Seconds()),
+	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, sourcesHandler, alertsHandler, logger)
 
 	// Start web server in goroutine
 	go func() {
@@ -353,4 +373,31 @@ func main() {
 	}
 
 	logger.Info("LogLynx stopped gracefully")
+}
+
+func runHealthcheck() int {
+	url := os.Getenv("HEALTHCHECK_URL")
+	if url == "" {
+		port := os.Getenv("SERVER_PORT")
+		if port == "" {
+			port = "8080"
+		}
+		url = fmt.Sprintf("http://127.0.0.1:%s/health", port)
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: status %d\n", resp.StatusCode)
+		return 1
+	}
+
+	fmt.Fprintln(os.Stdout, "healthy")
+	return 0
 }

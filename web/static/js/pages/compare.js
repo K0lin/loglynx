@@ -296,6 +296,12 @@ function renderDrasticInsights(data) {
     const $header = $('#smartChangesHeaderBadges');
     if (insights.length === 0) {
         $header.hide();
+        $('#smartChangesTopSummary').html(`
+            <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div><strong><i class="fas fa-wand-magic-sparkles"></i> Smart Changes</strong><div class="text-muted small">No drastic changes detected.</div></div>
+                <span class="badge badge-secondary">0 changes</span>
+            </div>
+        `);
         $('#drasticInsights').html(`
             <div class="card-header">
                 <h5 class="card-title"><i class="fas fa-wand-magic-sparkles"></i> Smart Change Analysis</h5>
@@ -313,6 +319,15 @@ function renderDrasticInsights(data) {
         ${counts.low    ? `<span class="badge badge-info">${counts.low} low</span>`          : ''}
     `;
     $header.html(`<small class="text-muted me-1"><i class="fas fa-wand-magic-sparkles"></i> Smart Changes</small>${badgesHtml}`).show();
+    $('#smartChangesTopSummary').html(`
+        <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-3">
+            <div>
+                <strong><i class="fas fa-wand-magic-sparkles"></i> Smart Changes</strong>
+                <div class="text-muted small">Full analysis is at the bottom of the page.</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">${badgesHtml}</div>
+        </div>
+    `);
 
     $('#drasticInsights').html(`
         <div class="card-header">
@@ -747,6 +762,7 @@ function renderStatusCodeStackedChart(data) {
     }));
 
     statusCodeStackedChart = LogLynxCharts.createBarChart('statusCodeStackedChart', { labels, datasets }, {
+        interaction: { mode: 'nearest', intersect: true },
         scales: { x: { stacked: true }, y: { stacked: true } },
         plugins: {
             tooltip: {
@@ -774,6 +790,7 @@ function renderDeviceMixChart(data) {
     }));
 
     deviceMixChart = LogLynxCharts.createBarChart('deviceMixChart', { labels, datasets }, {
+        interaction: { mode: 'nearest', intersect: true },
         scales: { x: { stacked: true }, y: { stacked: true } },
         plugins: {
             tooltip: {

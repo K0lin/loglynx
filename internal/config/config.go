@@ -24,6 +24,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -51,6 +52,9 @@ type Config struct {
 
 	// Anonymous usage telemetry
 	Telemetry TelemetryConfig
+
+	// Alerting configuration
+	Alerting AlertingConfig
 }
 
 // DatabaseConfig contains database-related settings
@@ -79,14 +83,26 @@ type GeoIPConfig struct {
 	Enabled       bool
 }
 
-// LogSourcesConfig contains log source paths
+// LogSourcesConfig contains log source paths.
+// All *LogPaths fields are parsed from a single env var that supports
+// comma-separated values for multiple files (e.g. TRAEFIK_LOG_PATH=/a.log,/b.log).
 type LogSourcesConfig struct {
-	TraefikLogPath      string
-	TraefikLogFormat    string // auto, json, clf
-	CaddyLogPath        string
+	TraefikLogPaths  []string // TRAEFIK_LOG_PATH (comma-sep)
+	TraefikLogFormat string   // auto, json, clf
+
+	CaddyLogPaths []string // CADDY_LOG_PATH (comma-sep)
+
+	NginxLogPaths  []string // NGINX_LOG_PATH (comma-sep)
+	NginxLogFormat string   // combined, common, json
+
+	ApacheLogPaths  []string // APACHE_LOG_PATH (comma-sep)
+	ApacheLogFormat string   // combined, common, vhost_combined
+
+	HAProxyLogPaths []string // HAPROXY_LOG_PATH (comma-sep)
+
 	AutoDiscover        bool
-	InitialImportDays   int  // Only import last N days on first run (0 = import all)
-	InitialImportEnable bool // Enable initial import limiting
+	InitialImportDays   int
+	InitialImportEnable bool
 }
 
 // ServerConfig contains web server settings
@@ -113,6 +129,12 @@ type TelemetryConfig struct {
 	Enabled  bool
 	Endpoint string
 	Interval time.Duration
+}
+
+// AlertingConfig controls the background alert evaluation engine.
+type AlertingConfig struct {
+	Enabled      bool          // ALERTS_ENABLED (default: true)
+	EvalInterval time.Duration // ALERTS_EVAL_INTERVAL (default: 30s)
 }
 
 // Load reads configuration from .env file and environment variables
@@ -144,9 +166,14 @@ func Load() (*Config, error) {
 			Enabled:       getEnvAsBool("GEOIP_ENABLED", true),
 		},
 		LogSources: LogSourcesConfig{
-			TraefikLogPath:      getEnv("TRAEFIK_LOG_PATH", "traefik/logs/access.log"),
+			TraefikLogPaths:     getEnvAsPaths("TRAEFIK_LOG_PATH"),
 			TraefikLogFormat:    getEnv("TRAEFIK_LOG_FORMAT", "auto"),
-			CaddyLogPath:        getEnv("CADDY_LOG_PATH", "caddy/logs/access.log"),
+			CaddyLogPaths:       getEnvAsPaths("CADDY_LOG_PATH"),
+			NginxLogPaths:       getEnvAsPaths("NGINX_LOG_PATH"),
+			NginxLogFormat:      getEnv("NGINX_LOG_FORMAT", "combined"),
+			ApacheLogPaths:      getEnvAsPaths("APACHE_LOG_PATH"),
+			ApacheLogFormat:     getEnv("APACHE_LOG_FORMAT", "combined"),
+			HAProxyLogPaths:     getEnvAsPaths("HAPROXY_LOG_PATH"),
 			AutoDiscover:        getEnvAsBool("LOG_AUTO_DISCOVER", true),
 			InitialImportDays:   getEnvAsInt("INITIAL_IMPORT_DAYS", 60),
 			InitialImportEnable: getEnvAsBool("INITIAL_IMPORT_ENABLE", true),
@@ -157,7 +184,7 @@ func Load() (*Config, error) {
 			Production:          getEnvAsBool("SERVER_PRODUCTION", false),
 			DashboardEnabled:    getEnvAsBool("DASHBOARD_ENABLED", true),
 			SplashScreenEnabled: getEnvAsBool("SPLASH_SCREEN_ENABLED", true),
-			TimeZone:            getEnv("TIMEZONE", "UTC"),
+			TimeZone:            getEnvWithFallback("TIMEZONE", "TZ", "UTC"),
 			WidgetEnabled:       getEnvAsBool("WIDGET_ENABLED", false),
 		},
 		Performance: PerformanceConfig{
@@ -171,6 +198,10 @@ func Load() (*Config, error) {
 			Endpoint: getEnv("LOGLYNX_USAGE_TELEMETRY_ENDPOINT", ""),
 			Interval: getEnvAsDuration("LOGLYNX_USAGE_TELEMETRY_INTERVAL", 1*time.Hour),
 		},
+		Alerting: AlertingConfig{
+			Enabled:      getEnvAsBool("ALERTS_ENABLED", true),
+			EvalInterval: getEnvAsDuration("ALERTS_EVAL_INTERVAL", 30*time.Second),
+		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}
 
@@ -181,6 +212,16 @@ func Load() (*Config, error) {
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvWithFallback(key, fallbackKey, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	if value := os.Getenv(fallbackKey); value != "" {
 		return value
 	}
 	return defaultValue
@@ -228,4 +269,21 @@ func getEnvAsFloat(key string, defaultValue float64) float64 {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvAsPaths reads key and splits by comma, supporting both single and
+// multiple paths in the same variable (e.g. "/a.log" or "/a.log,/b.log").
+func getEnvAsPaths(key string) []string {
+	val := os.Getenv(key)
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, ",")
+	paths := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
 }

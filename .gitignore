@@ -56,3 +56,9 @@ grep
 # Standalone example files
 web/static/*-examples.html
 loglynx.db.telemetry/.loglynx_instance_id
+.planning/
+release.md
+wiki-api.md
+wiki-Env.md
+wiki-wid.md
+rebase.md

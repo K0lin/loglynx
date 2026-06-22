@@ -23,7 +23,10 @@ package parsers
 
 import (
 	"fmt"
+	"loglynx/internal/parser/apache"
 	"loglynx/internal/parser/caddy"
+	"loglynx/internal/parser/haproxy"
+	"loglynx/internal/parser/nginx"
 	"loglynx/internal/parser/traefik"
 
 	"github.com/pterm/pterm"
@@ -35,51 +38,53 @@ type Registry struct {
 	logger  *pterm.Logger
 }
 
-// traefikParserWrapper wraps traefik.Parser to implement LogParser interface
-type traefikParserWrapper struct {
-	*traefik.Parser
-}
+// --- parser wrappers (adapt concrete *T to the LogParser interface) ---
 
-// Parse adapts traefik.Parser.Parse to return Event interface
-func (w *traefikParserWrapper) Parse(line string) (Event, error) {
-	return w.Parser.Parse(line)
-}
+type traefikParserWrapper struct{ *traefik.Parser }
 
-// caddyParserWrapper wraps caddy.Parser to implement LogParser interface
-type caddyParserWrapper struct {
-	*caddy.Parser
-}
+func (w *traefikParserWrapper) Parse(line string) (Event, error) { return w.Parser.Parse(line) }
 
-// Parse adapts caddy.Parser.Parse to return Event interface
-func (w *caddyParserWrapper) Parse(line string) (Event, error) {
-	return w.Parser.Parse(line)
-}
+type caddyParserWrapper struct{ *caddy.Parser }
 
-// NewRegistry creates a new parser registry with all built-in parsers
+func (w *caddyParserWrapper) Parse(line string) (Event, error) { return w.Parser.Parse(line) }
+
+type nginxParserWrapper struct{ *nginx.Parser }
+
+func (w *nginxParserWrapper) Parse(line string) (Event, error) { return w.Parser.Parse(line) }
+
+type apacheParserWrapper struct{ *apache.Parser }
+
+func (w *apacheParserWrapper) Parse(line string) (Event, error) { return w.Parser.Parse(line) }
+
+type haproxyParserWrapper struct{ *haproxy.Parser }
+
+func (w *haproxyParserWrapper) Parse(line string) (Event, error) { return w.Parser.Parse(line) }
+
+// NewRegistry creates a new parser registry with all built-in parsers registered.
 func NewRegistry(logger *pterm.Logger) *Registry {
-	registry := &Registry{
+	r := &Registry{
 		parsers: make(map[string]LogParser),
 		logger:  logger,
 	}
 
-	// Register built-in parsers with wrappers
-	traefikParser := traefik.NewParser(logger)
-	registry.Register("traefik", &traefikParserWrapper{traefikParser})
-	logger.Debug("Registered parser", logger.Args("type", "traefik"))
+	r.Register("traefik", &traefikParserWrapper{traefik.NewParser(logger)})
+	r.Register("caddy", &caddyParserWrapper{caddy.NewParser(logger)})
+	r.Register("nginx", &nginxParserWrapper{nginx.NewParser(logger)})
+	r.Register("apache", &apacheParserWrapper{apache.NewParser(logger)})
+	r.Register("haproxy", &haproxyParserWrapper{haproxy.NewParser(logger)})
 
-	caddyParser := caddy.NewParser(logger)
-	registry.Register("caddy", &caddyParserWrapper{caddyParser})
-	logger.Debug("Registered parser", logger.Args("type", "caddy"))
+	logger.Debug("Parser registry initialised",
+		logger.Args("parsers", []string{"traefik", "caddy", "nginx", "apache", "haproxy"}))
 
-	return registry
+	return r
 }
 
-// Register adds a parser to the registry
+// Register adds a parser to the registry.
 func (r *Registry) Register(name string, parser LogParser) {
 	r.parsers[name] = parser
 }
 
-// Get retrieves a parser by type
+// Get retrieves a parser by type.
 func (r *Registry) Get(parserType string) (LogParser, error) {
 	parser, exists := r.parsers[parserType]
 	if !exists {
@@ -89,7 +94,7 @@ func (r *Registry) Get(parserType string) (LogParser, error) {
 	return parser, nil
 }
 
-// GetAll returns all registered parsers
+// GetAll returns all registered parsers.
 func (r *Registry) GetAll() map[string]LogParser {
 	return r.parsers
 }

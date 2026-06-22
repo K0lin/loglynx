@@ -1,6 +1,6 @@
 // MIT License
 //
-// # Copyright (c) 2026 Kolin
+// Copyright (c) 2026 Kolin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,102 +23,80 @@ package discovery
 
 import (
 	"bufio"
-	"encoding/json"
 	"loglynx/internal/database/models"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/pterm/pterm"
 )
 
-// CaddyDetector detects Caddy log files
-type CaddyDetector struct {
+// apacheCLFPattern covers combined, common, and vhost_combined Apache formats.
+var apacheCLFPattern = regexp.MustCompile(
+	`^(\S+) (\S+) \S+ (\S+) \[([^\]]+)\] "([A-Z]+) ([^ "]+) HTTP/[0-9.]+" (\d{3}) (\d+|-)`,
+)
+
+// ApacheDetector detects Apache HTTP Server access log files configured via APACHE_LOG_PATH(S).
+// Auto-discovery is not supported since CLF is indistinguishable from nginx without explicit configuration.
+type ApacheDetector struct {
 	logger          *pterm.Logger
 	configuredPaths []string
-	autoDiscover    bool
 }
 
-func NewCaddyDetector(logger *pterm.Logger, configuredPaths []string, autoDiscover bool) ServiceDetector {
-	return &CaddyDetector{
+func NewApacheDetector(logger *pterm.Logger, configuredPaths []string) ServiceDetector {
+	return &ApacheDetector{
 		logger:          logger,
 		configuredPaths: configuredPaths,
-		autoDiscover:    autoDiscover,
 	}
 }
 
-func (d *CaddyDetector) Name() string { return "caddy" }
+func (d *ApacheDetector) Name() string { return "apache" }
 
-func (d *CaddyDetector) Detect() ([]*models.LogSource, error) {
+func (d *ApacheDetector) Detect() ([]*models.LogSource, error) {
 	sources := []*models.LogSource{}
 
-	paths := d.resolvePaths()
-	if len(paths) == 0 {
+	if len(d.configuredPaths) == 0 {
 		return sources, nil
 	}
 
-	for _, path := range paths {
+	for _, path := range d.configuredPaths {
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			d.logger.Debug("Caddy log path not accessible", d.logger.Args("path", path, "error", err))
+			d.logger.Warn("Configured Apache log path not accessible",
+				d.logger.Args("path", path, "error", err))
 			continue
 		}
 		if fileInfo.IsDir() || fileInfo.Size() == 0 {
 			d.logger.Debug("Skipping empty or directory path", d.logger.Args("path", path))
 			continue
 		}
-		if !isCaddyFormat(path, d.logger) {
-			d.logger.Warn("File does not appear to be a Caddy access log", d.logger.Args("path", path))
+		if !isApacheCLFFormat(path) {
+			d.logger.Warn("File does not appear to be an Apache access log", d.logger.Args("path", path))
 			continue
 		}
-		name := generateSourceName("caddy", path, sources)
-		d.logger.Info("Caddy log source detected", d.logger.Args("path", path, "name", name))
+		name := generateSourceName("apache", path, sources)
+		d.logger.Info("Apache log source registered", d.logger.Args("path", path, "name", name))
 		sources = append(sources, &models.LogSource{
 			Name:       name,
 			Path:       path,
-			ParserType: "caddy",
+			ParserType: "apache",
 		})
-	}
-
-	if len(sources) == 0 {
-		d.logger.Info("No Caddy log sources detected")
 	}
 
 	return sources, nil
 }
 
-func (d *CaddyDetector) resolvePaths() []string {
-	if len(d.configuredPaths) > 0 {
-		return d.configuredPaths
-	}
-	if d.autoDiscover {
-		return []string{
-			"caddy/logs/access.log",
-			"/var/log/caddy/access.log",
-			"/var/log/caddy/access.json",
-		}
-	}
-	return nil
-}
-
-func isCaddyFormat(path string, logger *pterm.Logger) bool {
+func isApacheCLFFormat(path string) bool {
 	file, err := os.Open(path)
 	if err != nil {
-		logger.Debug("Failed to open file", logger.Args("path", path, "error", err))
 		return false
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	if scanner.Scan() {
-		line := scanner.Text()
-		var logEntry map[string]any
-		if err := json.Unmarshal([]byte(line), &logEntry); err == nil {
-			loggerField, hasLogger := logEntry["logger"].(string)
-			_, hasRequest := logEntry["request"]
-			if hasLogger && strings.HasPrefix(loggerField, "http.log.access") && hasRequest {
-				return true
-			}
-		}
+		line := strings.TrimSpace(scanner.Text())
+		return apacheCLFPattern.MatchString(line)
 	}
 	return false
 }
