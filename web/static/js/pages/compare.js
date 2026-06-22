@@ -762,6 +762,7 @@ function renderStatusCodeStackedChart(data) {
     }));
 
     statusCodeStackedChart = LogLynxCharts.createBarChart('statusCodeStackedChart', { labels, datasets }, {
+        interaction: { mode: 'nearest', intersect: true },
         scales: { x: { stacked: true }, y: { stacked: true } },
         plugins: {
             tooltip: {
@@ -789,6 +790,7 @@ function renderDeviceMixChart(data) {
     }));
 
     deviceMixChart = LogLynxCharts.createBarChart('deviceMixChart', { labels, datasets }, {
+        interaction: { mode: 'nearest', intersect: true },
         scales: { x: { stacked: true }, y: { stacked: true } },
         plugins: {
             tooltip: {

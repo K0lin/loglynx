@@ -22,6 +22,7 @@
         .delta-neutral { color: var(--text-muted, #9ca3af); }
         .snapshot-banner { border: 1px solid rgba(244, 99, 25, 0.4); background: rgba(244, 99, 25, 0.08); border-radius: 12px; padding: 0.85rem 1rem; }
         .share-url-input { font-family: monospace; }
+        #compareResults .chart-wrapper > canvas { width: 100% !important; height: 100% !important; min-height: 0; padding: 0 !important; }
     </style>
 </head>
 <body>
@@ -116,11 +117,11 @@
                     <div class="grid grid-cols-2 mb-4">
                         <div class="chart-container medium">
                             <div class="chart-header"><h5 class="chart-title"><i class="fas fa-chart-line"></i> Requests Timeline</h5></div>
-                            <canvas id="requestsCompareChart"></canvas>
+                            <div class="chart-wrapper"><canvas id="requestsCompareChart"></canvas></div>
                         </div>
                         <div class="chart-container medium">
                             <div class="chart-header"><h5 class="chart-title"><i class="fas fa-stopwatch"></i> Response Time Timeline</h5></div>
-                            <canvas id="responseCompareChart"></canvas>
+                            <div class="chart-wrapper"><canvas id="responseCompareChart"></canvas></div>
                         </div>
                     </div>
 
@@ -132,33 +133,33 @@
                     <div class="grid grid-cols-2 mb-4">
                         <div class="chart-container medium">
                             <div class="chart-header"><h5 class="chart-title"><i class="fas fa-list-ol"></i> Status Code Comparison</h5></div>
-                            <canvas id="statusCodeStackedChart"></canvas>
+                            <div class="chart-wrapper"><canvas id="statusCodeStackedChart"></canvas></div>
                         </div>
                         <div class="chart-container medium">
                             <div class="chart-header"><h5 class="chart-title"><i class="fas fa-mobile-screen"></i> Device Mix Comparison</h5></div>
-                            <canvas id="deviceMixChart"></canvas>
+                            <div class="chart-wrapper"><canvas id="deviceMixChart"></canvas></div>
                         </div>
                     </div>
 
                     <div class="chart-container medium mb-4">
                         <div class="chart-header"><h5 class="chart-title"><i class="fas fa-layer-group"></i> Top Service Volume</h5></div>
-                        <canvas id="serviceVolumeChart"></canvas>
+                        <div class="chart-wrapper"><canvas id="serviceVolumeChart"></canvas></div>
                     </div>
 
                     <div class="grid grid-cols-2 mb-4">
                         <div class="chart-container medium">
                             <div class="chart-header"><h5 class="chart-title"><i class="fas fa-chart-column"></i> Aggregate Metrics</h5></div>
-                            <canvas id="aggregateCompareChart"></canvas>
+                            <div class="chart-wrapper"><canvas id="aggregateCompareChart"></canvas></div>
                         </div>
                         <div class="chart-container medium">
                             <div class="chart-header"><h5 class="chart-title"><i class="fas fa-shield-alt"></i> Status Classes</h5></div>
-                            <canvas id="statusCompareChart"></canvas>
+                            <div class="chart-wrapper"><canvas id="statusCompareChart"></canvas></div>
                         </div>
                     </div>
 
                     <div class="chart-container large mb-4">
                         <div class="chart-header"><h5 class="chart-title"><i class="fas fa-calendar-days"></i> Hour/Day Traffic Heatmap</h5></div>
-                        <canvas id="heatmapCompareChart"></canvas>
+                        <div class="chart-wrapper"><canvas id="heatmapCompareChart"></canvas></div>
                     </div>
 
                     <div class="grid grid-cols-2 mb-4">
