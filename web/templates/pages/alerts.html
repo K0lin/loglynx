@@ -209,9 +209,9 @@
                     <div class="col-md-5">
                         <label class="form-label small text-muted">Severity</label>
                         <select class="form-select form-select-sm" id="ruleSeverity">
-                            <option value="info">ℹ️ Info</option>
-                            <option value="warning" selected>⚠️ Warning</option>
-                            <option value="critical">🚨 Critical</option>
+                            <option value="info">Info</option>
+                            <option value="warning" selected>Warning</option>
+                            <option value="critical">Critical</option>
                         </select>
                     </div>
                     <div class="col-12">
@@ -223,7 +223,7 @@
                 <!-- Conditions -->
                 <div class="mb-3">
                     <label class="form-label small text-muted d-block mb-1">
-                        Conditions <span class="text-muted">(ALL must match — AND logic)</span>
+                        Conditions <span class="text-muted">(ALL must match, AND logic)</span>
                     </label>
                     <div id="conditionRows"></div>
                     <div class="condition-row-add" onclick="addConditionRow()">
@@ -265,7 +265,7 @@
                 <!-- Cooldown -->
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">Cooldown — don't re-alert for</label>
+                        <label class="form-label small text-muted">Cooldown, don't re-alert for</label>
                         <div class="unit-inline">
                             <input type="number" class="form-control form-control-sm" id="ruleCooldownVal" value="5" min="0">
                             <select class="form-select form-select-sm" id="ruleCooldownUnit">
@@ -290,7 +290,7 @@
                 <div class="mb-2">
                     <label class="form-label small text-muted">Notification Channels</label>
                     <div id="channelCheckboxes" class="d-flex flex-wrap gap-2">
-                        <span class="text-muted" style="font-size:.82rem;">No channels configured yet — add one in the Channels tab.</span>
+                        <span class="text-muted" style="font-size:.82rem;">No channels configured yet, add one in the Channels tab.</span>
                     </div>
                 </div>
             </div>
@@ -716,7 +716,7 @@
             const box = $('#channelCheckboxes');
             box.empty();
             if (allChannels.length === 0) {
-                box.html('<span class="text-muted" style="font-size:.82rem;">No channels yet — add one in the Channels tab.</span>');
+                box.html('<span class="text-muted" style="font-size:.82rem;">No channels yet, add one in the Channels tab.</span>');
             } else {
                 allChannels.forEach(function(ch) {
                     const checked = (selectedIds || []).includes(ch.id) ? 'checked' : '';
