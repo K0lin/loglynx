@@ -7,22 +7,21 @@ import (
 	"net"
 	"net/smtp"
 	"strings"
-	"time"
 )
 
 // EmailConfig is stored as JSON in AlertChannel.Config.
 type EmailConfig struct {
-	SMTPHost   string   `json:"smtp_host"`
-	SMTPPort   int      `json:"smtp_port"`
-	Username   string   `json:"username"`
-	Password   string   `json:"password"`
-	From       string   `json:"from"`
-	To         []string `json:"to"`        // one or more recipients
-	UseTLS     bool     `json:"use_tls"`   // implicit TLS (port 465)
-	StartTLS   bool     `json:"starttls"`  // STARTTLS upgrade (port 587)
+	SMTPHost string   `json:"smtp_host"`
+	SMTPPort int      `json:"smtp_port"`
+	Username string   `json:"username"`
+	Password string   `json:"password"`
+	From     string   `json:"from"`
+	To       []string `json:"to"`       // one or more recipients
+	UseTLS   bool     `json:"use_tls"`  // implicit TLS (port 465)
+	StartTLS bool     `json:"starttls"` // STARTTLS upgrade (port 587)
 }
 
-func SendEmail(configJSON, ruleName, description, severity, groupValue string, count int) error {
+func SendEmail(configJSON string, msg AlertMessage) error {
 	var cfg EmailConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("email config: %w", err)
@@ -44,29 +43,29 @@ func SendEmail(configJSON, ruleName, description, severity, groupValue string, c
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, port)
 
-	groupDisplay := groupValue
-	if groupValue == "global" {
-		groupDisplay = "all traffic"
-	}
-
-	subject := fmt.Sprintf("[LogLynx Alert] %s — %s", severityLabel(severity), ruleName)
+	subject := fmt.Sprintf("[LogLynx Alert] %s - %s", severityLabel(msg.Severity), msg.RuleName)
 	body := fmt.Sprintf(`LogLynx Alert Triggered
 
-Rule:      %s
-Severity:  %s
-Count:     %d requests matched
-Group:     %s
-Time:      %s
+Rule:       %s
+Severity:   %s
+Group by:   %s
+Group value:%s
+Matched:    %d requests
+Threshold:  %d requests
+Window:     %s
+Cooldown:   %s
+Time:       %s
 
-Details:
+What happened:
 %s
 
 --
 LogLynx Alert System
-`, ruleName, strings.ToUpper(severity), count, groupDisplay,
-		time.Now().Format("2006-01-02 15:04:05 UTC"), description)
+`, msg.RuleName, strings.ToUpper(msg.Severity), msg.GroupBy, msg.GroupDisplay(), msg.Count,
+		msg.ThresholdCount, msg.WindowDisplay(), msg.CooldownDisplay(), msg.TriggeredAt.UTC().Format("2006-01-02 15:04:05 UTC"),
+		msg.DescriptionDisplay())
 
-	msg := buildMIMEMessage(cfg.From, cfg.To, subject, body)
+	mimeMessage := buildMIMEMessage(cfg.From, cfg.To, subject, body)
 
 	var auth smtp.Auth
 	if cfg.Username != "" {
@@ -74,9 +73,9 @@ LogLynx Alert System
 	}
 
 	if cfg.UseTLS {
-		return sendWithTLS(addr, cfg.SMTPHost, auth, cfg.From, cfg.To, msg)
+		return sendWithTLS(addr, cfg.SMTPHost, auth, cfg.From, cfg.To, mimeMessage)
 	}
-	return sendWithSTARTTLS(addr, cfg.SMTPHost, auth, cfg.From, cfg.To, msg, cfg.StartTLS)
+	return sendWithSTARTTLS(addr, cfg.SMTPHost, auth, cfg.From, cfg.To, mimeMessage, cfg.StartTLS)
 }
 
 func buildMIMEMessage(from string, to []string, subject, body string) []byte {

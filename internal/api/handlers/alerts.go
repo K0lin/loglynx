@@ -116,16 +116,28 @@ func (h *AlertsHandler) TestChannel(c *gin.Context) {
 
 	const testRule = "Test Alert"
 	const testDesc = "This is a test notification from LogLynx. Your channel is configured correctly!"
+	testMsg := notifiers.AlertMessage{
+		RuleName:       testRule,
+		Description:    testDesc,
+		Severity:       "info",
+		GroupBy:        "test",
+		GroupValue:     "test",
+		Count:          1,
+		ThresholdCount: 1,
+		WindowSecs:     60,
+		CooldownSecs:   300,
+		TriggeredAt:    time.Now(),
+	}
 	var sendErr error
 	switch ch.Type {
 	case "discord":
-		sendErr = notifiers.SendDiscord(ch.Config, testRule, testDesc, "info", "test", 1)
+		sendErr = notifiers.SendDiscord(ch.Config, testMsg)
 	case "email":
-		sendErr = notifiers.SendEmail(ch.Config, testRule, testDesc, "info", "test", 1)
+		sendErr = notifiers.SendEmail(ch.Config, testMsg)
 	case "telegram":
-		sendErr = notifiers.SendTelegram(ch.Config, testRule, testDesc, "info", "test", 1)
+		sendErr = notifiers.SendTelegram(ch.Config, testMsg)
 	case "webhook":
-		sendErr = notifiers.SendWebhook(ch.Config, testRule, testDesc, "info", "test", 1)
+		sendErr = notifiers.SendWebhook(ch.Config, testMsg)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown channel type"})
 		return
@@ -163,7 +175,12 @@ func (h *AlertsHandler) CreateRule(c *gin.Context) {
 		rule.Conditions = "[]"
 	}
 	if rule.ChannelIDs == "" {
-		rule.ChannelIDs = "[]"
+		defaultIDs, err := h.defaultChannelIDsForNewRules()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load default channels"})
+			return
+		}
+		rule.ChannelIDs = defaultIDs
 	}
 	if rule.Severity == "" {
 		rule.Severity = "warning"
@@ -422,6 +439,13 @@ func validateChannel(ch *models.AlertChannel, oldConfig string) error {
 		if err := requireHTTPSURL("discord webhook_url", cfg.WebhookURL); err != nil {
 			return err
 		}
+		if cfg.MentionPolicy == "" {
+			cfg.MentionPolicy = "never"
+		}
+		if cfg.MentionPolicy != "never" && cfg.MentionPolicy != "critical" && cfg.MentionPolicy != "always" {
+			return fmt.Errorf("discord mention_policy must be never, critical, or always")
+		}
+		ch.Config = mustMarshalConfig(cfg)
 	case "email":
 		var cfg notifiers.EmailConfig
 		if err := decodeConfig(ch.Config, &cfg); err != nil {
@@ -537,6 +561,24 @@ func validGroupBy(groupBy string) bool {
 	default:
 		return false
 	}
+}
+
+func (h *AlertsHandler) defaultChannelIDsForNewRules() (string, error) {
+	channels, err := h.repo.ListChannels()
+	if err != nil {
+		return "", err
+	}
+	ids := make([]uint, 0)
+	for _, ch := range channels {
+		if ch.Enabled && ch.DefaultForNewRules {
+			ids = append(ids, ch.ID)
+		}
+	}
+	b, err := json.Marshal(ids)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func decodeConfig(configJSON string, dest interface{}) error {

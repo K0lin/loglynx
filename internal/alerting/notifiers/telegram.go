@@ -15,7 +15,7 @@ type TelegramConfig struct {
 	ChatID   string `json:"chat_id"`
 }
 
-func SendTelegram(configJSON, ruleName, description, severity, groupValue string, count int) error {
+func SendTelegram(configJSON string, msg AlertMessage) error {
 	var cfg TelegramConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("telegram config: %w", err)
@@ -27,20 +27,20 @@ func SendTelegram(configJSON, ruleName, description, severity, groupValue string
 		return fmt.Errorf("telegram chat_id is empty")
 	}
 
-	_, emoji := severityStyle(severity)
-	groupDisplay := groupValue
-	if groupValue == "global" {
-		groupDisplay = "all traffic"
-	}
+	_, emoji := severityStyle(msg.Severity)
 
-	text := fmt.Sprintf("%s <b>%s</b>\n\n<b>Severity:</b> %s\n<b>Group:</b> <code>%s</code>\n<b>Count:</b> %d requests\n<b>Time:</b> %s\n\n%s",
+	text := fmt.Sprintf("%s <b>LogLynx alert: %s</b>\n\n<b>Severity:</b> %s\n<b>Grouped by:</b> <code>%s</code>\n<b>Group value:</b> <code>%s</code>\n<b>Matched:</b> %d requests\n<b>Threshold:</b> %d requests\n<b>Window:</b> %s\n<b>Cooldown:</b> %s\n<b>Time:</b> %s\n\n%s",
 		emoji,
-		html.EscapeString(ruleName),
-		html.EscapeString(severity),
-		html.EscapeString(groupDisplay),
-		count,
-		time.Now().UTC().Format(time.RFC3339),
-		html.EscapeString(description),
+		html.EscapeString(msg.RuleName),
+		html.EscapeString(msg.Severity),
+		html.EscapeString(msg.GroupBy),
+		html.EscapeString(msg.GroupDisplay()),
+		msg.Count,
+		msg.ThresholdCount,
+		html.EscapeString(msg.WindowDisplay()),
+		html.EscapeString(msg.CooldownDisplay()),
+		msg.TriggeredAt.UTC().Format(time.RFC3339),
+		html.EscapeString(msg.DescriptionDisplay()),
 	)
 
 	payload := map[string]interface{}{

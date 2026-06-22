@@ -189,9 +189,17 @@ func (e *Engine) dispatch(rule *models.AlertRule, groupVal string, count int) {
 		byID[ch.ID] = ch
 	}
 
-	description := rule.Description
-	if description == "" {
-		description = fmt.Sprintf("Rule '%s' fired with %d matches grouped by %s.", rule.Name, count, rule.GroupBy)
+	msg := notifiers.AlertMessage{
+		RuleName:       rule.Name,
+		Description:    rule.Description,
+		Severity:       rule.Severity,
+		GroupBy:        rule.GroupBy,
+		GroupValue:     groupVal,
+		Count:          count,
+		ThresholdCount: rule.ThresholdCount,
+		WindowSecs:     rule.WindowSecs,
+		CooldownSecs:   rule.CooldownSecs,
+		TriggeredAt:    time.Now(),
 	}
 
 	for _, id := range channelIDs {
@@ -202,13 +210,13 @@ func (e *Engine) dispatch(rule *models.AlertRule, groupVal string, count int) {
 		var sendErr error
 		switch ch.Type {
 		case "discord":
-			sendErr = notifiers.SendDiscord(ch.Config, rule.Name, description, rule.Severity, groupVal, count)
+			sendErr = notifiers.SendDiscord(ch.Config, msg)
 		case "email":
-			sendErr = notifiers.SendEmail(ch.Config, rule.Name, description, rule.Severity, groupVal, count)
+			sendErr = notifiers.SendEmail(ch.Config, msg)
 		case "telegram":
-			sendErr = notifiers.SendTelegram(ch.Config, rule.Name, description, rule.Severity, groupVal, count)
+			sendErr = notifiers.SendTelegram(ch.Config, msg)
 		case "webhook":
-			sendErr = notifiers.SendWebhook(ch.Config, rule.Name, description, rule.Severity, groupVal, count)
+			sendErr = notifiers.SendWebhook(ch.Config, msg)
 		}
 		if sendErr != nil {
 			e.logger.Warn("Notification send failed",

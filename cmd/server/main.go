@@ -294,14 +294,15 @@ func main() {
 	}
 
 	webServer := api.NewServer(&api.Config{
-		Host:                cfg.Server.Host,
-		Port:                cfg.Server.Port,
-		Production:          cfg.Server.Production,
-		DashboardEnabled:    cfg.Server.DashboardEnabled,
-		SplashScreenEnabled: cfg.Server.SplashScreenEnabled,
-		TimeZone:            cfg.Server.TimeZone,
-		WidgetEnabled:       cfg.Server.WidgetEnabled,
-		HasExistingData:     httpRepo.HasExistingData(),
+		Host:                  cfg.Server.Host,
+		Port:                  cfg.Server.Port,
+		Production:            cfg.Server.Production,
+		DashboardEnabled:      cfg.Server.DashboardEnabled,
+		SplashScreenEnabled:   cfg.Server.SplashScreenEnabled,
+		TimeZone:              cfg.Server.TimeZone,
+		WidgetEnabled:         cfg.Server.WidgetEnabled,
+		HasExistingData:       httpRepo.HasExistingData(),
+		AlertEvalIntervalSecs: int(cfg.Alerting.EvalInterval.Seconds()),
 	}, dashboardHandler, realtimeHandler, systemHandler, ipTagHandler, sourcesHandler, alertsHandler, logger)
 
 	// Start web server in goroutine

@@ -3391,6 +3391,10 @@ components:
         enabled:
           type: boolean
           example: true
+        default_for_new_rules:
+          type: boolean
+          description: When true, newly created rules include this channel by default. Existing rules are not changed.
+          example: false
         created_at:
           type: string
           format: date-time
@@ -3409,10 +3413,14 @@ components:
           enum: [discord, email, telegram, webhook]
         config:
           type: string
-          description: JSON string. Discord uses webhook_url; email uses smtp_host/smtp_port/from/to; Telegram uses bot_token/chat_id; webhook uses url/method/headers.
+          description: JSON string. Discord uses webhook_url, username, mention_policy (never|critical|always); email uses smtp_host/smtp_port/from/to; Telegram uses bot_token/chat_id; webhook uses url/method/headers.
         enabled:
           type: boolean
           default: true
+        default_for_new_rules:
+          type: boolean
+          default: false
+          description: Apply this channel to new rules by default; not retroactive.
 
     AlertCondition:
       type: object

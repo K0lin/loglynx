@@ -18,17 +18,21 @@ type WebhookConfig struct {
 
 // WebhookPayload is the JSON body sent to the webhook endpoint.
 type WebhookPayload struct {
-	Event       string    `json:"event"` // "alert_triggered"
-	RuleName    string    `json:"rule_name"`
-	Severity    string    `json:"severity"`
-	GroupValue  string    `json:"group_value"`
-	Count       int       `json:"count"`
-	Description string    `json:"description"`
-	TriggeredAt time.Time `json:"triggered_at"`
-	Source      string    `json:"source"` // "loglynx"
+	Event        string    `json:"event"` // "alert_triggered"
+	RuleName     string    `json:"rule_name"`
+	Severity     string    `json:"severity"`
+	GroupBy      string    `json:"group_by"`
+	GroupValue   string    `json:"group_value"`
+	Count        int       `json:"count"`
+	Threshold    int       `json:"threshold"`
+	WindowSecs   int       `json:"window_secs"`
+	CooldownSecs int       `json:"cooldown_secs"`
+	Description  string    `json:"description"`
+	TriggeredAt  time.Time `json:"triggered_at"`
+	Source       string    `json:"source"` // "loglynx"
 }
 
-func SendWebhook(configJSON, ruleName, description, severity, groupValue string, count int) error {
+func SendWebhook(configJSON string, msg AlertMessage) error {
 	var cfg WebhookConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("webhook config: %w", err)
@@ -46,14 +50,18 @@ func SendWebhook(configJSON, ruleName, description, severity, groupValue string,
 	}
 
 	payload := WebhookPayload{
-		Event:       "alert_triggered",
-		RuleName:    ruleName,
-		Severity:    severity,
-		GroupValue:  groupValue,
-		Count:       count,
-		Description: description,
-		TriggeredAt: time.Now().UTC(),
-		Source:      "loglynx",
+		Event:        "alert_triggered",
+		RuleName:     msg.RuleName,
+		Severity:     msg.Severity,
+		GroupBy:      msg.GroupBy,
+		GroupValue:   msg.GroupDisplay(),
+		Count:        msg.Count,
+		Threshold:    msg.ThresholdCount,
+		WindowSecs:   msg.WindowSecs,
+		CooldownSecs: msg.CooldownSecs,
+		Description:  msg.DescriptionDisplay(),
+		TriggeredAt:  msg.TriggeredAt.UTC(),
+		Source:       "loglynx",
 	}
 
 	body, err := json.Marshal(payload)

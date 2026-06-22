@@ -4,13 +4,14 @@ import "time"
 
 // AlertChannel is a notification destination (Discord, Email, Telegram, or generic Webhook).
 type AlertChannel struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"type:varchar(255);not null;uniqueIndex" json:"name"`
-	Type      string    `gorm:"type:varchar(50);not null" json:"type"` // discord | email | telegram | webhook
-	Config    string    `gorm:"type:text;not null" json:"config"`      // JSON blob, shape depends on Type
-	Enabled   bool      `gorm:"default:true" json:"enabled"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                 uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name               string    `gorm:"type:varchar(255);not null;uniqueIndex" json:"name"`
+	Type               string    `gorm:"type:varchar(50);not null" json:"type"` // discord | email | telegram | webhook
+	Config             string    `gorm:"type:text;not null" json:"config"`      // JSON blob, shape depends on Type
+	Enabled            bool      `gorm:"default:true" json:"enabled"`
+	DefaultForNewRules bool      `gorm:"default:false" json:"default_for_new_rules"`
+	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 // AlertRule defines when an alert fires and how to notify.

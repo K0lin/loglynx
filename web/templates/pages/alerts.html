@@ -83,6 +83,9 @@
         /* condition summary */
         .cond-summary { font-size: .79rem; color: var(--text-muted); font-style: italic; }
         .cond-pill { display: inline-block; background: rgba(255,255,255,.06); border-radius: 4px; padding: 1px 6px; font-size: .74rem; margin: 1px; font-family: monospace; }
+        .assignment-table th { white-space: nowrap; }
+        .assignment-table .rule-name-cell { min-width: 260px; }
+        .assignment-status { font-size: .76rem; min-width: 70px; display: inline-block; }
     </style>
 </head>
 <body>
@@ -134,6 +137,7 @@
 <div class="alerts-tabs">
     <button class="alerts-tab active" onclick="switchTab('rules', this)"><i class="fas fa-shield-halved me-1"></i>Rules</button>
     <button class="alerts-tab" onclick="switchTab('channels', this)"><i class="fas fa-paper-plane me-1"></i>Channels</button>
+    <button class="alerts-tab" onclick="switchTab('assignments', this)"><i class="fas fa-table-list me-1"></i>Assignments</button>
     <button class="alerts-tab" onclick="switchTab('history', this)"><i class="fas fa-clock-rotate-left me-1"></i>History</button>
 </div>
 
@@ -158,6 +162,26 @@
     </div>
     <div class="channels-grid" id="channelsGrid">
         <div class="stat-card"><div class="text-muted text-center py-3">Loading…</div></div>
+    </div>
+</div>
+
+<!-- ── ASSIGNMENTS TAB ────────────────────────────────────────────────── -->
+<div id="tab-assignments" style="display:none">
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                <div>
+                    <h6 class="mb-1"><i class="fas fa-table-list me-1"></i>Rule notification matrix</h6>
+                    <div class="text-muted small">Toggle which notification channels each rule uses. Changes save immediately.</div>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="renderAssignments()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+            </div>
+        </div>
+    </div>
+    <div class="table-container table-responsive">
+        <table class="table table-sm assignment-table" id="assignmentTable">
+            <tbody><tr><td class="text-muted text-center py-4">Loading…</td></tr></tbody>
+        </table>
     </div>
 </div>
 
@@ -274,6 +298,7 @@
                                 <option value="3600">hours</option>
                             </select>
                         </div>
+                        <div id="ruleCooldownWarning" class="small text-warning mt-1" style="display:none;"></div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small text-muted">Enabled</label>
@@ -342,6 +367,15 @@
                     <div class="mb-2">
                         <label class="form-label small text-muted">Bot Username <span class="text-muted">(optional)</span></label>
                         <input type="text" class="form-control form-control-sm" id="ch-discord-username" placeholder="LogLynx Alerts">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Mention everyone</label>
+                        <select class="form-select form-select-sm" id="ch-discord-mention-policy">
+                            <option value="never" selected>Never</option>
+                            <option value="critical">Only for critical alerts</option>
+                            <option value="always">For every alert sent to this channel</option>
+                        </select>
+                        <div class="small text-muted mt-1">Discord will receive an @everyone mention only when this policy allows it.</div>
                     </div>
                 </div>
 
@@ -420,12 +454,20 @@
                 </div>
 
                 <div class="mt-3">
-                    <label class="form-label small text-muted">Enabled</label>
-                    <div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="channelEnabled" checked>
-                            <span class="toggle-slider"></span>
+                    <label class="form-label small text-muted d-block">Channel Options</label>
+                    <div class="d-flex flex-column gap-2">
+                        <label class="form-check-label small d-flex align-items-center gap-2">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="channelEnabled" checked>
+                                <span class="toggle-slider"></span>
+                            </span>
+                            Channel enabled
                         </label>
+                        <label class="form-check-label small d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input" id="channelDefaultForNewRules">
+                            Enable by default on newly created rules
+                        </label>
+                        <div class="text-muted small">This is not retroactive. Existing rules keep their current channel assignments.</div>
                     </div>
                 </div>
             </div>
@@ -486,17 +528,20 @@
         {v:'in',           l:'in (comma list)'},
     ];
 
+    const ALERT_EVAL_INTERVAL_SECS = Number(window.LOGLYNX_CONFIG?.alertEvalIntervalSecs || 30);
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Tab management
     // ─────────────────────────────────────────────────────────────────────────
     function switchTab(tab, el) {
         document.querySelectorAll('.alerts-tab').forEach(t => t.classList.remove('active'));
         el.classList.add('active');
-        ['rules','channels','history'].forEach(t => {
+        ['rules','channels','assignments','history'].forEach(t => {
             document.getElementById('tab-'+t).style.display = t === tab ? '' : 'none';
         });
         if (tab === 'rules')    renderRules();
         if (tab === 'channels') renderChannels();
+        if (tab === 'assignments') renderAssignments();
         if (tab === 'history')  loadHistory();
     }
 
@@ -630,11 +675,13 @@
         $('#ruleGroupBy').val('client_ip');
         $('#ruleCooldownVal').val(5);
         $('#ruleCooldownUnit').val(60);
+        bindCooldownWarning();
+        updateCooldownWarning();
         $('#ruleEnabled').prop('checked', true);
         $('#conditionRows').empty();
         $('#ruleModalTitle').html('<i class="fas fa-shield-halved me-2"></i>New Alert Rule');
 
-        loadChannelCheckboxes([], function() {
+        loadChannelCheckboxes(rule ? [] : null, function() {
             if (rule) {
                 populateRuleModal(rule);
             }
@@ -657,6 +704,7 @@
         setSecondsToUnitFields(r.window_secs, '#ruleWindowVal', '#ruleWindowUnit');
         // Cooldown
         setSecondsToUnitFields(r.cooldown_secs, '#ruleCooldownVal', '#ruleCooldownUnit');
+        updateCooldownWarning();
 
         // Conditions
         try {
@@ -713,6 +761,9 @@
     function loadChannelCheckboxes(selectedIds, cb) {
         $.getJSON('/api/v1/alerts/channels', function(channels) {
             allChannels = channels || [];
+            if (selectedIds === null) {
+                selectedIds = getDefaultChannelIds();
+            }
             const box = $('#channelCheckboxes');
             box.empty();
             if (allChannels.length === 0) {
@@ -729,6 +780,12 @@
             }
             if (cb) cb();
         });
+    }
+
+    function getDefaultChannelIds() {
+        return (allChannels || [])
+            .filter(ch => ch.enabled && ch.default_for_new_rules)
+            .map(ch => ch.id);
     }
 
     function saveRule() {
@@ -754,6 +811,9 @@
         };
 
         if (!body.name) { alert('Rule name is required.'); return; }
+        if (cooldownBelowEvalInterval()) {
+            LogLynxUtils.showNotification(`Cooldown is below the alert evaluation interval. It will effectively be at least ${ALERT_EVAL_INTERVAL_SECS}s.`, 'warning', 5000);
+        }
 
         const method = id ? 'PUT' : 'POST';
         const url    = id ? '/api/v1/alerts/rules/' + id : '/api/v1/alerts/rules';
@@ -769,6 +829,118 @@
             },
             error: function(xhr) {
                 alert('Error: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Save failed'));
+            }
+        });
+    }
+
+    function bindCooldownWarning() {
+        $('#ruleCooldownVal, #ruleCooldownUnit').off('input.alertCooldown change.alertCooldown')
+            .on('input.alertCooldown change.alertCooldown', updateCooldownWarning);
+    }
+
+    function cooldownSecsFromModal() {
+        return (parseInt($('#ruleCooldownVal').val(), 10) || 0) * (parseInt($('#ruleCooldownUnit').val(), 10) || 1);
+    }
+
+    function cooldownBelowEvalInterval() {
+        const secs = cooldownSecsFromModal();
+        return secs > 0 && ALERT_EVAL_INTERVAL_SECS > 0 && secs < ALERT_EVAL_INTERVAL_SECS;
+    }
+
+    function updateCooldownWarning() {
+        const warn = $('#ruleCooldownWarning');
+        if (!warn.length) return;
+        if (cooldownBelowEvalInterval()) {
+            warn.text(`Server evaluates alerts every ${ALERT_EVAL_INTERVAL_SECS}s, so this cooldown will effectively be at least ${ALERT_EVAL_INTERVAL_SECS}s.`).show();
+        } else {
+            warn.hide().text('');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Rule/channel assignments
+    // ─────────────────────────────────────────────────────────────────────────
+    function renderAssignments() {
+        $.when(
+            $.getJSON('/api/v1/alerts/rules'),
+            $.getJSON('/api/v1/alerts/channels')
+        ).done(function(rulesResp, channelsResp) {
+            allRules = rulesResp[0] || [];
+            allChannels = channelsResp[0] || [];
+            const table = $('#assignmentTable');
+
+            if (allRules.length === 0) {
+                table.html('<tbody><tr><td class="text-muted text-center py-4">No rules configured yet.</td></tr></tbody>');
+                return;
+            }
+            if (allChannels.length === 0) {
+                table.html('<tbody><tr><td class="text-muted text-center py-4">No notification channels configured yet.</td></tr></tbody>');
+                return;
+            }
+
+            const header = `
+                <thead><tr>
+                    <th class="rule-name-cell">Rule</th>
+                    ${allChannels.map(ch => `<th class="text-center">${chTypeBadge(ch.type)}<div class="small mt-1">${esc(ch.name)}</div></th>`).join('')}
+                    <th>Status</th>
+                </tr></thead>`;
+            const rows = allRules.map(rule => {
+                const ids = parseChannelIds(rule.channel_ids);
+                return `
+                    <tr data-rule-id="${rule.id}">
+                        <td class="rule-name-cell">
+                            <div class="fw-semibold">${esc(rule.name)}</div>
+                            <div class="text-muted small">${esc(rule.severity || 'warning')} · ${rule.enabled ? 'enabled' : 'disabled'}</div>
+                        </td>
+                        ${allChannels.map(ch => `
+                            <td class="text-center align-middle">
+                                <input type="checkbox" class="form-check-input assignment-check" data-channel-id="${ch.id}" ${ids.includes(ch.id) ? 'checked' : ''}>
+                            </td>`).join('')}
+                        <td class="align-middle"><span class="assignment-status text-muted" id="assignment-status-${rule.id}">Saved</span></td>
+                    </tr>`;
+            }).join('');
+
+            table.html(header + '<tbody>' + rows + '</tbody>');
+        }).fail(function() {
+            $('#assignmentTable').html('<tbody><tr><td class="text-danger text-center py-4">Failed to load assignments.</td></tr></tbody>');
+        });
+    }
+
+    function parseChannelIds(raw) {
+        try {
+            return (JSON.parse(raw || '[]') || []).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        } catch(e) {
+            return [];
+        }
+    }
+
+    $(document).on('change', '.assignment-check', function() {
+        const row = $(this).closest('tr[data-rule-id]');
+        const ruleId = parseInt(row.data('rule-id'), 10);
+        const ids = row.find('.assignment-check:checked').map(function() {
+            return parseInt($(this).data('channel-id'), 10);
+        }).get();
+        saveRuleChannels(ruleId, ids);
+    });
+
+    function saveRuleChannels(ruleId, channelIds) {
+        const status = $('#assignment-status-' + ruleId);
+        status.removeClass('text-muted text-success text-danger').addClass('text-info').text('Saving...');
+        $.ajax({
+            url: '/api/v1/alerts/rules/' + ruleId,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({ channel_ids: JSON.stringify(channelIds) }),
+            success: function(updated) {
+                const idx = allRules.findIndex(rule => rule.id === ruleId);
+                if (idx >= 0) allRules[idx] = updated;
+                status.removeClass('text-info text-danger').addClass('text-success').text('Saved');
+                setTimeout(() => status.removeClass('text-success').addClass('text-muted').text('Saved'), 1200);
+            },
+            error: function(xhr) {
+                status.removeClass('text-info').addClass('text-danger').text('Failed');
+                alert('Error: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Failed to update assignment'));
+                renderAssignments();
             }
         });
     }
@@ -792,6 +964,9 @@
     }
 
     function channelCard(ch) {
+        const defaultBadge = ch.default_for_new_rules
+            ? '<span class="badge-preset"><i class="fas fa-plus-circle me-1"></i>Default for new rules</span>'
+            : '<span class="text-muted small">Manual assignment only</span>';
         return `
         <div class="channel-card">
             <div class="d-flex justify-content-between align-items-center">
@@ -802,6 +977,11 @@
                 </label>
             </div>
             <div style="font-weight:600;font-size:.95rem;">${esc(ch.name)}</div>
+            <div>${defaultBadge}</div>
+            <label class="form-check-label small d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" ${ch.default_for_new_rules ? 'checked' : ''} onchange="toggleChannelDefault(${ch.id}, this.checked)">
+                Use by default on new rules
+            </label>
             <div class="d-flex gap-2 mt-1">
                 <button class="btn btn-sm btn-outline" onclick="testChannelById(${ch.id})" title="Test">
                     <i class="fas fa-vial me-1"></i>Test
@@ -834,6 +1014,19 @@
         });
     }
 
+    function toggleChannelDefault(id, enabled) {
+        const ch = allChannels.find(c => c.id === id);
+        if (!ch) return;
+        ch.default_for_new_rules = enabled;
+        $.ajax({
+            url: '/api/v1/alerts/channels/' + id, method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(ch),
+            success: function() { renderChannels(); },
+            error: function() { alert('Failed to update channel default.'); renderChannels(); }
+        });
+    }
+
     function testChannelById(id) {
         $.ajax({
             url: '/api/v1/alerts/channels/' + id + '/test',
@@ -860,6 +1053,7 @@
         $('#channelName').val('');
         $('#channelType').val('discord');
         $('#channelEnabled').prop('checked', true);
+        $('#channelDefaultForNewRules').prop('checked', false);
         clearChannelFields();
         onChannelTypeChange();
         $('#channelModalTitle').html('<i class="fas fa-paper-plane me-2"></i>Add Channel');
@@ -869,6 +1063,7 @@
             $('#channelName').val(ch.name);
             $('#channelType').val(ch.type);
             $('#channelEnabled').prop('checked', ch.enabled);
+            $('#channelDefaultForNewRules').prop('checked', !!ch.default_for_new_rules);
             populateChannelFields(ch.type, ch.config);
             onChannelTypeChange();
             $('#channelModalTitle').html('<i class="fas fa-pen me-2"></i>Edit Channel');
@@ -895,6 +1090,7 @@
             const el = document.getElementById(id);
             if (el) el.value = (id === 'ch-email-port') ? '587' : '';
         });
+        document.getElementById('ch-discord-mention-policy').value = 'never';
         document.getElementById('ch-email-tls').checked = false;
         document.getElementById('ch-email-starttls').checked = true;
         document.getElementById('ch-wh-method').value = 'POST';
@@ -906,6 +1102,7 @@
         if (type === 'discord') {
             $('#ch-discord-url').val(cfg.webhook_url || '');
             $('#ch-discord-username').val(cfg.username || '');
+            $('#ch-discord-mention-policy').val(cfg.mention_policy || 'never');
         } else if (type === 'email') {
             $('#ch-email-host').val(cfg.smtp_host || '');
             $('#ch-email-port').val(cfg.smtp_port || 587);
@@ -929,6 +1126,7 @@
             return JSON.stringify({
                 webhook_url: $('#ch-discord-url').val().trim(),
                 username:    $('#ch-discord-username').val().trim(),
+                mention_policy: $('#ch-discord-mention-policy').val(),
             });
         } else if (type === 'email') {
             const toRaw = $('#ch-email-to').val();
@@ -967,6 +1165,7 @@
             type:    type,
             config:  collectChannelConfig(type),
             enabled: $('#channelEnabled').is(':checked'),
+            default_for_new_rules: $('#channelDefaultForNewRules').is(':checked'),
         };
         if (!body.name) { alert('Channel name is required.'); return; }
 
