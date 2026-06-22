@@ -107,13 +107,14 @@ function saveTag() {
 // Update all UI elements for a specific IP
 function updateUIForIP(ip, data) {
   const enabled = localStorage.getItem('loglynx_ip_tagging_enabled') === 'true';
+  const ipSelector = escapeTagSelector(ip);
   
   // Normalize fields from input data
   const friendlyName = data.FriendlyName || data.friendly_name || '';
   const tagsStr = data.Tags || data.tags || '';
 
   // 1. Update IP display spans
-  const ipDisplays = document.querySelectorAll(`.ip-display[data-ip="${ip}"]`);
+  const ipDisplays = document.querySelectorAll(`.ip-display[data-ip="${ipSelector}"]`);
   ipDisplays.forEach(display => {
       // Store original HTML if not already stored
       if (!display.dataset.originalHtml) {
@@ -121,7 +122,9 @@ function updateUIForIP(ip, data) {
       }
 
       if (enabled && friendlyName) {
-          display.innerHTML = `<a href="/ip/${encodeURIComponent(ip)}" class="ip-link text-decoration-none"><strong>${escapeTagHtml(friendlyName)}</strong> <small class="text-muted">(${escapeTagHtml(ip)})</small></a>`;
+          const originalLink = display.querySelector('a[href]');
+          const href = originalLink ? originalLink.getAttribute('href') : `/ip/${encodeURIComponent(ip)}`;
+          display.innerHTML = `<a href="${escapeTagHtml(href)}" class="ip-link text-decoration-none"><strong>${escapeTagHtml(friendlyName)}</strong> <small class="text-muted">(${escapeTagHtml(ip)})</small></a>`;
       } else {
           // Restore original HTML (link, code, etc.)
           display.innerHTML = display.dataset.originalHtml;
@@ -154,10 +157,16 @@ function updateUIForIP(ip, data) {
   });*/
 
   // 3. Update edit buttons visibility
-  const editBtns = document.querySelectorAll(`.edit-tag-btn[data-ip="${ip}"]`);
+  const editBtns = document.querySelectorAll(`.edit-tag-btn[data-ip="${ipSelector}"]`);
   editBtns.forEach(btn => {
     btn.style.display = enabled ? 'inline-block' : 'none';
   });
+}
+
+function escapeTagSelector(value) {
+  return window.CSS && typeof window.CSS.escape === 'function'
+    ? window.CSS.escape(String(value || ''))
+    : String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function escapeTagHtml(value) {
