@@ -53,6 +53,8 @@ VOLUME ["/data", "/app/geoip", "/traefik/logs"]
 
 EXPOSE 8080
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD ["/usr/local/bin/loglynx", "healthcheck"]
 
 ENTRYPOINT ["/usr/local/bin/loglynx"]
 

@@ -23,6 +23,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -50,6 +52,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(runHealthcheck())
+	}
+
 	// Configure Go runtime to use all available CPU cores
 	// This enables goroutines to run in parallel on all cores
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -366,4 +372,31 @@ func main() {
 	}
 
 	logger.Info("LogLynx stopped gracefully")
+}
+
+func runHealthcheck() int {
+	url := os.Getenv("HEALTHCHECK_URL")
+	if url == "" {
+		port := os.Getenv("SERVER_PORT")
+		if port == "" {
+			port = "8080"
+		}
+		url = fmt.Sprintf("http://127.0.0.1:%s/health", port)
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: status %d\n", resp.StatusCode)
+		return 1
+	}
+
+	fmt.Fprintln(os.Stdout, "healthy")
+	return 0
 }
