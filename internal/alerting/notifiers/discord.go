@@ -37,7 +37,7 @@ func SendDiscord(configJSON string, msg AlertMessage) error {
 		"color":     color,
 		"timestamp": msg.TriggeredAt.UTC().Format(time.RFC3339),
 		"footer": map[string]string{
-			"text": "LogLynx · Alert System",
+			"text": msg.FooterText(),
 		},
 		"fields": []map[string]interface{}{
 			{"name": "Severity", "value": msg.Severity, "inline": true},

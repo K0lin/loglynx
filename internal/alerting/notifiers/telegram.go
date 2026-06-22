@@ -29,7 +29,7 @@ func SendTelegram(configJSON string, msg AlertMessage) error {
 
 	_, emoji := severityStyle(msg.Severity)
 
-	text := fmt.Sprintf("%s <b>LogLynx alert: %s</b>\n\n<b>Severity:</b> %s\n<b>Grouped by:</b> <code>%s</code>\n<b>Group value:</b> <code>%s</code>\n<b>Matched:</b> %d requests\n<b>Threshold:</b> %d requests\n<b>Window:</b> %s\n<b>Cooldown:</b> %s\n<b>Time:</b> %s\n\n%s",
+	text := fmt.Sprintf("%s <b>LogLynx alert: %s</b>\n\n<b>Severity:</b> %s\n<b>Grouped by:</b> <code>%s</code>\n<b>Group value:</b> <code>%s</code>\n<b>Matched:</b> %d requests\n<b>Threshold:</b> %d requests\n<b>Window:</b> %s\n<b>Cooldown:</b> %s\n<b>Time:</b> %s\n\n%s\n\n<i>%s</i>",
 		emoji,
 		html.EscapeString(msg.RuleName),
 		html.EscapeString(msg.Severity),
@@ -41,6 +41,7 @@ func SendTelegram(configJSON string, msg AlertMessage) error {
 		html.EscapeString(msg.CooldownDisplay()),
 		msg.TriggeredAt.UTC().Format(time.RFC3339),
 		html.EscapeString(msg.DescriptionDisplay()),
+		html.EscapeString(msg.FooterText()),
 	)
 
 	payload := map[string]interface{}{

@@ -18,6 +18,14 @@ type AlertMessage struct {
 	WindowSecs     int
 	CooldownSecs   int
 	TriggeredAt    time.Time
+	ServerVersion  string // version of the running LogLynx instance
+}
+
+func (m AlertMessage) FooterText() string {
+	if m.ServerVersion != "" {
+		return fmt.Sprintf("LogLynx v%s · Alert System", m.ServerVersion)
+	}
+	return "LogLynx · Alert System"
 }
 
 func (m AlertMessage) GroupDisplay() string {

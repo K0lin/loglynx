@@ -13,6 +13,7 @@ import (
 	"loglynx/internal/alerting/notifiers"
 	"loglynx/internal/database/models"
 	"loglynx/internal/database/repositories"
+	"loglynx/internal/version"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pterm/pterm"
@@ -127,6 +128,7 @@ func (h *AlertsHandler) TestChannel(c *gin.Context) {
 		WindowSecs:     60,
 		CooldownSecs:   300,
 		TriggeredAt:    time.Now(),
+		ServerVersion:  version.Version,
 	}
 	var sendErr error
 	switch ch.Type {

@@ -18,18 +18,19 @@ type WebhookConfig struct {
 
 // WebhookPayload is the JSON body sent to the webhook endpoint.
 type WebhookPayload struct {
-	Event        string    `json:"event"` // "alert_triggered"
-	RuleName     string    `json:"rule_name"`
-	Severity     string    `json:"severity"`
-	GroupBy      string    `json:"group_by"`
-	GroupValue   string    `json:"group_value"`
-	Count        int       `json:"count"`
-	Threshold    int       `json:"threshold"`
-	WindowSecs   int       `json:"window_secs"`
-	CooldownSecs int       `json:"cooldown_secs"`
-	Description  string    `json:"description"`
-	TriggeredAt  time.Time `json:"triggered_at"`
-	Source       string    `json:"source"` // "loglynx"
+	Event         string    `json:"event"` // "alert_triggered"
+	RuleName      string    `json:"rule_name"`
+	Severity      string    `json:"severity"`
+	GroupBy       string    `json:"group_by"`
+	GroupValue    string    `json:"group_value"`
+	Count         int       `json:"count"`
+	Threshold     int       `json:"threshold"`
+	WindowSecs    int       `json:"window_secs"`
+	CooldownSecs  int       `json:"cooldown_secs"`
+	Description   string    `json:"description"`
+	TriggeredAt   time.Time `json:"triggered_at"`
+	Source        string    `json:"source"`         // "loglynx"
+	ServerVersion string    `json:"server_version"` // running instance version
 }
 
 func SendWebhook(configJSON string, msg AlertMessage) error {
@@ -50,18 +51,19 @@ func SendWebhook(configJSON string, msg AlertMessage) error {
 	}
 
 	payload := WebhookPayload{
-		Event:        "alert_triggered",
-		RuleName:     msg.RuleName,
-		Severity:     msg.Severity,
-		GroupBy:      msg.GroupBy,
-		GroupValue:   msg.GroupDisplay(),
-		Count:        msg.Count,
-		Threshold:    msg.ThresholdCount,
-		WindowSecs:   msg.WindowSecs,
-		CooldownSecs: msg.CooldownSecs,
-		Description:  msg.DescriptionDisplay(),
-		TriggeredAt:  msg.TriggeredAt.UTC(),
-		Source:       "loglynx",
+		Event:         "alert_triggered",
+		RuleName:      msg.RuleName,
+		Severity:      msg.Severity,
+		GroupBy:       msg.GroupBy,
+		GroupValue:    msg.GroupDisplay(),
+		Count:         msg.Count,
+		Threshold:     msg.ThresholdCount,
+		WindowSecs:    msg.WindowSecs,
+		CooldownSecs:  msg.CooldownSecs,
+		Description:   msg.DescriptionDisplay(),
+		TriggeredAt:   msg.TriggeredAt.UTC(),
+		Source:        "loglynx",
+		ServerVersion: msg.ServerVersion,
 	}
 
 	body, err := json.Marshal(payload)
@@ -74,7 +76,11 @@ func SendWebhook(configJSON string, msg AlertMessage) error {
 		return fmt.Errorf("webhook request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "LogLynx-Alerting/1.0")
+	userAgent := "LogLynx-Alerting/1.0"
+	if msg.ServerVersion != "" {
+		userAgent = "LogLynx-Alerting/" + msg.ServerVersion
+	}
+	req.Header.Set("User-Agent", userAgent)
 	for k, v := range cfg.Headers {
 		req.Header.Set(k, v)
 	}

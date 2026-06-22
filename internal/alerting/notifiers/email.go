@@ -60,10 +60,10 @@ What happened:
 %s
 
 --
-LogLynx Alert System
+%s
 `, msg.RuleName, strings.ToUpper(msg.Severity), msg.GroupBy, msg.GroupDisplay(), msg.Count,
 		msg.ThresholdCount, msg.WindowDisplay(), msg.CooldownDisplay(), msg.TriggeredAt.UTC().Format("2006-01-02 15:04:05 UTC"),
-		msg.DescriptionDisplay())
+		msg.DescriptionDisplay(), msg.FooterText())
 
 	mimeMessage := buildMIMEMessage(cfg.From, cfg.To, subject, body)
 

@@ -9,6 +9,7 @@ import (
 	"loglynx/internal/alerting/notifiers"
 	"loglynx/internal/database/models"
 	"loglynx/internal/database/repositories"
+	"loglynx/internal/version"
 
 	"github.com/pterm/pterm"
 	"gorm.io/gorm"
@@ -200,6 +201,7 @@ func (e *Engine) dispatch(rule *models.AlertRule, groupVal string, count int) {
 		WindowSecs:     rule.WindowSecs,
 		CooldownSecs:   rule.CooldownSecs,
 		TriggeredAt:    time.Now(),
+		ServerVersion:  version.Version,
 	}
 
 	for _, id := range channelIDs {
